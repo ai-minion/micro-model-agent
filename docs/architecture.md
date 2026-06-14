@@ -1,0 +1,125 @@
+# Architecture
+
+MicroModelAgent is organized around strict Domain Driven Design boundaries.
+
+## Philosophy
+
+The model is a workflow executor. The platform owns retrieval, tool execution,
+trace capture, verification, evaluation, and future training pipelines.
+
+```text
+User
+  -> Workflow
+  -> Retrieval
+  -> Tools
+  -> Verification
+```
+
+## Layers
+
+### Domain
+
+Pure business contracts and policy. No infrastructure, framework, network, file
+system, Pydantic AI, or MCP dependencies.
+
+Initial concepts:
+
+- `AgentProfile`
+- `ModelProfile`
+- `ToolDefinition`
+- `ToolCall`
+- `ToolResult`
+- `WorkflowTrace`
+- `WorkflowStep`
+- `RepositoryProfile`
+- `RetrievalQuery`
+- `RetrievalResult`
+- `SemanticSearchResult`
+- `EvaluationResult`
+
+### Application
+
+Use cases and orchestration. This layer coordinates domain contracts with
+infrastructure ports.
+
+Planned services:
+
+- `RunAgentWorkflow`
+- `RouteTaskToModel`
+- `ExecuteToolCall`
+- `PerformSemanticSearch`
+- `EvaluateWorkflowResult`
+
+### Infrastructure
+
+Adapters for external systems and local capabilities:
+
+- `OllamaModelProvider`
+- `PydanticAiAgentRunner`
+- `LocalVectorStore`
+- `LocalRepositoryIndexer`
+- `FileSystemRepositoryAdapter`
+- `GitAdapter`
+- `TraceStore`
+- `McpServerAdapter`
+
+### Interfaces
+
+User-facing entrypoints:
+
+- CLI
+- MCP server
+- Public Python API
+
+### Agents
+
+Reference agents built from workflows and tools. The first implementation is
+`CodingAgent`.
+
+## Dependency Direction
+
+```text
+interfaces -> application -> domain
+agents -> application -> domain
+infrastructure -> application/domain ports
+domain -> nothing project-specific
+```
+
+## Dependency Injection
+
+Runtime assembly should happen at the edges, usually in `interfaces` or a small
+composition module. Application services accept explicit dependencies through
+constructors. Domain objects remain plain contracts and policy.
+
+## Retrieval
+
+Retrieval is a first-class platform capability. The local implementation starts
+simple, but contracts should support source code, docs, ADRs, traces, recipes,
+error history, and future vector stores such as Qdrant and Chroma.
+
+## Trace Capture
+
+Trace capture is automatic orchestration behavior. The model never records its
+own traces. Workflows produce `WorkflowTrace` records containing goals, tool
+calls, tool results, generated outputs, verification results, and outcomes.
+
+## Fine-Tuning Data
+
+Fine-tuning is a core goal. V1 should capture training-ready data and include a
+minimal synthetic-data training pipeline. CLI workflows should store labeled good
+and bad outcomes, tool-use examples, retrieved documentation context, codebase
+context, patches, verification results, and reviewer notes. Synthetic examples
+should be validated against tool contracts before training. See
+[fine-tuning-data-plan.md](fine-tuning-data-plan.md) and
+[training-pipeline.md](training-pipeline.md).
+
+## Security
+
+MCP and CLI tools must avoid arbitrary shell execution and unrestricted writes.
+Dangerous operations need explicit allowlists, dry-run support, patch previews,
+and approval workflows.
+
+## Planning
+
+The implementation roadmap, milestones, tool plan, testing strategy, and MVP
+acceptance criteria live in [project-plan.md](project-plan.md).
