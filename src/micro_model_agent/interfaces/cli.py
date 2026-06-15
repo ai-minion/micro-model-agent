@@ -102,6 +102,39 @@ def _base_model_from_adapter(adapter_path: Path | None) -> str:
     return base_model
 
 
+def _format_behavioral_eval_failures(details: dict[str, Any]) -> list[str]:
+    """Return short CLI lines for failing behavioral eval examples."""
+
+    lines: list[str] = []
+    examples = details.get("examples")
+    if not isinstance(examples, list):
+        return lines
+
+    for raw_example in examples:
+        if not isinstance(raw_example, dict):
+            continue
+        score = raw_example.get("score")
+        if not isinstance(score, int | float) or score >= 1.0:
+            continue
+
+        example_id = raw_example.get("example_id", "unknown")
+        category = raw_example.get("category") or "uncategorized"
+        errors = raw_example.get("errors")
+        error_text = ""
+        if isinstance(errors, list) and errors:
+            error_text = f": {errors[0]}"
+        lines.append(f"- {category}/{example_id} scored {score:.2f}{error_text}")
+    return lines
+
+
+def _format_count_distribution(counts: object) -> str:
+    """Format a JSON-ready count mapping for compact CLI output."""
+
+    if not isinstance(counts, dict) or not counts:
+        return "none"
+    return ", ".join(f"{key}={value}" for key, value in counts.items())
+
+
 @app.command()
 def init(
     repository_root: Path = typer.Option(Path("."), help="Repository root to initialize."),
@@ -445,14 +478,47 @@ def synthesize(
         Path("examples/synthetic-data"),
         help="Directory containing committed *.seed.jsonl templates.",
     ),
+    seed: int | None = typer.Option(
+        None,
+        "--seed",
+        help="Deterministic generation seed for reproducible IDs and variants.",
+    ),
+    balance_categories: bool = typer.Option(
+        True,
+        "--balance-categories/--no-balance-categories",
+        help="Cycle categories evenly instead of cycling raw templates.",
+    ),
+    vary_scenarios: bool = typer.Option(
+        True,
+        "--vary-scenarios/--no-vary-scenarios",
+        help="Create deterministic prompt variants while preserving validated targets.",
+    ),
 ) -> None:
     """Generate synthetic tool-use and workflow examples."""
 
     generator = SyntheticTemplateGenerator(template_dir)
     store = JsonlDatasetExampleStore(output)
-    examples = _run(generator.generate(count))
+    examples = _run(
+        generator.generate(
+            count,
+            seed=seed,
+            balance_categories=balance_categories,
+            vary_scenarios=vary_scenarios,
+        )
+    )
+    validation = _run(LocalDatasetValidator().validate(examples))
+    if not validation.passed:
+        typer.echo(validation.summary, err=True)
+        for error in validation.details.get("errors", [])[:10]:
+            typer.echo(f"- {error}", err=True)
+        raise typer.Exit(1)
     _run(store.save_many(examples))
     typer.echo(f"Wrote {len(examples)} synthetic examples to {output}")
+    typer.echo(
+        "Categories: " + _format_count_distribution(validation.details.get("category_counts"))
+    )
+    typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
+    typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
 
 
 @dataset_app.command()
@@ -467,6 +533,11 @@ def validate(
     examples = load_dataset_examples(path)
     result = _run(LocalDatasetValidator().validate(examples))
     typer.echo(result.summary)
+    typer.echo(
+        "Categories: " + _format_count_distribution(result.details.get("category_counts"))
+    )
+    typer.echo("Kinds: " + _format_count_distribution(result.details.get("kind_counts")))
+    typer.echo("Outcomes: " + _format_count_distribution(result.details.get("outcome_counts")))
     for error in result.details.get("errors", [])[:10]:
         typer.echo(f"- {error}")
     if not result.passed:
@@ -580,7 +651,7 @@ def train_synthetic(
 def eval_synthetic(
     run_id: str = typer.Option("latest", help="Training run id or alias to evaluate."),
     dataset: Path = typer.Option(
-        Path(".micro_model_agent/datasets/synthetic_seed.jsonl"),
+        Path("examples/synthetic-data/held-out.behavior.jsonl"),
         help="Held-out synthetic JSONL dataset to evaluate against.",
     ),
     model: str | None = typer.Option(
@@ -694,6 +765,11 @@ def eval_synthetic(
         output = write_evaluation_result(run_dir, result)
         typer.echo(f"{result.summary}; report written to {output}")
         if not result.passed:
+            failure_lines = _format_behavioral_eval_failures(result.details)
+            if failure_lines:
+                typer.echo("Failures:", err=True)
+                for line in failure_lines:
+                    typer.echo(line, err=True)
             raise typer.Exit(1)
         return
 

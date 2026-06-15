@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
 from micro_model_agent.interfaces.cli import _load_dotenv, app
 
 
@@ -79,14 +80,19 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
             str(dataset_path),
             "--template-dir",
             "examples/synthetic-data",
+            "--seed",
+            "23",
         ],
     )
     assert synthesize.exit_code == 0, synthesize.output
     assert dataset_path.exists()
+    assert "Categories:" in synthesize.output
 
     validate = runner.invoke(app, ["dataset", "validate", "--path", str(dataset_path)])
     assert validate.exit_code == 0, validate.output
     assert "validated 3 examples" in validate.output
+    assert "Categories:" in validate.output
+    assert "Outcomes:" in validate.output
 
     export = runner.invoke(
         app,
@@ -120,6 +126,42 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     evaluate = runner.invoke(app, ["eval", "synthetic", "--run-id", str(run_dir)])
     assert evaluate.exit_code == 0, evaluate.output
     assert (run_dir / "evaluation.json").exists()
+
+
+def test_cli_synthetic_eval_failure_names_category_and_example(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = Path("examples/synthetic-data/held-out.behavior.jsonl")
+    examples = load_dataset_examples(dataset_path)
+    response_file = tmp_path / "responses.jsonl"
+    responses = [example.target for example in examples]
+    responses[0] = {
+        "tool_name": "repo.read",
+        "arguments": {"files": [{"path": "README.md"}]},
+    }
+    response_file.write_text(
+        "\n".join(json.dumps(response, sort_keys=True) for response in responses),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "synthetic",
+            "--run-id",
+            str(tmp_path / "training" / "runs" / "latest"),
+            "--dataset",
+            str(dataset_path),
+            "--scripted-response-file",
+            str(response_file),
+            "--pass-threshold",
+            "1.0",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "Failures:" in result.output
+    assert "valid_tool_call/00000000-0000-4000-8000-000000000001" in result.output
 
 
 def test_cli_loop_runs_scripted_tool_call_and_final_response(tmp_path: Path) -> None:

@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from pathlib import Path
 
+from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
 from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
 from micro_model_agent.infrastructure.synthetic_evaluation import SyntheticBehaviorEvaluationSuite
@@ -75,3 +77,24 @@ def test_behavioral_synthetic_evaluator_records_parse_errors() -> None:
     assert result.score == 0.0
     assert result.details["metrics"]["parse_success_rate"] == 0.0
     assert "model response must be a JSON object" in result.details["examples"][0]["errors"][0]
+
+
+def test_behavioral_synthetic_evaluator_reports_category_metrics() -> None:
+    examples = load_dataset_examples(Path("examples/synthetic-data/held-out.behavior.jsonl"))
+    model = ScriptedModelProvider([_response(example.target) for example in examples])
+
+    result = asyncio.run(SyntheticBehaviorEvaluationSuite().evaluate_model(model, examples))
+
+    assert result.passed is True
+    assert result.details["example_count"] == 8
+    category_metrics = result.details["category_metrics"]
+    assert category_metrics["valid_tool_call"]["example_count"] == 1.0
+    assert category_metrics["documentation_grounded_retrieval"]["score"] == 1.0
+    assert set(category_metrics) >= {
+        "bad_json",
+        "final_response_misuse",
+        "invalid_arguments",
+        "repair_behavior",
+        "safe_refusal",
+        "wrong_tool",
+    }

@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError
 
 from micro_model_agent.domain.contracts import EvaluationResult
-from micro_model_agent.domain.datasets import DatasetExample, DatasetExampleKind, QualityLabel
+from micro_model_agent.domain.datasets import (
+    DatasetExample,
+    DatasetExampleKind,
+    OutcomeLabel,
+    QualityLabel,
+)
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
 
@@ -36,7 +40,13 @@ class LocalDatasetValidator:
             passed=passed,
             summary=f"validated {len(examples)} examples with {len(errors)} error(s)",
             score=1.0 if passed else 0.0,
-            details={"errors": errors, "example_count": len(examples)},
+            details={
+                "errors": errors,
+                "example_count": len(examples),
+                "category_counts": self._category_counts(examples),
+                "kind_counts": self._kind_counts(examples),
+                "outcome_counts": self._outcome_counts(examples),
+            },
         )
 
     def _validate_example(self, example: DatasetExample, index: int) -> list[str]:
@@ -50,30 +60,43 @@ class LocalDatasetValidator:
             errors.append(f"{prefix}: target is required")
         if example.label.quality is QualityLabel.UNKNOWN:
             errors.append(f"{prefix}: quality label must be known before training")
+        errors.extend(self._validate_refusal_consistency(example, prefix))
 
         if example.kind in {DatasetExampleKind.TOOL_USE, DatasetExampleKind.REPAIR}:
             # Tool-use examples must also match the tool argument schemas.
-            errors.extend(self._validate_tool_target(example.target, prefix))
+            errors.extend(self._validate_tool_target(example, prefix))
 
         return errors
 
-    def _validate_tool_target(self, target: dict[str, Any], prefix: str) -> list[str]:
+    def _validate_tool_target(self, example: DatasetExample, prefix: str) -> list[str]:
         errors: list[str] = []
+        target = example.target
         tool_name = target.get("tool_name")
         if not isinstance(tool_name, str):
             return [f"{prefix}: target.tool_name is required"]
 
+        available_tools = example.input.get("available_tools")
+        if isinstance(available_tools, list) and all(
+            isinstance(tool, str) for tool in available_tools
+        ) and tool_name not in available_tools:
+            errors.append(
+                f"{prefix}: target.tool_name {tool_name!r} is not in input.available_tools"
+            )
+
         contract = TOOL_ARGUMENT_CONTRACTS.get(tool_name)
         if contract is None:
-            return [f"{prefix}: unknown tool_name {tool_name!r}"]
+            errors.append(f"{prefix}: unknown tool_name {tool_name!r}")
+            return errors
 
         arguments = target.get("arguments")
         if arguments is None:
             if "refusal" in target:
-                return []
-            return [f"{prefix}: target.arguments is required when no refusal is present"]
+                return errors
+            errors.append(f"{prefix}: target.arguments is required when no refusal is present")
+            return errors
         if not isinstance(arguments, dict):
-            return [f"{prefix}: target.arguments must be an object"]
+            errors.append(f"{prefix}: target.arguments must be an object")
+            return errors
 
         try:
             # Pydantic performs detailed type and range validation from the
@@ -82,6 +105,43 @@ class LocalDatasetValidator:
         except ValidationError as exc:
             errors.append(f"{prefix}: invalid {tool_name} arguments: {exc.errors()}")
         return errors
+
+    def _validate_refusal_consistency(
+        self,
+        example: DatasetExample,
+        prefix: str,
+    ) -> list[str]:
+        errors: list[str] = []
+        refusal = example.target.get("refusal")
+        has_refusal = isinstance(refusal, str) and bool(refusal.strip())
+
+        if example.label.outcome is OutcomeLabel.REJECTED and not has_refusal:
+            errors.append(f"{prefix}: rejected examples must include target.refusal")
+        if example.label.outcome is not OutcomeLabel.REJECTED and "refusal" in example.target:
+            errors.append(f"{prefix}: only rejected examples may include target.refusal")
+        return errors
+
+    def _category_counts(self, examples: list[DatasetExample]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for example in examples:
+            category = example.metadata.get("category")
+            key = category if isinstance(category, str) and category else "uncategorized"
+            counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items()))
+
+    def _kind_counts(self, examples: list[DatasetExample]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for example in examples:
+            key = example.kind.value
+            counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items()))
+
+    def _outcome_counts(self, examples: list[DatasetExample]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for example in examples:
+            key = example.label.outcome.value
+            counts[key] = counts.get(key, 0) + 1
+        return dict(sorted(counts.items()))
 
 
 def export_sft_jsonl(path: Path, examples: list[DatasetExample]) -> None:

@@ -61,6 +61,42 @@ def test_dataset_validator_accepts_seed_examples() -> None:
 
     assert result.passed is True
     assert result.details["example_count"] == 6
+    assert sum(result.details["category_counts"].values()) == 6
+    assert sum(result.details["kind_counts"].values()) == 6
+    assert sum(result.details["outcome_counts"].values()) == 6
+
+
+def test_synthetic_generator_balances_categories_and_uses_seeded_variants() -> None:
+    first = asyncio.run(
+        SyntheticTemplateGenerator("examples/synthetic-data").generate(11, seed=17)
+    )
+    second = asyncio.run(
+        SyntheticTemplateGenerator("examples/synthetic-data").generate(11, seed=17)
+    )
+
+    assert [example.id for example in first] == [example.id for example in second]
+    assert [example.input["goal"] for example in first] == [
+        example.input["goal"] for example in second
+    ]
+    counts: dict[str, int] = {}
+    for example in first:
+        category = str(example.metadata["category"])
+        counts[category] = counts.get(category, 0) + 1
+
+    assert max(counts.values()) - min(counts.values()) <= 1
+    assert all("variant_strategy" in example.metadata for example in first)
+    assert any("Scenario" in str(example.input["goal"]) for example in first)
+
+
+def test_dataset_validator_accepts_held_out_behavior_examples() -> None:
+    examples = load_dataset_examples(Path("examples/synthetic-data/held-out.behavior.jsonl"))
+
+    result = asyncio.run(LocalDatasetValidator().validate(examples))
+
+    assert result.passed is True
+    assert result.details["example_count"] == 8
+    assert result.details["category_counts"]["documentation_grounded_retrieval"] == 1
+    assert result.details["outcome_counts"]["rejected"] == 1
 
 
 def test_dataset_validator_rejects_unknown_quality_label() -> None:
@@ -75,6 +111,45 @@ def test_dataset_validator_rejects_unknown_quality_label() -> None:
 
     assert result.passed is False
     assert "quality label must be known" in result.details["errors"][0]
+
+
+def test_dataset_validator_rejects_refusal_and_tool_inconsistency() -> None:
+    examples = [
+        DatasetExample(
+            kind=DatasetExampleKind.TOOL_USE,
+            input={
+                "goal": "Read a file",
+                "available_tools": ["repo.search"],
+            },
+            target={
+                "tool_name": "repo.read",
+                "arguments": {"files": [{"path": "README.md"}]},
+            },
+            label=DatasetLabel(outcome=OutcomeLabel.REJECTED, quality=QualityLabel.GOOD),
+        ),
+        DatasetExample(
+            kind=DatasetExampleKind.TOOL_USE,
+            input={
+                "goal": "Search files",
+                "available_tools": ["repo.search"],
+            },
+            target={
+                "tool_name": "repo.search",
+                "arguments": {"kind": "text", "limit": 25},
+                "refusal": "No.",
+            },
+            label=DatasetLabel(outcome=OutcomeLabel.ACCEPTED, quality=QualityLabel.GOOD),
+        ),
+    ]
+
+    result = asyncio.run(LocalDatasetValidator().validate(examples))
+
+    assert result.passed is False
+    errors = result.details["errors"]
+    assert any("rejected examples must include target.refusal" in error for error in errors)
+    assert any("is not in input.available_tools" in error for error in errors)
+    assert any("only rejected examples may include target.refusal" in error for error in errors)
+    assert any("invalid repo.search arguments" in error for error in errors)
 
 
 def test_export_sft_jsonl_writes_chat_records(tmp_path: Path) -> None:

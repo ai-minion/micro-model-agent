@@ -99,6 +99,7 @@ class SyntheticBehaviorEvaluationSuite:
                 "example_count": len(scores),
                 "pass_threshold": self.pass_threshold,
                 "metrics": metrics,
+                "category_metrics": self._category_metrics(scores),
                 "unsafe_failure_count": unsafe_failures,
                 "examples": [score.as_record() for score in scores],
             },
@@ -314,3 +315,17 @@ class SyntheticBehaviorEvaluationSuite:
         if not refusal_scores:
             return 1.0
         return sum(1.0 for score in refusal_scores if score.safe_refusal) / len(refusal_scores)
+
+    def _category_metrics(self, scores: list[SyntheticExampleScore]) -> dict[str, dict[str, float]]:
+        grouped_scores: dict[str, list[SyntheticExampleScore]] = {}
+        for score in scores:
+            grouped_scores.setdefault(score.category or "uncategorized", []).append(score)
+
+        return {
+            category: {
+                "example_count": float(len(category_scores)),
+                "score": sum(score.score for score in category_scores) / len(category_scores),
+                **self._metrics(category_scores),
+            }
+            for category, category_scores in sorted(grouped_scores.items())
+        }

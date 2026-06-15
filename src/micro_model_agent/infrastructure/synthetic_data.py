@@ -1,27 +1,31 @@
-"""Synthetic dataset generation from committed JSONL templates.
-
-The generator does not invent new content yet. It repeats curated seed records
-and gives each output example a fresh ID so downstream code can treat them as
-separate examples.
-"""
+"""Synthetic dataset generation from committed JSONL templates."""
 
 from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
-from uuid import uuid4
+from random import Random
+from typing import Any
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from micro_model_agent.domain.datasets import DatasetExample
 from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
 
 
 class SyntheticTemplateGenerator:
-    """Generate synthetic examples by cycling committed template records."""
+    """Generate synthetic examples from curated seed templates."""
 
     def __init__(self, templates_dir: str | Path) -> None:
         self.templates_dir = Path(templates_dir)
 
-    async def generate(self, count: int) -> list[DatasetExample]:
+    async def generate(
+        self,
+        count: int,
+        *,
+        seed: int | None = None,
+        balance_categories: bool = True,
+        vary_scenarios: bool = True,
+    ) -> list[DatasetExample]:
         if count < 1:
             raise ValueError("count must be greater than zero")
 
@@ -29,16 +33,35 @@ class SyntheticTemplateGenerator:
         if not templates:
             raise ValueError(f"no synthetic template records found in {self.templates_dir}")
 
+        selected_templates = self._select_templates(
+            templates,
+            count,
+            seed=seed,
+            balance_categories=balance_categories,
+        )
+        random = Random(seed)
         examples: list[DatasetExample] = []
-        for index in range(count):
-            # The modulo operator cycles back to the first template when count
-            # is larger than the number of seed records.
-            template = templates[index % len(templates)]
+        for index, template in enumerate(selected_templates):
+            variant_index = index // max(1, len(templates))
+            metadata = {
+                **template.metadata,
+                "template_index": templates.index(template),
+                "variant_index": variant_index,
+                "variant_strategy": "scenario_text" if vary_scenarios else "template_copy",
+            }
+            if seed is not None:
+                metadata["generation_seed"] = seed
+            input_payload = (
+                self._variant_input(template, index, random)
+                if vary_scenarios
+                else dict(template.input)
+            )
             examples.append(
                 replace(
                     template,
-                    id=uuid4(),
-                    metadata={**template.metadata, "template_index": index % len(templates)},
+                    id=self._example_id(seed, index),
+                    input=input_payload,
+                    metadata=metadata,
                 )
             )
         return examples
@@ -50,3 +73,67 @@ class SyntheticTemplateGenerator:
         for path in sorted(self.templates_dir.glob("*.seed.jsonl")):
             examples.extend(load_dataset_examples(path))
         return examples
+
+    def _select_templates(
+        self,
+        templates: list[DatasetExample],
+        count: int,
+        *,
+        seed: int | None,
+        balance_categories: bool,
+    ) -> list[DatasetExample]:
+        if not balance_categories:
+            return [templates[index % len(templates)] for index in range(count)]
+
+        grouped = self._templates_by_category(templates)
+        categories = sorted(grouped)
+        selected: list[DatasetExample] = []
+        random = Random(seed)
+        category_offsets = {category: 0 for category in categories}
+
+        for index in range(count):
+            category = categories[index % len(categories)]
+            category_templates = grouped[category]
+            offset = category_offsets[category]
+            if seed is not None and offset == 0:
+                random.shuffle(category_templates)
+            selected.append(category_templates[offset % len(category_templates)])
+            category_offsets[category] = offset + 1
+        return selected
+
+    def _templates_by_category(
+        self,
+        templates: list[DatasetExample],
+    ) -> dict[str, list[DatasetExample]]:
+        grouped: dict[str, list[DatasetExample]] = {}
+        for template in templates:
+            category = template.metadata.get("category")
+            key = category if isinstance(category, str) and category else "uncategorized"
+            grouped.setdefault(key, []).append(template)
+        return grouped
+
+    def _variant_input(
+        self,
+        template: DatasetExample,
+        index: int,
+        random: Random,
+    ) -> dict[str, Any]:
+        input_payload = dict(template.input)
+        focus = random.choice(
+            [
+                "before making changes",
+                "while keeping repository safety constraints",
+                "using the most direct built-in tool",
+                "without guessing missing repository context",
+            ]
+        )
+        if isinstance(input_payload.get("goal"), str):
+            input_payload["goal"] = f"{input_payload['goal']} Scenario {index + 1}: {focus}."
+        if isinstance(input_payload.get("context"), str):
+            input_payload["context"] = f"{input_payload['context']} Variant focus: {focus}."
+        return input_payload
+
+    def _example_id(self, seed: int | None, index: int) -> UUID:
+        if seed is None:
+            return uuid4()
+        return uuid5(NAMESPACE_URL, f"{self.templates_dir.resolve()}:{seed}:{index}")

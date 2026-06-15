@@ -7,6 +7,9 @@ generation, local PEFT fine-tuning, and synthetic behavioral evaluation.
 Some project docs still describe the broader roadmap. When they differ from this
 guide, treat this guide as the current operating procedure.
 
+For a full command and option listing, see
+[`docs/cli-reference.md`](cli-reference.md).
+
 ## Current Shape
 
 micro-model-agent has two runnable agent paths:
@@ -34,10 +37,10 @@ The training path is currently:
 ```text
 committed synthetic templates
   -> generated JSONL dataset
-  -> dataset validation
+  -> dataset validation with category/kind/outcome distribution checks
   -> SFT chat JSONL export
   -> dry-run metadata or local HF/PEFT LoRA adapter training
-  -> behavioral synthetic evaluation, with metadata-only fallback for dry runs
+  -> held-out behavioral synthetic evaluation, with metadata-only fallback for dry runs
 ```
 
 ## Setup
@@ -157,23 +160,44 @@ trace-to-dataset plumbing.
 
 ## Synthetic Dataset Workflow
 
-Generate examples from committed templates:
+Use this loop when changing dataset templates, validation, training, or
+behavioral evaluation:
 
 ```bash
-uv run micro-agent dataset synthesize --count 500
-```
-
-Validate them:
-
-```bash
+export UV_PROJECT_ENVIRONMENT=.venv-wsl
+uv run micro-agent dataset synthesize --count 500 --seed 2026
 uv run micro-agent dataset validate
+uv run micro-agent dataset export --format sft-jsonl
+uv run micro-agent train synthetic \
+  --output-dir .micro_model_agent/training/runs/synthetic-smoke
+uv run micro-agent eval synthetic --run-id synthetic-smoke
 ```
 
-Export validated examples to chat-style SFT JSONL:
+`dataset validate` prints the total error count plus category, kind, and outcome
+distributions. Use those counts as a quick balance check before training:
+
+```text
+validated 500 examples with 0 error(s)
+Categories: arbitrary_shell_rejection=83, documentation_grounded=83, ...
+Kinds: repair=83, tool_use=417
+Outcomes: accepted=334, rejected=166
+```
+
+`dataset synthesize` balances categories by default and creates deterministic
+scenario-text variants when `--seed` is provided. Use these switches when you
+need a specific shape:
 
 ```bash
-uv run micro-agent dataset export --format sft-jsonl
+uv run micro-agent dataset synthesize \
+  --count 100 \
+  --seed 7 \
+  --balance-categories \
+  --vary-scenarios
 ```
+
+Use `--no-balance-categories` to preserve raw template order, or
+`--no-vary-scenarios` when you need exact copies of the seed prompt text with
+fresh IDs.
 
 Default paths:
 
@@ -181,6 +205,22 @@ Default paths:
 examples/synthetic-data/*.seed.jsonl
 .micro_model_agent/datasets/synthetic_seed.jsonl
 .micro_model_agent/datasets/synthetic_seed.sft.jsonl
+```
+
+The committed held-out behavioral fixture is separate from the training seed
+templates:
+
+```bash
+uv run micro-agent dataset validate \
+  --path examples/synthetic-data/held-out.behavior.jsonl
+```
+
+Use that fixture for stable scoreboard-style evaluation:
+
+```bash
+uv run micro-agent eval synthetic \
+  --run-id synthetic-smoke \
+  --dataset examples/synthetic-data/held-out.behavior.jsonl
 ```
 
 The current synthetic generator cycles the hand-authored seed templates and
@@ -199,9 +239,15 @@ Run a fast dry run first. This validates the dataset and writes training
 metadata without loading a model:
 
 ```bash
-uv run micro-agent train synthetic --dry-run
-uv run micro-agent eval synthetic --run-id latest
+uv run micro-agent train synthetic \
+  --dry-run \
+  --output-dir .micro_model_agent/training/runs/dry-run-smoke
+uv run micro-agent eval synthetic --run-id dry-run-smoke
 ```
+
+Dry-run artifacts do not contain runnable adapter weights, so `eval synthetic`
+falls back to a metadata-only smoke gate for those runs. Use a scripted response
+file, Ollama model, or PEFT adapter when you want behavioral scoring.
 
 Run local PEFT/LoRA fine-tuning with Transformers:
 
@@ -243,6 +289,60 @@ uv run micro-agent eval synthetic --run-id qwen-tool-schema-smoke
 Evaluation scores model behavior when a runnable model, adapter, or scripted
 response source is available. Dry-run artifacts still use a metadata-only smoke
 gate because they do not contain runnable model weights.
+
+`--run-id` accepts either a direct path or a name under
+`.micro_model_agent/training/runs/`. Prefer named run directories such as
+`qwen-tool-schema-smoke`, `dry-run-smoke`, or a date-stamped name when comparing
+experiments. The default `latest` path is convenient for quick local checks but
+will be overwritten by the next default run.
+
+## Behavioral Evaluation
+
+Behavioral evaluation prompts a provider with held-out examples and expects one
+JSON object per example: either a typed tool call or a safe refusal. Reports are
+written to the selected run directory as `evaluation.json` and include:
+
+- overall score and pass/fail
+- global parse/tool/argument/refusal/repair/final-response metrics
+- per-category metrics
+- per-example raw responses, parsed responses, and errors
+
+Run a deterministic scripted smoke test with one response per held-out example:
+
+```bash
+uv run micro-agent eval synthetic \
+  --run-id scripted-held-out-smoke \
+  --scripted-response-file .micro_model_agent/eval/scripted-held-out-responses.jsonl
+```
+
+Each line in the scripted response file should be a complete model response JSON
+object. For example:
+
+```json
+{"tool_name":"repo.search","arguments":{"query":"BuiltinToolSpec","kind":"text","limit":25},"reason":"Search first because the relevant file is not explicitly known."}
+```
+
+Run against an Ollama model:
+
+```bash
+uv run micro-agent eval synthetic \
+  --run-id ollama-held-out-smoke \
+  --model qwen2.5-coder:7b \
+  --max-examples 8
+```
+
+Run directly against a PEFT adapter:
+
+```bash
+uv run micro-agent eval synthetic \
+  --run-id qwen-tool-schema-smoke \
+  --base-model Qwen/Qwen2.5-Coder-7B-Instruct \
+  --adapter-path .micro_model_agent/training/runs/qwen-tool-schema-smoke/adapter
+```
+
+When behavioral evaluation fails, the CLI prints failing examples as
+`category/example_id scored <score>`, then writes full details to
+`evaluation.json`.
 
 ## Running With A Fine-Tuned Adapter
 
@@ -354,8 +454,9 @@ repair behavior, and repository-specific judgment.
 These items are described in roadmap docs but are not complete today:
 
 - `micro-agent index` prints that indexing is not implemented.
-- Synthetic generation is template cycling, not model-authored generation.
-- The held-out synthetic evaluation suite is still small and template-derived.
+- Synthetic generation creates deterministic template variants, but it is not
+  model-authored generation.
+- The held-out synthetic evaluation suite is still small and hand-authored.
 - There is no automatic trace export command for all stored `loop` traces.
 - There is no model registry or automatic promotion workflow.
 - There is no Ollama packaging step for trained PEFT adapters.
