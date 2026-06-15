@@ -2,7 +2,7 @@
 
 ## Purpose
 
-MicroModelAgent should be trainable from day one, starting with synthetic data.
+micro-model-agent should be trainable from day one, starting with synthetic data.
 The first training pipeline should be intentionally small:
 
 ```text
@@ -65,7 +65,7 @@ Inputs:
 - verification and repair examples
 
 The synthetic generator should prefer small, explicit examples over broad coding
-tasks at first. We want the model to learn MicroModelAgent's operating rules
+tasks at first. We want the model to learn micro-model-agent's operating rules
 before we ask it to write large patches.
 
 ### 2. Synthetic Example Generation

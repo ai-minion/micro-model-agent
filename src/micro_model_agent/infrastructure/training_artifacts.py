@@ -180,7 +180,7 @@ class HuggingFacePeftFineTuningBackend:
             # Heavy ML dependencies are imported lazily so normal CLI commands
             # and tests can run without the optional training environment.
             import torch
-            from datasets import load_dataset  # type: ignore[import-untyped]
+            from datasets import load_dataset
             from peft import LoraConfig, get_peft_model
             from transformers import (
                 AutoModelForCausalLM,
@@ -254,9 +254,7 @@ class HuggingFacePeftFineTuningBackend:
         # The exported dataset is chat-shaped JSON. Convert each record into one
         # plain training string, then tokenize those strings.
         text_dataset = raw_dataset.map(
-            lambda record: {
-                "text": _training_text_from_record(record, tokenizer.eos_token or "")
-            }
+            lambda record: {"text": _training_text_from_record(record, tokenizer.eos_token or "")}
         )
         tokenized_dataset = text_dataset.map(
             lambda batch: tokenizer(
@@ -329,12 +327,13 @@ class SyntheticEvaluationSuite:
         return EvaluationResult(
             passed=passed,
             summary=(
-                "synthetic artifact metadata passed"
+                "metadata-only synthetic artifact check passed"
                 if passed
-                else "synthetic artifact metadata has no examples"
+                else "metadata-only synthetic artifact check has no examples"
             ),
             score=1.0 if passed else 0.0,
             details={
+                "metadata_only": True,
                 "artifact_id": str(artifact.id),
                 "artifact_path": artifact.path,
                 "metrics": artifact.metrics,
@@ -355,6 +354,7 @@ def write_evaluation_result(run_dir: Path, result: EvaluationResult) -> Path:
     """Write an evaluation report next to the training run metadata."""
 
     path = run_dir / "evaluation.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             {

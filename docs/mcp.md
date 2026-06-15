@@ -1,6 +1,6 @@
 # MCP Server
 
-MicroModelAgent can run as an MCP stdio server and expose the local tool loop to
+micro-model-agent can run as an MCP stdio server and expose the local tool loop to
 Copilot or another MCP client.
 
 ## VS Code / Copilot Configuration
@@ -15,7 +15,7 @@ Create `.vscode/mcp.json` in this repository:
       "command": "wsl",
       "args": [
         "--cd",
-        "/mnt/d/Projects/code/MicroModelAgent",
+        "/mnt/d/Projects/code/micro-model-agent",
         "--exec",
         "env",
         "HF_HUB_OFFLINE=1",
@@ -45,11 +45,11 @@ small:
 
 The agent loop is responsible for selecting the internal repository tools. This
 keeps Copilot or another MCP host from seeing and directly choosing unnecessary
-MicroModelAgent tools.
+micro-model-agent tools.
 
 When `.micro_model_agent/config.json` is missing, the server also exposes:
 
-- `micro_agent_init`: initialize local MicroModelAgent metadata for the
+- `micro_agent_init`: initialize local micro-model-agent metadata for the
   repository.
 
 `micro_agent_init` is idempotent. After it initializes the repo successfully, the

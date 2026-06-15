@@ -1,6 +1,6 @@
-# MicroModelAgent
+# micro-model-agent
 
-MicroModelAgent is an MIT-licensed Python framework for building specialized agents
+micro-model-agent is an MIT-licensed Python framework for building specialized agents
 powered by small local models, starting with Qwen-Coder 7B-class models running
 locally. Ollama is the initial local inference interface.
 
@@ -30,7 +30,7 @@ agent vertical slice.
 ## Development
 
 ```bash
-uv venv --python 3.12
+export UV_PROJECT_ENVIRONMENT=.venv-wsl
 uv sync --dev
 uv run pytest
 uv run ruff check .
@@ -40,6 +40,7 @@ uv run mypy
 Training dependencies are optional and intentionally separate:
 
 ```bash
+export UV_PROJECT_ENVIRONMENT=.venv-wsl
 uv sync --group training
 ```
 
@@ -52,10 +53,10 @@ micro-agent train synthetic --dry-run
 micro-agent train synthetic --no-dry-run --base-model Qwen/Qwen2.5-Coder-7B-Instruct
 ```
 
-If `uv` is not installed yet, create a standard venv with Python 3.12:
+If `uv` is not installed yet, create the WSL virtual environment directly:
 
 ```bash
-python -m venv .venv
+python3 -m venv .venv-wsl
 ```
 
 ## Package
@@ -68,7 +69,7 @@ import micro_model_agent
 
 ## Architecture
 
-MicroModelAgent follows strict Domain Driven Design boundaries:
+micro-model-agent follows strict Domain Driven Design boundaries:
 
 - `domain`: framework-independent business contracts and policy.
 - `application`: use cases and orchestration.
@@ -90,3 +91,6 @@ fine-tuning datasets from day one.
 See [docs/training-pipeline.md](docs/training-pipeline.md) for the synthetic
 training pipeline that will generate validated examples, run local fine-tuning,
 evaluate artifacts, and keep production promotion manual.
+
+See [docs/usage.md](docs/usage.md) for the current setup, agent execution,
+fine-tuning, MCP, and synthetic-to-real data workflow.

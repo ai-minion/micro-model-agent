@@ -1,6 +1,6 @@
 # Architecture
 
-MicroModelAgent is organized around strict Domain Driven Design boundaries.
+micro-model-agent is organized as a DDD-oriented Clean/Hexagonal architecture: domain concepts and policies sit at the center, application services orchestrate use cases, and infrastructure/interfaces connect through explicit ports and adapters.
 
 ## Philosophy
 

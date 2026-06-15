@@ -2,7 +2,7 @@
 
 ## What We Are Building
 
-MicroModelAgent is a Python framework for building specialized agents powered by
+micro-model-agent is a Python framework for building specialized agents powered by
 small local models. The first target is a CLI coding agent backed by an
 Qwen-Coder 7B-class model running locally on developer hardware such as an RTX
 3090. Ollama is the initial local inference interface, not a remote hosting
@@ -41,7 +41,7 @@ the resulting artifact.
 
 The training data should teach the model:
 
-- the MicroModelAgent tool schema
+- the micro-model-agent tool schema
 - the project documentation
 - the local codebase
 - safe tool-use behavior

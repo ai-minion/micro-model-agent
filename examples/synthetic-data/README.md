@@ -20,4 +20,4 @@ Initial template categories:
 - good and bad labeled coding-agent traces
 
 Templates should be small, explicit, and schema-focused. They exist to teach the
-model MicroModelAgent's tools and operating rules before broader coding behavior.
+model micro-model-agent's tools and operating rules before broader coding behavior.

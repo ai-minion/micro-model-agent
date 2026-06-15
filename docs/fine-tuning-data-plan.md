@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Fine-tuning is a central goal for MicroModelAgent, and the MVP should include a
+Fine-tuning is a central goal for micro-model-agent, and the MVP should include a
 minimal local training pipeline based on synthetic data. The first pipeline does
 not need production-scale training infrastructure, but it should make training a
 normal workflow from day one:
@@ -31,7 +31,7 @@ pipeline.
 The fine-tuned model should learn the local operating environment, not become a
 general coding oracle. It should become better at:
 
-- choosing the correct MicroModelAgent tool
+- choosing the correct micro-model-agent tool
 - producing valid tool arguments
 - respecting repository safety rules
 - using retrieved documentation instead of guessing
@@ -200,7 +200,7 @@ Rejected output:
 ## Synthetic Seed Data
 
 Synthetic data should be small, explicit, and schema-focused at first. It should
-teach the model how MicroModelAgent works before it tries to teach broad coding
+teach the model how micro-model-agent works before it tries to teach broad coding
 skill.
 
 Initial synthetic categories:
@@ -283,7 +283,7 @@ The exact command shape can change, but the capabilities should exist early:
 
 ## V1 Boundary
 
-In V1, MicroModelAgent should:
+In V1, micro-model-agent should:
 
 - capture traces
 - label outcomes
@@ -294,7 +294,7 @@ In V1, MicroModelAgent should:
 - define evaluation suite interfaces
 - define model promotion policy interfaces
 
-In V1, MicroModelAgent should not:
+In V1, micro-model-agent should not:
 
 - manage GPU clusters
 - upload private code to external training services

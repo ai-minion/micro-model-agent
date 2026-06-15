@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
 authors = [
-  { name = "MicroModelAgent contributors" },
+  { name = "micro-model-agent contributors" },
 ]
 keywords = ["agents", "local-models", "ollama", "mcp", "pydantic-ai"]
 classifiers = [
@@ -69,6 +69,10 @@ select = ["E", "F", "I", "UP", "B", "SIM"]
 python_version = "3.12"
 strict = true
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = ["datasets", "peft", "torch", "transformers"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 addopts = "-q"

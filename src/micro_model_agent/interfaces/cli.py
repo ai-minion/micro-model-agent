@@ -28,6 +28,7 @@ from micro_model_agent.infrastructure.dataset_validation import (
 )
 from micro_model_agent.infrastructure.repository_metadata import initialize_repository
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.synthetic_evaluation import SyntheticBehaviorEvaluationSuite
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
     JsonTrainingArtifactStore,
@@ -363,8 +364,7 @@ def loop(
         model_name = model or os.environ.get("MICRO_MODEL_AGENT_DEFAULT_MODEL")
         if not model_name:
             _fail(
-                "--model or MICRO_MODEL_AGENT_DEFAULT_MODEL is required "
-                "without scripted responses"
+                "--model or MICRO_MODEL_AGENT_DEFAULT_MODEL is required without scripted responses"
             )
         model_provider = OllamaModelProvider(
             model_name=model_name,
@@ -579,13 +579,126 @@ def train_synthetic(
 @eval_app.command("synthetic")
 def eval_synthetic(
     run_id: str = typer.Option("latest", help="Training run id or alias to evaluate."),
+    dataset: Path = typer.Option(
+        Path(".micro_model_agent/datasets/synthetic_seed.jsonl"),
+        help="Held-out synthetic JSONL dataset to evaluate against.",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Ollama model name to evaluate.",
+    ),
+    base_model: str | None = typer.Option(
+        None,
+        "--base-model",
+        help="Transformers base model for direct PEFT adapter evaluation.",
+    ),
+    adapter_path: Path | None = typer.Option(
+        None,
+        "--adapter-path",
+        help="Local PEFT adapter path for direct Transformers evaluation.",
+    ),
+    ollama_base_url: str | None = typer.Option(
+        None,
+        "--ollama-base-url",
+        help="Ollama host URL. Defaults to MICRO_MODEL_AGENT_OLLAMA_BASE_URL.",
+    ),
+    max_new_tokens: int = typer.Option(
+        384,
+        min=1,
+        max=4096,
+        help="Maximum generated tokens per evaluation example.",
+    ),
+    max_examples: int | None = typer.Option(
+        None,
+        min=1,
+        help="Optional cap on evaluated examples.",
+    ),
+    pass_threshold: float = typer.Option(
+        0.8,
+        min=0.0,
+        max=1.0,
+        help="Minimum average behavioral score required to pass.",
+    ),
+    scripted_response: list[str] | None = typer.Option(
+        None,
+        "--scripted-response",
+        help="Scripted JSON model response. Can be passed more than once.",
+    ),
+    scripted_response_file: Path | None = typer.Option(
+        None,
+        "--scripted-response-file",
+        help="JSONL file containing scripted model responses for evaluation tests.",
+    ),
 ) -> None:
-    """Evaluate a synthetic training run against held-out examples."""
+    """Evaluate a model or training run against synthetic behavior examples."""
+
+    from micro_model_agent.application.ports import ModelProvider
+    from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
+    from micro_model_agent.infrastructure.ollama_model_provider import OllamaModelProvider
+    from micro_model_agent.infrastructure.transformers_model_provider import (
+        TransformersPeftModelProvider,
+    )
 
     run_dir = Path(run_id)
     if not run_dir.exists():
         run_dir = Path(".micro_model_agent/training/runs") / run_id
 
+    _load_dotenv()
+    responses = list(scripted_response or [])
+    if scripted_response_file:
+        if not scripted_response_file.exists():
+            _fail(f"scripted response file does not exist: {scripted_response_file}")
+        responses.extend(
+            line
+            for line in scripted_response_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+    provider: ModelProvider | None = None
+    if responses:
+        provider = ScriptedModelProvider(responses)
+    elif adapter_path or base_model:
+        resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
+        provider = TransformersPeftModelProvider(
+            base_model=resolved_base_model,
+            adapter_path=adapter_path,
+            max_new_tokens=max_new_tokens,
+        )
+    elif model:
+        provider = OllamaModelProvider(
+            model_name=model,
+            base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
+            options={"num_predict": max_new_tokens},
+        )
+    else:
+        artifact = load_artifact_from_training_run(run_dir)
+        artifact_path = Path(artifact.path)
+        if artifact_path.exists():
+            provider = TransformersPeftModelProvider(
+                base_model=artifact.base_model,
+                adapter_path=artifact_path,
+                max_new_tokens=max_new_tokens,
+            )
+
+    if provider is not None:
+        examples = load_dataset_examples(dataset)
+        if max_examples is not None:
+            examples = examples[:max_examples]
+        result = _run(
+            SyntheticBehaviorEvaluationSuite(pass_threshold=pass_threshold).evaluate_model(
+                provider,
+                examples,
+            )
+        )
+        output = write_evaluation_result(run_dir, result)
+        typer.echo(f"{result.summary}; report written to {output}")
+        if not result.passed:
+            raise typer.Exit(1)
+        return
+
+    # Dry-run training artifacts do not contain runnable model weights. Keep the
+    # old metadata smoke gate for those cases, but mark it clearly in the report.
     artifact = load_artifact_from_training_run(run_dir)
     result = _run(SyntheticEvaluationSuite().evaluate_artifact(artifact))
     output = write_evaluation_result(run_dir, result)
