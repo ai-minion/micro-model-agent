@@ -12,12 +12,17 @@ import json
 import os
 from collections.abc import Coroutine
 from pathlib import Path
-from typing import Any, Never
+from typing import Any, Never, cast
 
 import typer
 
 from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
 from micro_model_agent.domain.training import TrainingConfig
+from micro_model_agent.infrastructure.dataset_curation import (
+    DeduplicateBy,
+    merge_datasets,
+    relabel_examples,
+)
 from micro_model_agent.infrastructure.dataset_store import (
     JsonlDatasetExampleStore,
     load_dataset_examples,
@@ -26,27 +31,43 @@ from micro_model_agent.infrastructure.dataset_validation import (
     LocalDatasetValidator,
     export_sft_jsonl,
 )
+from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
 from micro_model_agent.infrastructure.repository_metadata import initialize_repository
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.infrastructure.synthetic_evaluation import SyntheticBehaviorEvaluationSuite
+from micro_model_agent.infrastructure.synthetic_evaluation import (
+    SyntheticBehaviorEvaluationSuite,
+    TraceBehaviorEvaluationSuite,
+)
+from micro_model_agent.infrastructure.trace_export import (
+    TraceDatasetExporter,
+    validate_trace_export_examples,
+)
+from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
     JsonTrainingArtifactStore,
     LocalFineTuningRunner,
+    MinimumScorePromotionPolicy,
     SyntheticEvaluationSuite,
     load_artifact_from_training_run,
+    load_evaluation_result,
+    load_promotion_registry,
+    record_promoted_artifact,
     write_evaluation_result,
+    write_promotion_gate_result,
 )
 
 app = typer.Typer(help="MicroModelAgent CLI.")
 dataset_app = typer.Typer(help="Dataset generation, validation, and export commands.")
 train_app = typer.Typer(help="Local training commands.")
 eval_app = typer.Typer(help="Evaluation commands.")
+promote_app = typer.Typer(help="Promotion gate commands.")
 
 # Sub-apps create command groups such as `micro-agent dataset validate`.
 app.add_typer(dataset_app, name="dataset")
 app.add_typer(train_app, name="train")
 app.add_typer(eval_app, name="eval")
+app.add_typer(promote_app, name="promote")
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:
@@ -171,9 +192,32 @@ def init(
 
 
 @app.command()
-def index() -> None:
+def index(
+    repository_root: Path = typer.Option(Path("."), help="Repository root to index."),
+    max_file_bytes: int = typer.Option(
+        1_000_000,
+        help="Maximum file size to index. Larger files are skipped.",
+    ),
+) -> None:
     """Index the current repository."""
-    typer.echo("Repository indexing is not implemented yet.")
+
+    result = LocalLexicalIndexWriter(
+        repository_root,
+        max_file_bytes=max_file_bytes,
+    ).write()
+    typer.echo(f"Indexed {result.indexed_file_count} files into {result.index_path}")
+    typer.echo(
+        "Terms: "
+        f"{result.unique_term_count}; bytes: {result.total_bytes}; "
+        f"skipped large: {result.skipped_large_count}; "
+        f"skipped binary: {result.skipped_binary_count}"
+    )
+    typer.echo(f"Source types: {_format_count_distribution(result.source_type_counts)}")
+    typer.echo(
+        "Code metadata: "
+        f"symbols={result.symbol_count}; imports={result.import_count}; "
+        f"test_files={result.test_file_count}"
+    )
 
 
 @app.command()
@@ -571,6 +615,199 @@ def export_dataset(
     typer.echo(f"Exported {len(examples)} examples to {output}")
 
 
+@dataset_app.command("export-traces")
+def export_traces(
+    trace_path: Path = typer.Option(
+        Path(".micro_model_agent/traces/workflows.jsonl"),
+        help="Stored workflow trace JSONL path.",
+    ),
+    output: Path = typer.Option(
+        Path(".micro_model_agent/datasets/trace_examples.jsonl"),
+        help="Output JSONL path for trace-derived examples.",
+    ),
+    label_mode: str = typer.Option(
+        "review",
+        "--label-mode",
+        help="Label mode: review or evaluation.",
+    ),
+    outcome: OutcomeLabel | None = typer.Option(
+        None,
+        "--outcome",
+        help="Only export examples with this outcome after label assignment.",
+    ),
+    quality: QualityLabel | None = typer.Option(
+        None,
+        "--quality",
+        help="Only export examples with this quality after label assignment.",
+    ),
+    max_examples: int | None = typer.Option(
+        None,
+        "--max-examples",
+        min=1,
+        help="Optional maximum number of examples to export.",
+    ),
+) -> None:
+    """Export stored workflow traces as redacted dataset examples."""
+
+    store = JsonlTraceStore(trace_path)
+    traces = _run(store.list())
+    exporter = TraceDatasetExporter()
+    try:
+        examples = exporter.export(
+            traces,
+            label_mode=label_mode,
+            outcome=outcome,
+            quality=quality,
+            max_examples=max_examples,
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    errors = validate_trace_export_examples(examples)
+    if errors:
+        typer.echo(f"trace export found {len(errors)} error(s)", err=True)
+        for error in errors[:10]:
+            typer.echo(f"- {error}", err=True)
+        raise typer.Exit(1)
+
+    _run(JsonlDatasetExampleStore(output).save_many(examples))
+    redacted_count = sum(1 for example in examples if example.metadata.get("redacted"))
+    typer.echo(f"Exported {len(examples)} trace-derived examples to {output}")
+    typer.echo(f"Traces read: {len(traces)}")
+    typer.echo(f"Redacted examples: {redacted_count}")
+    typer.echo(
+        "Outcomes: "
+        + _format_count_distribution(
+            {
+                outcome.value: sum(1 for example in examples if example.label.outcome is outcome)
+                for outcome in OutcomeLabel
+            }
+        )
+    )
+
+
+@dataset_app.command("relabel")
+def relabel_dataset(
+    path: Path = typer.Option(..., help="Input JSONL dataset path to relabel."),
+    output: Path = typer.Option(..., help="Output JSONL path for relabeled examples."),
+    trace_id: str | None = typer.Option(
+        None,
+        "--trace-id",
+        help="Only relabel the example with this metadata.trace_id.",
+    ),
+    source: str | None = typer.Option(
+        None,
+        "--source",
+        help="Only relabel examples with this exact source.",
+    ),
+    input_outcome: OutcomeLabel | None = typer.Option(
+        None,
+        "--input-outcome",
+        help="Only relabel examples currently carrying this outcome.",
+    ),
+    input_quality: QualityLabel | None = typer.Option(
+        None,
+        "--input-quality",
+        help="Only relabel examples currently carrying this quality.",
+    ),
+    outcome: OutcomeLabel | None = typer.Option(
+        None,
+        "--outcome",
+        help="New outcome label for matched examples.",
+    ),
+    quality: QualityLabel | None = typer.Option(
+        None,
+        "--quality",
+        help="New quality label for matched examples.",
+    ),
+    failure_mode: list[FailureMode] | None = typer.Option(
+        None,
+        "--failure-mode",
+        help="Replacement failure mode label. Can be passed more than once.",
+    ),
+    reviewer_notes: str | None = typer.Option(
+        None,
+        "--reviewer-notes",
+        help="Replacement reviewer notes for matched examples.",
+    ),
+) -> None:
+    """Relabel reviewed dataset examples and write a curated JSONL file."""
+
+    if not any([outcome, quality, failure_mode, reviewer_notes is not None]):
+        _fail("At least one label update is required")
+
+    examples = load_dataset_examples(path)
+    relabeled, changed = relabel_examples(
+        examples,
+        trace_id=trace_id,
+        source=source,
+        input_outcome=input_outcome,
+        input_quality=input_quality,
+        outcome=outcome,
+        quality=quality,
+        failure_modes=tuple(failure_mode) if failure_mode is not None else None,
+        reviewer_notes=reviewer_notes,
+    )
+    _run(JsonlDatasetExampleStore(output).save_many(relabeled))
+    validation = _run(LocalDatasetValidator().validate(relabeled))
+    typer.echo(f"Relabeled {changed} of {len(examples)} examples to {output}")
+    typer.echo(validation.summary)
+    typer.echo(
+        "Categories: " + _format_count_distribution(validation.details.get("category_counts"))
+    )
+    typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
+    typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
+    for error in validation.details.get("errors", [])[:10]:
+        typer.echo(f"- {error}")
+
+
+@dataset_app.command("merge")
+def merge_dataset(
+    input_path: list[Path] = typer.Option(
+        ...,
+        "--input",
+        help="Input JSONL dataset path. Pass more than once.",
+    ),
+    output: Path = typer.Option(..., help="Output JSONL path for the merged dataset."),
+    deduplicate_by: str = typer.Option(
+        "source",
+        "--deduplicate-by",
+        help="Dedupe key: source or id.",
+    ),
+    validate_training_ready: bool = typer.Option(
+        True,
+        "--validate/--no-validate",
+        help="Validate the merged dataset before reporting success.",
+    ),
+) -> None:
+    """Merge dataset JSONL files with simple deduplication."""
+
+    if deduplicate_by not in {"source", "id"}:
+        _fail(f"Unsupported dedupe key: {deduplicate_by}")
+
+    datasets = [load_dataset_examples(path) for path in input_path]
+    merged, skipped = merge_datasets(
+        datasets,
+        deduplicate_by=cast(DeduplicateBy, deduplicate_by),
+    )
+    validation = _run(LocalDatasetValidator().validate(merged))
+    if validate_training_ready and not validation.passed:
+        typer.echo(validation.summary, err=True)
+        for error in validation.details.get("errors", [])[:10]:
+            typer.echo(f"- {error}", err=True)
+        raise typer.Exit(1)
+
+    _run(JsonlDatasetExampleStore(output).save_many(merged))
+    typer.echo(f"Merged {len(merged)} examples to {output}")
+    typer.echo(f"Skipped duplicates: {skipped}")
+    typer.echo(validation.summary)
+    typer.echo(
+        "Categories: " + _format_count_distribution(validation.details.get("category_counts"))
+    )
+    typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
+    typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
+
+
 @train_app.command("synthetic")
 def train_synthetic(
     base_model: str = typer.Option(
@@ -701,6 +938,11 @@ def eval_synthetic(
         "--scripted-response-file",
         help="JSONL file containing scripted model responses for evaluation tests.",
     ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Evaluation report path. Defaults to <run>/evaluation.json.",
+    ),
 ) -> None:
     """Evaluate a model or training run against synthetic behavior examples."""
 
@@ -762,8 +1004,8 @@ def eval_synthetic(
                 examples,
             )
         )
-        output = write_evaluation_result(run_dir, result)
-        typer.echo(f"{result.summary}; report written to {output}")
+        report_path = write_evaluation_result(run_dir, result, output)
+        typer.echo(f"{result.summary}; report written to {report_path}")
         if not result.passed:
             failure_lines = _format_behavioral_eval_failures(result.details)
             if failure_lines:
@@ -777,10 +1019,263 @@ def eval_synthetic(
     # old metadata smoke gate for those cases, but mark it clearly in the report.
     artifact = load_artifact_from_training_run(run_dir)
     result = _run(SyntheticEvaluationSuite().evaluate_artifact(artifact))
-    output = write_evaluation_result(run_dir, result)
-    typer.echo(f"{result.summary}; report written to {output}")
+    report_path = write_evaluation_result(run_dir, result, output)
+    typer.echo(f"{result.summary}; report written to {report_path}")
     if not result.passed:
         raise typer.Exit(1)
+
+
+@eval_app.command("traces")
+def eval_traces(
+    run_id: str = typer.Option("latest", help="Training run id or alias to evaluate."),
+    dataset: Path = typer.Option(
+        Path("examples/trace-data/held-out.trace.jsonl"),
+        help="Held-out trace-derived JSONL dataset to evaluate against.",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Ollama model name to evaluate.",
+    ),
+    base_model: str | None = typer.Option(
+        None,
+        "--base-model",
+        help="Transformers base model for direct PEFT adapter evaluation.",
+    ),
+    adapter_path: Path | None = typer.Option(
+        None,
+        "--adapter-path",
+        help="Local PEFT adapter path for direct Transformers evaluation.",
+    ),
+    ollama_base_url: str | None = typer.Option(
+        None,
+        "--ollama-base-url",
+        help="Ollama host URL. Defaults to MICRO_MODEL_AGENT_OLLAMA_BASE_URL.",
+    ),
+    max_new_tokens: int = typer.Option(
+        512,
+        min=1,
+        max=4096,
+        help="Maximum generated tokens per evaluation example.",
+    ),
+    max_examples: int | None = typer.Option(
+        None,
+        min=1,
+        help="Optional cap on evaluated examples.",
+    ),
+    pass_threshold: float = typer.Option(
+        0.8,
+        min=0.0,
+        max=1.0,
+        help="Minimum average trace behavior score required to pass.",
+    ),
+    scripted_response: list[str] | None = typer.Option(
+        None,
+        "--scripted-response",
+        help="Scripted JSON model response. Can be passed more than once.",
+    ),
+    scripted_response_file: Path | None = typer.Option(
+        None,
+        "--scripted-response-file",
+        help="JSONL file containing scripted model responses for evaluation tests.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Evaluation report path. Defaults to <run>/evaluation.json.",
+    ),
+) -> None:
+    """Evaluate a model or training run against held-out trace-derived examples."""
+
+    from micro_model_agent.application.ports import ModelProvider
+    from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
+    from micro_model_agent.infrastructure.ollama_model_provider import OllamaModelProvider
+    from micro_model_agent.infrastructure.transformers_model_provider import (
+        TransformersPeftModelProvider,
+    )
+
+    run_dir = Path(run_id)
+    if not run_dir.exists():
+        run_dir = Path(".micro_model_agent/training/runs") / run_id
+
+    _load_dotenv()
+    responses = list(scripted_response or [])
+    if scripted_response_file:
+        if not scripted_response_file.exists():
+            _fail(f"scripted response file does not exist: {scripted_response_file}")
+        responses.extend(
+            line
+            for line in scripted_response_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+    provider: ModelProvider | None = None
+    if responses:
+        provider = ScriptedModelProvider(responses)
+    elif adapter_path or base_model:
+        resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
+        provider = TransformersPeftModelProvider(
+            base_model=resolved_base_model,
+            adapter_path=adapter_path,
+            max_new_tokens=max_new_tokens,
+        )
+    elif model:
+        provider = OllamaModelProvider(
+            model_name=model,
+            base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
+            options={"num_predict": max_new_tokens},
+        )
+    else:
+        artifact = load_artifact_from_training_run(run_dir)
+        artifact_path = Path(artifact.path)
+        if artifact_path.exists():
+            provider = TransformersPeftModelProvider(
+                base_model=artifact.base_model,
+                adapter_path=artifact_path,
+                max_new_tokens=max_new_tokens,
+            )
+
+    if provider is None:
+        _fail("trace eval requires a runnable model, adapter, or scripted response")
+
+    examples = load_dataset_examples(dataset)
+    if max_examples is not None:
+        examples = examples[:max_examples]
+    result = _run(
+        TraceBehaviorEvaluationSuite(pass_threshold=pass_threshold).evaluate_model(
+            provider,
+            examples,
+        )
+    )
+    report_path = write_evaluation_result(run_dir, result, output)
+    typer.echo(f"{result.summary}; report written to {report_path}")
+    if not result.passed:
+        raise typer.Exit(1)
+
+
+@promote_app.command("gate")
+def promote_gate(
+    run_id: str = typer.Option("latest", help="Training run id or direct run directory path."),
+    evaluation_report: list[Path] | None = typer.Option(
+        None,
+        "--evaluation-report",
+        help="Evaluation JSON report to require. Can be passed more than once.",
+    ),
+    minimum_score: float = typer.Option(
+        0.8,
+        min=0.0,
+        max=1.0,
+        help="Minimum score each evaluation report must meet.",
+    ),
+) -> None:
+    """Gate promotion on one or more persisted evaluation reports."""
+
+    run_dir = Path(run_id)
+    if not run_dir.exists():
+        run_dir = Path(".micro_model_agent/training/runs") / run_id
+
+    artifact = load_artifact_from_training_run(run_dir)
+    report_paths = list(evaluation_report or [run_dir / "evaluation.json"])
+    if not report_paths:
+        _fail("at least one evaluation report is required")
+
+    policy = MinimumScorePromotionPolicy(minimum_score=minimum_score)
+    evaluated_reports = []
+    for report_path in report_paths:
+        evaluation = load_evaluation_result(report_path)
+        can_promote = _run(policy.can_promote(artifact, evaluation))
+        evaluated_reports.append((report_path, evaluation, can_promote))
+
+    promoted = all(can_promote for _, _, can_promote in evaluated_reports)
+    output = write_promotion_gate_result(
+        run_dir,
+        promoted=promoted,
+        minimum_score=minimum_score,
+        evaluation_reports=evaluated_reports,
+    )
+
+    if promoted:
+        typer.echo(f"Promotion gate passed for {artifact.name}; report written to {output}")
+        return
+
+    typer.echo(f"Promotion gate blocked for {artifact.name}; report written to {output}", err=True)
+    for report_path, evaluation, can_promote in evaluated_reports:
+        if not can_promote:
+            score = "none" if evaluation.score is None else f"{evaluation.score:.2f}"
+            typer.echo(
+                f"{report_path}: passed={evaluation.passed} score={score} "
+                f"summary={evaluation.summary}",
+                err=True,
+            )
+    raise typer.Exit(1)
+
+
+@promote_app.command("record")
+def promote_record(
+    run_id: str = typer.Option("latest", help="Training run id or direct run directory path."),
+    promotion_report: Path | None = typer.Option(
+        None,
+        "--promotion-report",
+        help="Passing promotion report path. Defaults to <run>/promotion.json.",
+    ),
+    registry: Path = typer.Option(
+        Path(".micro_model_agent/training/promoted_models.jsonl"),
+        "--registry",
+        help="Local JSONL registry path for approved artifacts.",
+    ),
+    reviewer_notes: str | None = typer.Option(
+        None,
+        "--reviewer-notes",
+        help="Human review note to store with the registry entry.",
+    ),
+    approved_by: str | None = typer.Option(
+        None,
+        "--approved-by",
+        help="Reviewer or process that approved this artifact.",
+    ),
+) -> None:
+    """Record a gate-passing artifact in the local promotion registry."""
+
+    run_dir = Path(run_id)
+    if not run_dir.exists():
+        run_dir = Path(".micro_model_agent/training/runs") / run_id
+
+    artifact = load_artifact_from_training_run(run_dir)
+    report_path = promotion_report or run_dir / "promotion.json"
+    entry = record_promoted_artifact(
+        registry,
+        artifact=artifact,
+        run_dir=run_dir,
+        promotion_report_path=report_path,
+        reviewer_notes=reviewer_notes,
+        approved_by=approved_by,
+    )
+    typer.echo(
+        f"Recorded promoted artifact {entry.artifact_name} "
+        f"({entry.artifact_id}) in {registry}"
+    )
+
+
+@promote_app.command("list")
+def promote_list(
+    registry: Path = typer.Option(
+        Path(".micro_model_agent/training/promoted_models.jsonl"),
+        "--registry",
+        help="Local JSONL registry path for approved artifacts.",
+    ),
+) -> None:
+    """List locally recorded promoted artifacts."""
+
+    entries = load_promotion_registry(registry)
+    if not entries:
+        typer.echo(f"No promoted artifacts recorded in {registry}")
+        return
+
+    for entry in entries:
+        typer.echo(
+            f"{entry.artifact_name} {entry.artifact_id} "
+            f"score>={entry.minimum_score:.2f} path={entry.artifact_path}"
+        )
 
 
 if __name__ == "__main__":

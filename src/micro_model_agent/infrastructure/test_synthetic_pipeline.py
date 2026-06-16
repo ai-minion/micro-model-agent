@@ -94,9 +94,10 @@ def test_dataset_validator_accepts_held_out_behavior_examples() -> None:
     result = asyncio.run(LocalDatasetValidator().validate(examples))
 
     assert result.passed is True
-    assert result.details["example_count"] == 8
+    assert result.details["example_count"] == 11
     assert result.details["category_counts"]["documentation_grounded_retrieval"] == 1
-    assert result.details["outcome_counts"]["rejected"] == 1
+    assert result.details["category_counts"]["patch_repair"] == 1
+    assert result.details["outcome_counts"]["rejected"] == 2
 
 
 def test_dataset_validator_rejects_unknown_quality_label() -> None:
@@ -111,6 +112,19 @@ def test_dataset_validator_rejects_unknown_quality_label() -> None:
 
     assert result.passed is False
     assert "quality label must be known" in result.details["errors"][0]
+
+
+def test_dataset_validator_accepts_repair_example_with_final_response() -> None:
+    example = DatasetExample(
+        kind=DatasetExampleKind.REPAIR,
+        input={"goal": "Summarize the change"},
+        target={"final_response": "Updated app.py."},
+        label=DatasetLabel(outcome=OutcomeLabel.ACCEPTED, quality=QualityLabel.GOOD),
+    )
+
+    result = asyncio.run(LocalDatasetValidator().validate([example]))
+
+    assert result.passed is True
 
 
 def test_dataset_validator_rejects_refusal_and_tool_inconsistency() -> None:

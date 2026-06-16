@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
 from micro_model_agent.infrastructure.tools.contracts import SemanticSearchRequest
 from micro_model_agent.infrastructure.tools.repo_semantic_search import RepoSemanticSearchTool
 
@@ -91,6 +92,29 @@ def test_semantic_search_filters_by_extension(tmp_path: Path) -> None:
     assert {item.metadata["extension"] for item in result.results} == {".py"}
 
 
+def test_semantic_search_applies_filters_before_index_limit(tmp_path: Path) -> None:
+    _write_text(
+        tmp_path / "src" / "service.py",
+        "workflow workflow workflow workflow workflow workflow\n",
+    )
+    _write_text(
+        tmp_path / "docs" / "workflow.md",
+        "# Workflow\n\nworkflow\n",
+    )
+    LocalLexicalIndexWriter(tmp_path).write()
+
+    result = RepoSemanticSearchTool(tmp_path).run(
+        SemanticSearchRequest(
+            query="workflow",
+            limit=1,
+            filters={"source_type": "documentation"},
+        )
+    )
+
+    assert [item.metadata["path"] for item in result.results] == ["docs/workflow.md"]
+    assert result.results[0].metadata["retrieval_backend"] == "local_lexical_index"
+
+
 def test_semantic_search_marks_test_metadata(tmp_path: Path) -> None:
     _write_sample_repo(tmp_path)
 
@@ -123,3 +147,33 @@ def test_semantic_search_returns_empty_results_for_unsafe_glob(tmp_path: Path) -
     )
 
     assert result.results == []
+
+
+def test_semantic_search_uses_local_index_when_available(tmp_path: Path) -> None:
+    _write_sample_repo(tmp_path)
+    LocalLexicalIndexWriter(tmp_path).write()
+
+    result = RepoSemanticSearchTool(tmp_path).run(
+        SemanticSearchRequest(query="framework independent", intent="architecture_rules")
+    )
+
+    assert result.results
+    assert result.results[0].metadata["path"] == "docs/architecture.md"
+    assert result.results[0].metadata["retrieval_backend"] == "local_lexical_index"
+    assert result.results[0].metadata["indexed_score"] > 0
+
+
+def test_semantic_search_includes_indexed_code_metadata(tmp_path: Path) -> None:
+    _write_sample_repo(tmp_path)
+    LocalLexicalIndexWriter(tmp_path).write()
+
+    result = RepoSemanticSearchTool(tmp_path).run(
+        SemanticSearchRequest(query="DatasetService validate_dataset", intent="code")
+    )
+
+    assert result.results[0].metadata["path"] == "src/service.py"
+    assert result.results[0].metadata["retrieval_backend"] == "local_lexical_index"
+    assert result.results[0].metadata["symbols"] == [
+        {"kind": "ClassDef", "line_number": 1, "name": "DatasetService"},
+        {"kind": "FunctionDef", "line_number": 2, "name": "validate_dataset"},
+    ]

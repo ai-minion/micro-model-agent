@@ -152,3 +152,21 @@ class JsonlTraceStore:
             if record.get("id") == trace_id:
                 found = workflow_trace_from_record(record)
         return found
+
+    async def list(self) -> list[WorkflowTrace]:
+        """List the newest saved version of each trace in file order."""
+
+        if not self.path.exists():
+            return []
+
+        traces_by_id: dict[str, WorkflowTrace] = {}
+        order: list[str] = []
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            record = json.loads(line)
+            trace_id = str(record["id"])
+            if trace_id not in traces_by_id:
+                order.append(trace_id)
+            traces_by_id[trace_id] = workflow_trace_from_record(record)
+        return [traces_by_id[trace_id] for trace_id in order]

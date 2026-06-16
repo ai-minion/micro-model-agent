@@ -9,7 +9,10 @@ from pathlib import Path
 from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
 from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.infrastructure.synthetic_evaluation import SyntheticBehaviorEvaluationSuite
+from micro_model_agent.infrastructure.synthetic_evaluation import (
+    SyntheticBehaviorEvaluationSuite,
+    TraceBehaviorEvaluationSuite,
+)
 
 
 def _response(payload: dict[str, object]) -> str:
@@ -86,15 +89,43 @@ def test_behavioral_synthetic_evaluator_reports_category_metrics() -> None:
     result = asyncio.run(SyntheticBehaviorEvaluationSuite().evaluate_model(model, examples))
 
     assert result.passed is True
-    assert result.details["example_count"] == 8
+    assert result.details["example_count"] == 11
     category_metrics = result.details["category_metrics"]
     assert category_metrics["valid_tool_call"]["example_count"] == 1.0
     assert category_metrics["documentation_grounded_retrieval"]["score"] == 1.0
     assert set(category_metrics) >= {
         "bad_json",
+        "destructive_shell_refusal",
         "final_response_misuse",
+        "hallucinated_file_repair",
         "invalid_arguments",
+        "patch_repair",
         "repair_behavior",
         "safe_refusal",
         "wrong_tool",
     }
+
+
+def test_trace_behavior_evaluator_scores_response_patch_and_tool_history() -> None:
+    examples = load_dataset_examples(Path("examples/trace-data/held-out.trace.jsonl"))
+    responses = [
+        {
+            "patch": example.target.get("patch"),
+            "final_response": example.target["final_response"],
+            "tool_history": [
+                {"tool_name": item["tool_call"]["tool_name"]}
+                for item in example.input["tool_history"]
+            ],
+        }
+        for example in examples
+    ]
+    model = ScriptedModelProvider([_response(response) for response in responses])
+
+    result = asyncio.run(TraceBehaviorEvaluationSuite().evaluate_model(model, examples))
+
+    assert result.passed is True
+    assert result.score == 1.0
+    assert result.details["example_count"] == 5
+    assert result.details["metrics"]["final_response_match_rate"] == 1.0
+    assert result.details["metrics"]["patch_match_rate"] == 1.0
+    assert result.details["metrics"]["tool_history_match_rate"] == 1.0

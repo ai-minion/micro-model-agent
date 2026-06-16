@@ -62,11 +62,26 @@ class LocalDatasetValidator:
             errors.append(f"{prefix}: quality label must be known before training")
         errors.extend(self._validate_refusal_consistency(example, prefix))
 
-        if example.kind in {DatasetExampleKind.TOOL_USE, DatasetExampleKind.REPAIR}:
+        if example.kind is DatasetExampleKind.TOOL_USE:
             # Tool-use examples must also match the tool argument schemas.
             errors.extend(self._validate_tool_target(example, prefix))
+        if example.kind is DatasetExampleKind.REPAIR:
+            errors.extend(self._validate_repair_target(example, prefix))
 
         return errors
+
+    def _validate_repair_target(self, example: DatasetExample, prefix: str) -> list[str]:
+        target = example.target
+        if isinstance(target.get("tool_name"), str):
+            return self._validate_tool_target(example, prefix)
+
+        patch = target.get("patch")
+        final_response = target.get("final_response") or target.get("summary")
+        if isinstance(patch, str) and patch.strip():
+            return []
+        if isinstance(final_response, str) and final_response.strip():
+            return []
+        return [f"{prefix}: repair target requires patch or final_response"]
 
     def _validate_tool_target(self, example: DatasetExample, prefix: str) -> list[str]:
         errors: list[str] = []

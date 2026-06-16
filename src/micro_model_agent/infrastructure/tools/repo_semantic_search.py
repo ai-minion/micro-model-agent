@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from micro_model_agent.infrastructure.local_index import LocalLexicalIndexReader
 from micro_model_agent.infrastructure.repository_paths import (
     RepositoryPathError,
     RepositoryRoot,
@@ -68,7 +69,13 @@ class RepoSemanticSearchTool:
         path_glob = str(filters.get("path_glob", "**/*"))
 
         try:
-            candidates = self._candidate_documents(path_glob, source_types, extensions)
+            candidates = self._candidate_documents(
+                path_glob,
+                source_types,
+                extensions,
+                query_terms=query_terms,
+                limit=request.limit,
+            )
         except RepositoryPathError:
             return SemanticSearchResultContract(
                 query=request.query,
@@ -106,35 +113,122 @@ class RepoSemanticSearchTool:
         path_glob: str,
         source_types: set[str] | None,
         extensions: set[str] | None,
+        *,
+        query_terms: set[str],
+        limit: int,
     ) -> list[CandidateDocument]:
         """Load candidate files and attach source-type metadata."""
 
+        indexed_documents = self._indexed_candidate_documents(
+            path_glob,
+            source_types,
+            extensions,
+            query_terms=query_terms,
+            limit=limit,
+        )
+        if indexed_documents is not None:
+            return indexed_documents
+
         documents: list[CandidateDocument] = []
         for path in self.repository.iter_files(path_glob):
-            relative_path = self.repository.relative_path(path)
-            source_type = self._source_type(relative_path)
-            if source_types is not None and source_type not in source_types:
-                continue
-            if extensions is not None and path.suffix.casefold() not in extensions:
-                continue
-
-            content = self._read_text(path)
-            if content is None:
-                continue
-            documents.append(
-                CandidateDocument(
-                    path=relative_path,
-                    source_type=source_type,
-                    title=self._title(relative_path, content),
-                    content=content,
-                    metadata={
-                        "path": relative_path,
-                        "extension": path.suffix.casefold(),
-                        "is_test": self._is_test_path(relative_path),
-                    },
-                )
+            document = self._candidate_document(
+                path,
+                source_types,
+                extensions,
+                retrieval_backend="direct_scan",
             )
+            if document is not None:
+                documents.append(document)
         return documents
+
+    def _indexed_candidate_documents(
+        self,
+        path_glob: str,
+        source_types: set[str] | None,
+        extensions: set[str] | None,
+        *,
+        query_terms: set[str],
+        limit: int,
+    ) -> list[CandidateDocument] | None:
+        """Load candidates from the persisted lexical index when available."""
+
+        if path_glob != "**/*":
+            return None
+
+        index = LocalLexicalIndexReader(self.repository.root)
+        if not index.exists():
+            return None
+
+        documents: list[CandidateDocument] = []
+        # Pull extra candidates because stale paths can drop some indexed
+        # results before final scoring.
+        for candidate in index.search_paths(
+            query_terms,
+            limit=max(limit * 10, limit),
+            source_types=source_types,
+            extensions=extensions,
+        ):
+            try:
+                path = self.repository.resolve_file(candidate.path)
+            except RepositoryPathError:
+                continue
+            document = self._candidate_document(
+                path,
+                source_types,
+                extensions,
+                retrieval_backend="local_lexical_index",
+                indexed_score=candidate.score,
+                indexed_metadata=index.file_metadata(candidate.path),
+            )
+            if document is not None:
+                documents.append(document)
+        if not documents:
+            return None
+        return documents
+
+    def _candidate_document(
+        self,
+        path: Path,
+        source_types: set[str] | None,
+        extensions: set[str] | None,
+        *,
+        retrieval_backend: str,
+        indexed_score: float | None = None,
+        indexed_metadata: dict[str, Any] | None = None,
+    ) -> CandidateDocument | None:
+        """Load one candidate document if it passes filters and text checks."""
+
+        relative_path = self.repository.relative_path(path)
+        source_type = self._source_type(relative_path)
+        if source_types is not None and source_type not in source_types:
+            return None
+        if extensions is not None and path.suffix.casefold() not in extensions:
+            return None
+
+        content = self._read_text(path)
+        if content is None:
+            return None
+
+        metadata: dict[str, Any] = {
+            "path": relative_path,
+            "extension": path.suffix.casefold(),
+            "is_test": self._is_test_path(relative_path),
+            "retrieval_backend": retrieval_backend,
+        }
+        if indexed_score is not None:
+            metadata["indexed_score"] = indexed_score
+        if indexed_metadata is not None:
+            metadata["symbols"] = indexed_metadata.get("symbols", [])
+            metadata["imports"] = indexed_metadata.get("imports", [])
+            metadata["sha256"] = indexed_metadata.get("sha256")
+            metadata["size_bytes"] = indexed_metadata.get("size_bytes")
+        return CandidateDocument(
+            path=relative_path,
+            source_type=source_type,
+            title=self._title(relative_path, content),
+            content=content,
+            metadata=metadata,
+        )
 
     def _read_text(self, path: Path) -> str | None:
         """Read a candidate file, skipping large or binary files."""
