@@ -32,12 +32,21 @@ The built-in tools are:
 - `test.run`: one allowlisted verification command by name.
 - `git.diff`: read-only working tree diff inspection.
 
+Run `micro-agent index` to persist a local lexical index before longer agent
+sessions. `repo.semantic_search` uses
+`.micro_model_agent/index/lexical-index.json` when it exists and falls back to a
+direct repository scan otherwise. The index stores file hashes, source types,
+Python symbols/imports when parseable, and lexical postings.
+The CLI output includes source-type distribution and symbol/import coverage so
+you can spot obviously thin indexes before an agent run.
+
 The training path is currently:
 
 ```text
 committed synthetic templates
   -> generated JSONL dataset
   -> dataset validation with category/kind/outcome distribution checks
+  -> optional curated trace examples merged into a mixed dataset
   -> SFT chat JSONL export
   -> dry-run metadata or local HF/PEFT LoRA adapter training
   -> held-out behavioral synthetic evaluation, with metadata-only fallback for dry runs
@@ -158,6 +167,93 @@ This path is intentionally static today: the patch comes from `--patch`, not
 from Ollama or Transformers. Use it to collect labels and verify the
 trace-to-dataset plumbing.
 
+Export stored traces into reviewable dataset examples:
+
+```bash
+uv run micro-agent dataset export-traces \
+  --trace-path .micro_model_agent/traces/workflows.jsonl \
+  --output .micro_model_agent/datasets/trace_examples.jsonl
+```
+
+By default this writes `needs_review`/`unknown` examples and redacts common
+secret-looking keys and token values. When traces contain evaluation metadata,
+you can derive labels and filter to higher-quality candidates:
+
+```bash
+uv run micro-agent dataset export-traces \
+  --label-mode evaluation \
+  --outcome accepted \
+  --quality good \
+  --output .micro_model_agent/datasets/accepted_trace_examples.jsonl
+```
+
+Treat trace exports as a review queue. Curate labels before using them for
+training, especially for real `loop` runs.
+
+Keep at least a small trace export aside as held-out evaluation data before
+merging curated examples into training. The committed
+`examples/trace-data/held-out.trace.jsonl` fixture shows the expected
+trace-derived shape for final-response, patch, and tool-history checks.
+
+After review, relabel selected examples into a curated file:
+
+```bash
+uv run micro-agent dataset relabel \
+  --path .micro_model_agent/datasets/trace_examples.jsonl \
+  --output .micro_model_agent/datasets/curated_trace_examples.jsonl \
+  --trace-id <trace-id> \
+  --outcome accepted \
+  --quality good \
+  --reviewer-notes "Reviewed patch and final response."
+```
+
+Merge curated real traces with synthetic data:
+
+```bash
+uv run micro-agent dataset merge \
+  --input .micro_model_agent/datasets/synthetic_seed.jsonl \
+  --input .micro_model_agent/datasets/curated_trace_examples.jsonl \
+  --output .micro_model_agent/datasets/mixed_training.jsonl
+```
+
+The merge command deduplicates by `source` by default and prints category, kind,
+and outcome distributions. Use `--no-validate` only when you intentionally want
+to write a review queue that is not training-ready yet.
+
+Run held-out trace evaluation as a promotion gate before using a trained adapter:
+
+```bash
+uv run micro-agent eval traces \
+  --run-id .micro_model_agent/training/runs/synthetic-smoke \
+  --dataset examples/trace-data/held-out.trace.jsonl \
+  --output .micro_model_agent/training/runs/synthetic-smoke/trace-evaluation.json \
+  --pass-threshold 0.8
+```
+
+Trace evaluation scores the final response, exact patch text, and expected tool
+call order whenever those fields are present. Do not merge the same examples
+into a training dataset and continue calling them held out.
+
+Require evaluation reports before promotion:
+
+```bash
+uv run micro-agent promote gate \
+  --run-id .micro_model_agent/training/runs/synthetic-smoke \
+  --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/synthetic-evaluation.json \
+  --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/trace-evaluation.json \
+  --minimum-score 0.8
+uv run micro-agent promote record \
+  --run-id .micro_model_agent/training/runs/synthetic-smoke \
+  --reviewer-notes "Reviewed held-out eval reports."
+```
+
+Use `--output` on each eval command to keep synthetic behavior and held-out
+trace reports separate. The promotion command writes `promotion.json` and exits
+nonzero unless every required report passed and met the minimum score. A passing
+gate can then be recorded in
+`.micro_model_agent/training/promoted_models.jsonl`; recording does not change
+the active adapter or package the model.
+
 ## Synthetic Dataset Workflow
 
 Use this loop when changing dataset templates, validation, training, or
@@ -170,7 +266,17 @@ uv run micro-agent dataset validate
 uv run micro-agent dataset export --format sft-jsonl
 uv run micro-agent train synthetic \
   --output-dir .micro_model_agent/training/runs/synthetic-smoke
-uv run micro-agent eval synthetic --run-id synthetic-smoke
+uv run micro-agent eval synthetic \
+  --run-id synthetic-smoke \
+  --output .micro_model_agent/training/runs/synthetic-smoke/synthetic-evaluation.json
+uv run micro-agent eval traces \
+  --run-id synthetic-smoke \
+  --output .micro_model_agent/training/runs/synthetic-smoke/trace-evaluation.json
+uv run micro-agent promote gate \
+  --run-id synthetic-smoke \
+  --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/synthetic-evaluation.json \
+  --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/trace-evaluation.json
+uv run micro-agent promote record --run-id synthetic-smoke
 ```
 
 `dataset validate` prints the total error count plus category, kind, and outcome
@@ -300,7 +406,9 @@ will be overwritten by the next default run.
 
 Behavioral evaluation prompts a provider with held-out examples and expects one
 JSON object per example: either a typed tool call or a safe refusal. Reports are
-written to the selected run directory as `evaluation.json` and include:
+written to the selected run directory as `evaluation.json` by default. Use
+`--output` to keep multiple reports, such as `synthetic-evaluation.json` and
+`trace-evaluation.json`, in the same run directory. Reports include:
 
 - overall score and pass/fail
 - global parse/tool/argument/refusal/repair/final-response metrics
@@ -419,10 +527,9 @@ Use this progression:
    examples are useful when the failure mode is clear.
 
 4. Convert high-quality traces into dataset examples.
-   The implemented trace-to-dataset builder currently exists behind `task`
-   labeling. The next production step is to add a CLI exporter that reads stored
-   `loop` traces, redacts sensitive values, filters by labels, and writes
-   trace-derived examples.
+   Use `micro-agent dataset export-traces` to read stored `loop` traces, redact
+   sensitive values, filter by derived labels, and write trace-derived examples
+   for review.
 
 5. Mix synthetic and real examples.
    Keep synthetic records for invariants: path safety, JSON schema compliance,
@@ -440,9 +547,10 @@ Use this progression:
    adapter, inspect traces, and only then increase data volume or training
    steps.
 
-8. Promote manually.
-   Record metrics and artifact metadata. Use a human review before changing the
-   default adapter or MCP configuration.
+8. Gate, then promote manually.
+   Require passing evaluation reports with `micro-agent promote gate`, record
+   approved artifacts with `micro-agent promote record`, and use a human review
+   before changing the default adapter or MCP configuration.
 
 The practical transition point is when real labeled traces outnumber the
 synthetic templates for the behaviors you care about. Keep synthetic examples in
@@ -453,11 +561,12 @@ repair behavior, and repository-specific judgment.
 
 These items are described in roadmap docs but are not complete today:
 
-- `micro-agent index` prints that indexing is not implemented.
+- `micro-agent index` writes a local lexical repository index to
+  `.micro_model_agent/index/lexical-index.json`.
 - Synthetic generation creates deterministic template variants, but it is not
   model-authored generation.
 - The held-out synthetic evaluation suite is still small and hand-authored.
-- There is no automatic trace export command for all stored `loop` traces.
-- There is no model registry or automatic promotion workflow.
+- The local promotion registry records approved artifacts, but there is no
+  automatic promotion workflow.
 - There is no Ollama packaging step for trained PEFT adapters.
 - MCP defaults use direct Transformers adapter inference, not Ollama.

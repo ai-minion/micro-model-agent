@@ -56,8 +56,9 @@ Adapters for external systems and local capabilities:
 
 - `OllamaModelProvider`
 - `PydanticAiAgentRunner`
-- `LocalVectorStore`
-- `LocalRepositoryIndexer`
+- `LocalSemanticRetriever`
+- `LocalLexicalIndexWriter`
+- future `LocalVectorStore`
 - `FileSystemRepositoryAdapter`
 - `GitAdapter`
 - `TraceStore`

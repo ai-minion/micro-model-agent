@@ -25,13 +25,14 @@ micro-agent [OPTIONS] COMMAND [ARGS]...
 | Command | Description |
 | --- | --- |
 | `micro-agent init` | Initialize MicroModelAgent metadata for the current repository. |
-| `micro-agent index` | Index the current repository. Currently prints that indexing is not implemented. |
+| `micro-agent index` | Build a local lexical repository index under `.micro_model_agent/index/`. |
 | `micro-agent task` | Run a fixed coding-agent task with local fake dependencies and trace capture. |
 | `micro-agent loop` | Run a model-driven agent loop with typed tool calls. |
 | `micro-agent serve-mcp` | Serve MicroModelAgent over MCP. |
 | `micro-agent dataset` | Dataset generation, validation, and export commands. |
 | `micro-agent train` | Local training commands. |
 | `micro-agent eval` | Evaluation commands. |
+| `micro-agent promote` | Promotion gate and local registry commands. |
 
 ## `micro-agent init`
 
@@ -49,11 +50,24 @@ micro-agent init [OPTIONS]
 ## `micro-agent index`
 
 ```text
-micro-agent index
+micro-agent index [OPTIONS]
 ```
 
-No command-specific options. This command is a placeholder and currently prints
-that repository indexing is not implemented.
+Writes `.micro_model_agent/index/lexical-index.json` with indexed file metadata,
+SHA-256 hashes, source types, Python symbols/imports when parseable, token-ish
+term counts, and lexical postings for future retrieval. Generated directories
+such as `.git`, `.venv`, `.venv-wsl`, `.micro_model_agent`, and caches are
+skipped.
+
+`repo.semantic_search` uses this index for default all-files searches when the
+index exists, and falls back to direct repository scanning when it does not.
+The command prints indexed file counts, source-type distribution, skipped file
+counts, and code metadata coverage.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--repository-root PATH` | `.` | Repository root to index. |
+| `--max-file-bytes INTEGER` | `1000000` | Maximum file size to index. Larger files are skipped. |
 
 ## `micro-agent task`
 
@@ -176,6 +190,57 @@ micro-agent dataset export [OPTIONS]
 | `--format TEXT` | `sft-jsonl` | Dataset export format. Currently only `sft-jsonl` is supported. |
 | `--output PATH` | `.micro_model_agent/datasets/synthetic_seed.sft.jsonl` | Output path for exported dataset. |
 
+## `micro-agent dataset export-traces`
+
+```text
+micro-agent dataset export-traces [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--trace-path PATH` | `.micro_model_agent/traces/workflows.jsonl` | Stored workflow trace JSONL path. |
+| `--output PATH` | `.micro_model_agent/datasets/trace_examples.jsonl` | Output JSONL path for trace-derived examples. |
+| `--label-mode TEXT` | `review` | Label mode: `review` or `evaluation`. `review` exports `needs_review`/`unknown` examples for human review. |
+| `--outcome accepted\|rejected\|needs_review\|partial\|errored` | None | Only export examples with this outcome after label assignment. |
+| `--quality good\|bad\|mixed\|unknown` | None | Only export examples with this quality after label assignment. |
+| `--max-examples INTEGER` | None | Optional maximum number of examples to export. |
+
+Trace export redacts common secret-looking keys and token values before writing
+examples. The default `review` mode is intentionally not training-ready; curate
+and relabel examples before SFT export.
+
+## `micro-agent dataset relabel`
+
+```text
+micro-agent dataset relabel [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--path PATH` | Required | Input JSONL dataset path to relabel. |
+| `--output PATH` | Required | Output JSONL path for relabeled examples. |
+| `--trace-id TEXT` | None | Only relabel the example with this `metadata.trace_id`. |
+| `--source TEXT` | None | Only relabel examples with this exact source. |
+| `--input-outcome accepted\|rejected\|needs_review\|partial\|errored` | None | Only relabel examples currently carrying this outcome. |
+| `--input-quality good\|bad\|mixed\|unknown` | None | Only relabel examples currently carrying this quality. |
+| `--outcome accepted\|rejected\|needs_review\|partial\|errored` | None | New outcome label for matched examples. |
+| `--quality good\|bad\|mixed\|unknown` | None | New quality label for matched examples. |
+| `--failure-mode VALUE` | None | Replacement failure mode label. Can be passed more than once. |
+| `--reviewer-notes TEXT` | None | Replacement reviewer notes for matched examples. |
+
+## `micro-agent dataset merge`
+
+```text
+micro-agent dataset merge [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--input PATH` | Required | Input JSONL dataset path. Pass more than once. |
+| `--output PATH` | Required | Output JSONL path for the merged dataset. |
+| `--deduplicate-by source\|id` | `source` | Dedupe key. |
+| `--validate / --no-validate` | `--validate` | Validate the merged dataset before reporting success. |
+
 ## `micro-agent train synthetic`
 
 ```text
@@ -216,4 +281,72 @@ micro-agent eval synthetic [OPTIONS]
 | `--pass-threshold FLOAT` | `0.8` | Minimum average behavioral score required to pass. Range: 0 to 1. |
 | `--scripted-response TEXT` | None | Scripted JSON model response. Can be passed more than once. |
 | `--scripted-response-file PATH` | None | JSONL file containing scripted model responses for evaluation tests. |
+| `--output PATH` | `<run>/evaluation.json` | Evaluation report path. |
 
+## `micro-agent eval traces`
+
+```text
+micro-agent eval traces [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--run-id TEXT` | `latest` | Training run id, run name under `.micro_model_agent/training/runs/`, or direct run directory path. |
+| `--dataset PATH` | `examples/trace-data/held-out.trace.jsonl` | Held-out trace-derived JSONL dataset to evaluate against. |
+| `--model TEXT` | None | Ollama model name to evaluate. |
+| `--base-model TEXT` | None | Transformers base model for direct PEFT adapter evaluation. |
+| `--adapter-path PATH` | None | Local PEFT adapter path for direct Transformers evaluation. |
+| `--ollama-base-url TEXT` | None | Ollama host URL. Defaults to `MICRO_MODEL_AGENT_OLLAMA_BASE_URL`. |
+| `--max-new-tokens INTEGER` | `512` | Maximum generated tokens per evaluation example. Range: 1 to 4096. |
+| `--max-examples INTEGER` | None | Optional cap on evaluated examples. Minimum: 1. |
+| `--pass-threshold FLOAT` | `0.8` | Minimum average trace behavior score required to pass. Range: 0 to 1. |
+| `--scripted-response TEXT` | None | Scripted JSON model response. Can be passed more than once. |
+| `--scripted-response-file PATH` | None | JSONL file containing scripted model responses for evaluation tests. |
+| `--output PATH` | `<run>/evaluation.json` | Evaluation report path. |
+
+Trace evaluation scores final responses, exact patch text, and expected tool
+call order when those fields are available. Keep held-out trace fixtures
+separate from curated examples that are merged into training data.
+
+## `micro-agent promote gate`
+
+```text
+micro-agent promote gate [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--run-id TEXT` | `latest` | Training run id, run name under `.micro_model_agent/training/runs/`, or direct run directory path. |
+| `--evaluation-report PATH` | `<run>/evaluation.json` | Evaluation JSON report to require. Can be passed more than once. |
+| `--minimum-score FLOAT` | `0.8` | Minimum score each evaluation report must meet. Range: 0 to 1. |
+
+The gate loads the run artifact metadata, applies the minimum-score promotion
+policy to every required report, writes `promotion.json`, and exits nonzero
+when any report fails or scores below the threshold.
+
+## `micro-agent promote record`
+
+```text
+micro-agent promote record [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--run-id TEXT` | `latest` | Training run id, run name under `.micro_model_agent/training/runs/`, or direct run directory path. |
+| `--promotion-report PATH` | `<run>/promotion.json` | Passing promotion report path to record. |
+| `--registry PATH` | `.micro_model_agent/training/promoted_models.jsonl` | Local JSONL registry path for approved artifacts. |
+| `--reviewer-notes TEXT` | None | Human review note to store with the registry entry. |
+| `--approved-by TEXT` | None | Reviewer or process that approved this artifact. |
+
+This command records a gate-passing artifact in a local registry. It does not
+change runtime defaults or package the model.
+
+## `micro-agent promote list`
+
+```text
+micro-agent promote list [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--registry PATH` | `.micro_model_agent/training/promoted_models.jsonl` | Local JSONL registry path for approved artifacts. |

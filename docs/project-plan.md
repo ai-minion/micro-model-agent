@@ -298,7 +298,7 @@ Deliverables:
 - local repository indexer.
 - document/source-code metadata capture.
 - symbol/import/dependency extraction scaffolding.
-- local vector or lexical retrieval implementation.
+- persisted vector or hybrid retrieval implementation.
 - retrieval source types for code, docs, ADRs, traces, recipes, errors, and
   domain notes.
 
@@ -391,6 +391,8 @@ Deliverables:
 - training artifact store.
 - `EvaluationSuite` interface.
 - `ModelPromotionPolicy` interface.
+- held-out trace evaluation command.
+- local promotion gate and registry commands.
 - documentation for trace-to-dataset and evaluation workflows.
 
 Exit criteria:
@@ -405,6 +407,8 @@ Exit criteria:
 - Traces contain enough structure to support later evaluation and dataset
   generation.
 - Synthetic tool-use examples exist for the initial 5-6 tools.
+- Promotion requires persisted evaluation reports and writes a local approval
+  record before any human changes runtime defaults.
 
 ## Tool Plan
 
@@ -631,14 +635,17 @@ src/micro_model_agent/
 
 ## Immediate Next Steps
 
-1. Finish domain contracts and domain tests.
-2. Add Pydantic tool contracts under infrastructure.
-3. Implement repository path safety helpers.
-4. Implement `repo.search` and `repo.read`.
-5. Add local trace store.
-6. Add dataset record contracts for good and bad outcomes.
-7. Create synthetic seed examples for the initial tool schema.
-8. Add dataset validation and export commands.
-9. Add a fake synthetic training runner and artifact store.
-10. Implement fake-model `CodingAgent` workflow.
-11. Add the first end-to-end test.
+The initial V1 foundation is implemented: domain contracts, typed repository
+tools, trace capture, dataset synthesis/export/curation, local training
+metadata, behavioral evaluation, held-out trace evaluation, and manual
+promotion records.
+
+1. Implement `micro-agent index` with a local lexical index first, then leave a
+   vector or hybrid retrieval backend behind the existing retrieval port.
+2. Expand held-out synthetic and trace-derived evaluation fixtures, especially
+   failure cases and patch-repair tasks.
+3. Add an Ollama packaging path for promoted PEFT adapters.
+4. Add an explicit default-adapter selection command that can read the local
+   promotion registry but still requires a human action.
+5. Continue curating real trace examples and keep a strict held-out split before
+   merging accepted traces into training.
