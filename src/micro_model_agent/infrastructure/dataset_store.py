@@ -21,6 +21,7 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.infrastructure.dataset_metadata import metadata_with_tool_profile
 
 
 def dataset_example_to_record(example: DatasetExample) -> dict[str, Any]:
@@ -41,7 +42,7 @@ def dataset_example_to_record(example: DatasetExample) -> dict[str, Any]:
             "failure_modes": [mode.value for mode in example.label.failure_modes],
             "reviewer_notes": example.label.reviewer_notes,
         },
-        "metadata": example.metadata,
+        "metadata": metadata_with_tool_profile(example),
         "created_at": example.created_at.isoformat(),
     }
 

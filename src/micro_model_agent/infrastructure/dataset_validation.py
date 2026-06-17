@@ -18,6 +18,10 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.infrastructure.dataset_metadata import (
+    metadata_with_tool_profile,
+    summarize_tool_profiles,
+)
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
 
@@ -46,6 +50,7 @@ class LocalDatasetValidator:
                 "category_counts": self._category_counts(examples),
                 "kind_counts": self._kind_counts(examples),
                 "outcome_counts": self._outcome_counts(examples),
+                "tool_profile": summarize_tool_profiles(examples),
             },
         )
 
@@ -192,7 +197,7 @@ def export_sft_jsonl(path: Path, examples: list[DatasetExample]) -> None:
                             failure_mode.value for failure_mode in example.label.failure_modes
                         ],
                     },
-                    **example.metadata,
+                    **metadata_with_tool_profile(example),
                 },
             }
             file.write(json.dumps(record, sort_keys=True))

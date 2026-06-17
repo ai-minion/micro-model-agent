@@ -52,6 +52,10 @@ def test_jsonl_dataset_store_round_trips_examples(tmp_path: Path) -> None:
     assert [example.target["tool_name"] for example in loaded] == [
         example.target["tool_name"] for example in examples
     ]
+    assert loaded[0].metadata["tool_profile"]["available_tools"] == examples[0].input.get(
+        "available_tools",
+        [],
+    )
 
 
 def test_dataset_validator_accepts_seed_examples() -> None:
@@ -64,6 +68,7 @@ def test_dataset_validator_accepts_seed_examples() -> None:
     assert sum(result.details["category_counts"].values()) == 6
     assert sum(result.details["kind_counts"].values()) == 6
     assert sum(result.details["outcome_counts"].values()) == 6
+    assert "repo.search" in result.details["tool_profile"]["available_tools"]
 
 
 def test_synthetic_generator_balances_categories_and_uses_seeded_variants() -> None:
@@ -94,9 +99,29 @@ def test_dataset_validator_accepts_held_out_behavior_examples() -> None:
     result = asyncio.run(LocalDatasetValidator().validate(examples))
 
     assert result.passed is True
-    assert result.details["example_count"] == 11
+    assert result.details["example_count"] == 15
     assert result.details["category_counts"]["documentation_grounded_retrieval"] == 1
+    assert result.details["category_counts"]["failed_patch_repair"] == 1
     assert result.details["category_counts"]["patch_repair"] == 1
+    assert result.details["category_counts"]["schema_repair"] == 1
+    assert result.details["category_counts"]["unsafe_request_refusal"] == 1
+    assert result.details["category_counts"]["verification_loop"] == 1
+    assert result.details["kind_counts"]["repair"] == 5
+    assert result.details["outcome_counts"]["rejected"] == 3
+
+
+def test_dataset_validator_accepts_held_out_trace_examples() -> None:
+    examples = load_dataset_examples(Path("examples/trace-data/held-out.trace.jsonl"))
+
+    result = asyncio.run(LocalDatasetValidator().validate(examples))
+
+    assert result.passed is True
+    assert result.details["example_count"] == 8
+    assert result.details["category_counts"]["trace_unsafe_path_refusal"] == 1
+    assert result.details["category_counts"]["trace_unsafe_shell_refusal"] == 1
+    assert result.details["category_counts"]["trace_verification_loop"] == 1
+    assert result.details["kind_counts"]["evaluation"] == 8
+    assert result.details["outcome_counts"]["accepted"] == 5
     assert result.details["outcome_counts"]["rejected"] == 2
 
 
@@ -176,6 +201,11 @@ def test_export_sft_jsonl_writes_chat_records(tmp_path: Path) -> None:
     assert len(records) == 2
     assert records[0]["messages"][0]["role"] == "system"
     assert records[0]["messages"][2]["role"] == "assistant"
+    assert records[0]["metadata"]["tool_profile"]["tool_schema_version"] == "v1"
+    assert records[0]["metadata"]["tool_profile"]["available_tools"] == examples[0].input.get(
+        "available_tools",
+        [],
+    )
 
 
 def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> None:
@@ -187,7 +217,15 @@ def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> N
     config = TrainingConfig(
         base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
         output_dir=str(run_dir),
-        parameters={"dataset_path": str(dataset_path), "example_count": len(examples)},
+        parameters={
+            "dataset_path": str(dataset_path),
+            "source_dataset_path": str(dataset_path),
+            "example_count": len(examples),
+            "dataset_tool_profile": {
+                "available_tools": ["repo.read", "repo.search"],
+                "tool_schema_versions": ["v1"],
+            },
+        },
     )
     run = asyncio.run(FakeTrainingRunner().run(config))
     artifact = load_artifact_from_training_run(run_dir)
@@ -196,5 +234,7 @@ def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> N
     assert run.status.value == "succeeded"
     assert (run_dir / "run.json").exists()
     assert artifact.metrics["synthetic_example_count"] == 4.0
+    assert artifact.metadata["source_dataset_path"] == str(dataset_path)
+    assert artifact.metadata["dataset_tool_profile"]["tool_schema_versions"] == ["v1"]
     assert evaluation.passed is True
     assert load_dataset_examples(dataset_path)

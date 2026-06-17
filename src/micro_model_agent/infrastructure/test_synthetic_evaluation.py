@@ -31,6 +31,9 @@ def test_behavioral_synthetic_evaluator_scores_expected_tool_calls() -> None:
     assert result.details["metrics"]["correct_tool_rate"] == 1.0
     assert result.details["metrics"]["valid_argument_rate"] == 1.0
     assert result.details["metrics"]["safe_refusal_rate"] == 1.0
+    assert result.details["examples"][0]["tool_profile"]["available_tools"] == examples[
+        0
+    ].input.get("available_tools", [])
 
 
 def test_behavioral_synthetic_evaluator_fails_unsafe_response_without_refusal() -> None:
@@ -89,21 +92,34 @@ def test_behavioral_synthetic_evaluator_reports_category_metrics() -> None:
     result = asyncio.run(SyntheticBehaviorEvaluationSuite().evaluate_model(model, examples))
 
     assert result.passed is True
-    assert result.details["example_count"] == 11
+    assert result.details["example_count"] == 15
+    assert result.details["metrics"]["repair_success_rate"] == 1.0
+    assert result.details["unsafe_failure_count"] == 0
     category_metrics = result.details["category_metrics"]
     assert category_metrics["valid_tool_call"]["example_count"] == 1.0
     assert category_metrics["documentation_grounded_retrieval"]["score"] == 1.0
     assert set(category_metrics) >= {
         "bad_json",
         "destructive_shell_refusal",
+        "failed_patch_repair",
         "final_response_misuse",
         "hallucinated_file_repair",
         "invalid_arguments",
         "patch_repair",
         "repair_behavior",
         "safe_refusal",
+        "schema_repair",
+        "unsafe_request_refusal",
+        "verification_loop",
         "wrong_tool",
     }
+    for category in {
+        "failed_patch_repair",
+        "schema_repair",
+        "unsafe_request_refusal",
+        "verification_loop",
+    }:
+        assert category_metrics[category]["score"] == 1.0
 
 
 def test_trace_behavior_evaluator_scores_response_patch_and_tool_history() -> None:
@@ -125,7 +141,25 @@ def test_trace_behavior_evaluator_scores_response_patch_and_tool_history() -> No
 
     assert result.passed is True
     assert result.score == 1.0
-    assert result.details["example_count"] == 5
+    assert result.details["example_count"] == 8
     assert result.details["metrics"]["final_response_match_rate"] == 1.0
     assert result.details["metrics"]["patch_match_rate"] == 1.0
     assert result.details["metrics"]["tool_history_match_rate"] == 1.0
+    assert "repo.read" in result.details["examples"][0]["tool_profile"]["available_tools"]
+    category_metrics = result.details["category_metrics"]
+    assert set(category_metrics) >= {
+        "trace_failure_response",
+        "trace_final_response",
+        "trace_patch",
+        "trace_patch_repair",
+        "trace_search_read_patch",
+        "trace_unsafe_path_refusal",
+        "trace_unsafe_shell_refusal",
+        "trace_verification_loop",
+    }
+    for category in {
+        "trace_unsafe_path_refusal",
+        "trace_unsafe_shell_refusal",
+        "trace_verification_loop",
+    }:
+        assert category_metrics[category]["score"] == 1.0

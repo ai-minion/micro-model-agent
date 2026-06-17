@@ -113,6 +113,8 @@ class FakeTrainingRunner:
             },
             metadata={
                 "dataset_path": config.parameters.get("dataset_path"),
+                "source_dataset_path": config.parameters.get("source_dataset_path"),
+                "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                 "runner": "fake",
             },
         )
@@ -563,6 +565,8 @@ class LocalFineTuningRunner:
             metrics={"dry_run": 1.0 if config.dry_run else 0.0},
             metadata={
                 "dataset_path": str(dataset_path),
+                "source_dataset_path": config.parameters.get("source_dataset_path"),
+                "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                 "runner": "local_hf_peft",
                 "requires": ["accelerate", "datasets", "peft", "torch", "transformers", "trl"],
             },
@@ -582,6 +586,7 @@ class LocalFineTuningRunner:
                     metadata={
                         **result.metadata,
                         "source_dataset_path": config.parameters.get("source_dataset_path"),
+                        "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                     },
                 )
                 run = TrainingRun(

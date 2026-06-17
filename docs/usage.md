@@ -37,6 +37,8 @@ sessions. `repo.semantic_search` uses
 `.micro_model_agent/index/lexical-index.json` when it exists and falls back to a
 direct repository scan otherwise. The index stores file hashes, source types,
 Python symbols/imports when parseable, and lexical postings.
+When indexed search is used, each result includes `metadata.index_status` with
+stale-index counts for changed, missing, and newly unindexed files.
 The CLI output includes source-type distribution and symbol/import coverage so
 you can spot obviously thin indexes before an agent run.
 
@@ -385,6 +387,9 @@ Outputs are written under the run directory:
 
 The real runner trains a PEFT adapter using Hugging Face Transformers, PEFT, and
 the exported SFT JSONL. It saves adapter and tokenizer files to `adapter/`.
+Training metadata records the source dataset path and a dataset tool-profile
+summary so adapter runs can be compared against the tool set they were trained
+on.
 
 Evaluate the run:
 
@@ -413,6 +418,7 @@ written to the selected run directory as `evaluation.json` by default. Use
 - overall score and pass/fail
 - global parse/tool/argument/refusal/repair/final-response metrics
 - per-category metrics
+- evaluated dataset/provider/tool-profile metadata
 - per-example raw responses, parsed responses, and errors
 
 Run a deterministic scripted smoke test with one response per held-out example:
@@ -451,6 +457,20 @@ uv run micro-agent eval synthetic \
 When behavioral evaluation fails, the CLI prints failing examples as
 `category/example_id scored <score>`, then writes full details to
 `evaluation.json`.
+
+Compare a saved baseline report against an adapter report:
+
+```bash
+uv run micro-agent eval compare \
+  --baseline-report .micro_model_agent/training/runs/base-qwen-tool-profile/synthetic-evaluation.json \
+  --adapter-report .micro_model_agent/training/runs/qwen-tool-profile-proof/synthetic-evaluation.json \
+  --minimum-score-delta 0.00 \
+  --minimum-metric-delta correct_tool_rate=0.10
+```
+
+The comparison report records score deltas plus shared numeric metric deltas from
+`details.metrics`, and the command exits nonzero when required improvements are
+missed.
 
 ## Running With A Fine-Tuned Adapter
 
@@ -561,8 +581,6 @@ repair behavior, and repository-specific judgment.
 
 These items are described in roadmap docs but are not complete today:
 
-- `micro-agent index` writes a local lexical repository index to
-  `.micro_model_agent/index/lexical-index.json`.
 - Synthetic generation creates deterministic template variants, but it is not
   model-authored generation.
 - The held-out synthetic evaluation suite is still small and hand-authored.

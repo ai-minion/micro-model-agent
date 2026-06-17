@@ -16,13 +16,20 @@ from typing import Any, Never, cast
 
 import typer
 
-from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
+from micro_model_agent.domain.contracts import EvaluationResult
+from micro_model_agent.domain.datasets import (
+    DatasetExample,
+    FailureMode,
+    OutcomeLabel,
+    QualityLabel,
+)
 from micro_model_agent.domain.training import TrainingConfig
 from micro_model_agent.infrastructure.dataset_curation import (
     DeduplicateBy,
     merge_datasets,
     relabel_examples,
 )
+from micro_model_agent.infrastructure.dataset_metadata import summarize_tool_profiles
 from micro_model_agent.infrastructure.dataset_store import (
     JsonlDatasetExampleStore,
     load_dataset_examples,
@@ -31,6 +38,9 @@ from micro_model_agent.infrastructure.dataset_validation import (
     LocalDatasetValidator,
     export_sft_jsonl,
 )
+from micro_model_agent.infrastructure.evaluation_comparison import (
+    compare_evaluation_results,
+)
 from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
 from micro_model_agent.infrastructure.repository_metadata import initialize_repository
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
@@ -38,6 +48,7 @@ from micro_model_agent.infrastructure.synthetic_evaluation import (
     SyntheticBehaviorEvaluationSuite,
     TraceBehaviorEvaluationSuite,
 )
+from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.infrastructure.trace_export import (
     TraceDatasetExporter,
     validate_trace_export_examples,
@@ -154,6 +165,53 @@ def _format_count_distribution(counts: object) -> str:
     if not isinstance(counts, dict) or not counts:
         return "none"
     return ", ".join(f"{key}={value}" for key, value in counts.items())
+
+
+def _format_tool_profile(profile: object) -> str:
+    """Format a tool-profile summary for compact CLI output."""
+
+    if not isinstance(profile, dict) or not profile:
+        return "none"
+    available_tools = profile.get("available_tools")
+    schema_versions = profile.get("tool_schema_versions")
+    tools = ", ".join(available_tools) if isinstance(available_tools, list) else "none"
+    versions = ", ".join(schema_versions) if isinstance(schema_versions, list) else "none"
+    return f"available_tools=[{tools}]; schema_versions=[{versions}]"
+
+
+def _with_evaluation_metadata(
+    result: EvaluationResult,
+    *,
+    run_id: str,
+    dataset: Path,
+    examples: list[DatasetExample],
+    provider_kind: str,
+    model: str | None = None,
+    base_model: str | None = None,
+    adapter_path: Path | None = None,
+) -> EvaluationResult:
+    """Add report-level metadata without changing evaluator scoring."""
+
+    return EvaluationResult(
+        passed=result.passed,
+        summary=result.summary,
+        score=result.score,
+        details={
+            **result.details,
+            "evaluation_metadata": {
+                "run_id": run_id,
+                "dataset_path": str(dataset),
+                "provider": provider_kind,
+                "model": model,
+                "base_model": base_model,
+                "adapter_path": str(adapter_path) if adapter_path else None,
+                "tool_profile": summarize_tool_profiles(
+                    examples,
+                    default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+                ),
+            },
+        },
+    )
 
 
 @app.command()
@@ -563,6 +621,7 @@ def synthesize(
     )
     typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
     typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
+    typer.echo("Tool profile: " + _format_tool_profile(validation.details.get("tool_profile")))
 
 
 @dataset_app.command()
@@ -582,6 +641,7 @@ def validate(
     )
     typer.echo("Kinds: " + _format_count_distribution(result.details.get("kind_counts")))
     typer.echo("Outcomes: " + _format_count_distribution(result.details.get("outcome_counts")))
+    typer.echo("Tool profile: " + _format_tool_profile(result.details.get("tool_profile")))
     for error in result.details.get("errors", [])[:10]:
         typer.echo(f"- {error}")
     if not result.passed:
@@ -757,6 +817,7 @@ def relabel_dataset(
     )
     typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
     typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
+    typer.echo("Tool profile: " + _format_tool_profile(validation.details.get("tool_profile")))
     for error in validation.details.get("errors", [])[:10]:
         typer.echo(f"- {error}")
 
@@ -806,6 +867,7 @@ def merge_dataset(
     )
     typer.echo("Kinds: " + _format_count_distribution(validation.details.get("kind_counts")))
     typer.echo("Outcomes: " + _format_count_distribution(validation.details.get("outcome_counts")))
+    typer.echo("Tool profile: " + _format_tool_profile(validation.details.get("tool_profile")))
 
 
 @train_app.command("synthetic")
@@ -863,6 +925,7 @@ def train_synthetic(
             "dataset_path": str(training_dataset),
             "source_dataset_path": str(dataset),
             "example_count": len(examples),
+            "dataset_tool_profile": summarize_tool_profiles(examples),
             "max_seq_length": max_seq_length,
             "lora_r": lora_r,
             "lora_alpha": lora_alpha,
@@ -969,8 +1032,12 @@ def eval_synthetic(
         )
 
     provider: ModelProvider | None = None
+    provider_kind = "metadata"
+    resolved_base_model: str | None = base_model
+    resolved_adapter_path: Path | None = adapter_path
     if responses:
         provider = ScriptedModelProvider(responses)
+        provider_kind = "scripted"
     elif adapter_path or base_model:
         resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
         provider = TransformersPeftModelProvider(
@@ -978,12 +1045,14 @@ def eval_synthetic(
             adapter_path=adapter_path,
             max_new_tokens=max_new_tokens,
         )
+        provider_kind = "transformers_peft"
     elif model:
         provider = OllamaModelProvider(
             model_name=model,
             base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
             options={"num_predict": max_new_tokens},
         )
+        provider_kind = "ollama"
     else:
         artifact = load_artifact_from_training_run(run_dir)
         artifact_path = Path(artifact.path)
@@ -993,6 +1062,9 @@ def eval_synthetic(
                 adapter_path=artifact_path,
                 max_new_tokens=max_new_tokens,
             )
+            provider_kind = "training_artifact"
+            resolved_base_model = artifact.base_model
+            resolved_adapter_path = artifact_path
 
     if provider is not None:
         examples = load_dataset_examples(dataset)
@@ -1003,6 +1075,16 @@ def eval_synthetic(
                 provider,
                 examples,
             )
+        )
+        result = _with_evaluation_metadata(
+            result,
+            run_id=run_id,
+            dataset=dataset,
+            examples=examples,
+            provider_kind=provider_kind,
+            model=model,
+            base_model=resolved_base_model,
+            adapter_path=resolved_adapter_path,
         )
         report_path = write_evaluation_result(run_dir, result, output)
         typer.echo(f"{result.summary}; report written to {report_path}")
@@ -1019,6 +1101,19 @@ def eval_synthetic(
     # old metadata smoke gate for those cases, but mark it clearly in the report.
     artifact = load_artifact_from_training_run(run_dir)
     result = _run(SyntheticEvaluationSuite().evaluate_artifact(artifact))
+    dataset_examples = load_dataset_examples(dataset)
+    if max_examples is not None:
+        dataset_examples = dataset_examples[:max_examples]
+    result = _with_evaluation_metadata(
+        result,
+        run_id=run_id,
+        dataset=dataset,
+        examples=dataset_examples,
+        provider_kind=provider_kind,
+        model=model,
+        base_model=artifact.base_model,
+        adapter_path=Path(artifact.path),
+    )
     report_path = write_evaluation_result(run_dir, result, output)
     typer.echo(f"{result.summary}; report written to {report_path}")
     if not result.passed:
@@ -1110,8 +1205,12 @@ def eval_traces(
         )
 
     provider: ModelProvider | None = None
+    provider_kind = "metadata"
+    resolved_base_model: str | None = base_model
+    resolved_adapter_path: Path | None = adapter_path
     if responses:
         provider = ScriptedModelProvider(responses)
+        provider_kind = "scripted"
     elif adapter_path or base_model:
         resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
         provider = TransformersPeftModelProvider(
@@ -1119,12 +1218,14 @@ def eval_traces(
             adapter_path=adapter_path,
             max_new_tokens=max_new_tokens,
         )
+        provider_kind = "transformers_peft"
     elif model:
         provider = OllamaModelProvider(
             model_name=model,
             base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
             options={"num_predict": max_new_tokens},
         )
+        provider_kind = "ollama"
     else:
         artifact = load_artifact_from_training_run(run_dir)
         artifact_path = Path(artifact.path)
@@ -1134,6 +1235,9 @@ def eval_traces(
                 adapter_path=artifact_path,
                 max_new_tokens=max_new_tokens,
             )
+            provider_kind = "training_artifact"
+            resolved_base_model = artifact.base_model
+            resolved_adapter_path = artifact_path
 
     if provider is None:
         _fail("trace eval requires a runnable model, adapter, or scripted response")
@@ -1147,10 +1251,101 @@ def eval_traces(
             examples,
         )
     )
+    result = _with_evaluation_metadata(
+        result,
+        run_id=run_id,
+        dataset=dataset,
+        examples=examples,
+        provider_kind=provider_kind,
+        model=model,
+        base_model=resolved_base_model,
+        adapter_path=resolved_adapter_path,
+    )
     report_path = write_evaluation_result(run_dir, result, output)
     typer.echo(f"{result.summary}; report written to {report_path}")
     if not result.passed:
         raise typer.Exit(1)
+
+
+@eval_app.command("compare")
+def eval_compare(
+    baseline_report: Path = typer.Option(
+        ...,
+        "--baseline-report",
+        help="Persisted evaluation JSON report for the base model.",
+    ),
+    adapter_report: Path = typer.Option(
+        ...,
+        "--adapter-report",
+        help="Persisted evaluation JSON report for the trained adapter.",
+    ),
+    minimum_score_delta: float = typer.Option(
+        0.0,
+        min=0.0,
+        help="Minimum adapter score improvement over baseline.",
+    ),
+    minimum_metric_delta: list[str] | None = typer.Option(
+        None,
+        "--minimum-metric-delta",
+        help="Required metric improvement as metric_name=delta. Can be passed more than once.",
+    ),
+    require_adapter_passed: bool = typer.Option(
+        True,
+        "--require-adapter-passed/--allow-failing-adapter",
+        help="Require the adapter report itself to pass before comparing improvements.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Comparison report path. Defaults to <adapter-report>.comparison.json.",
+    ),
+) -> None:
+    """Compare a baseline evaluation report with a trained adapter report."""
+
+    thresholds = _parse_metric_delta_options(minimum_metric_delta or [])
+    baseline = load_evaluation_result(baseline_report)
+    adapter = load_evaluation_result(adapter_report)
+    comparison = compare_evaluation_results(
+        baseline,
+        adapter,
+        minimum_score_delta=minimum_score_delta,
+        minimum_metric_deltas=thresholds,
+        require_adapter_passed=require_adapter_passed,
+    )
+
+    report_path = output or adapter_report.with_suffix(".comparison.json")
+    report_path.parent.mkdir(parents=True, exist_ok=True)
+    report_path.write_text(
+        json.dumps(comparison.as_record(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    typer.echo(f"{comparison.summary}; report written to {report_path}")
+    if not comparison.passed:
+        for error in comparison.errors:
+            typer.echo(error, err=True)
+        raise typer.Exit(1)
+
+
+def _parse_metric_delta_options(values: list[str]) -> dict[str, float]:
+    """Parse metric threshold CLI values."""
+
+    thresholds: dict[str, float] = {}
+    for value in values:
+        if "=" not in value:
+            _fail(f"metric delta must use metric_name=delta: {value}")
+        name, raw_delta = value.split("=", 1)
+        metric_name = name.strip()
+        if not metric_name:
+            _fail(f"metric delta must include a metric name: {value}")
+        try:
+            delta = float(raw_delta)
+        except ValueError:
+            _fail(f"metric delta must include a numeric threshold: {value}")
+        if delta < 0.0:
+            _fail(f"metric delta must be non-negative: {value}")
+        thresholds[metric_name] = delta
+    return thresholds
 
 
 @promote_app.command("gate")

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from micro_model_agent.application.ports import ModelProvider
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample, DatasetExampleKind, OutcomeLabel
+from micro_model_agent.infrastructure.dataset_metadata import tool_profile_for_example
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
 
@@ -23,6 +24,7 @@ class SyntheticExampleScore:
     category: str | None
     raw_response: str
     parsed_response: dict[str, Any] | None
+    tool_profile: dict[str, Any]
     score: float
     parse_success: bool
     correct_tool: bool
@@ -52,6 +54,7 @@ class SyntheticExampleScore:
             "errors": list(self.errors),
             "raw_response": self.raw_response,
             "parsed_response": self.parsed_response,
+            "tool_profile": self.tool_profile,
         }
 
 
@@ -147,6 +150,10 @@ class SyntheticBehaviorEvaluationSuite:
                 category=self._category(example),
                 raw_response=raw_response,
                 parsed_response=None,
+                tool_profile=tool_profile_for_example(
+                    example,
+                    default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+                ),
                 score=0.0,
                 parse_success=False,
                 correct_tool=False,
@@ -193,6 +200,10 @@ class SyntheticBehaviorEvaluationSuite:
             category=self._category(example),
             raw_response=raw_response,
             parsed_response=response,
+            tool_profile=tool_profile_for_example(
+                example,
+                default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+            ),
             score=score,
             parse_success=True,
             correct_tool=correct_tool,
@@ -338,8 +349,10 @@ class TraceExampleScore:
 
     example_id: str
     trace_id: str | None
+    category: str | None
     raw_response: str
     parsed_response: dict[str, Any] | None
+    tool_profile: dict[str, Any]
     score: float
     parse_success: bool
     final_response_match: bool
@@ -353,6 +366,7 @@ class TraceExampleScore:
         return {
             "example_id": self.example_id,
             "trace_id": self.trace_id,
+            "category": self.category,
             "score": self.score,
             "parse_success": self.parse_success,
             "final_response_match": self.final_response_match,
@@ -361,6 +375,7 @@ class TraceExampleScore:
             "errors": list(self.errors),
             "raw_response": self.raw_response,
             "parsed_response": self.parsed_response,
+            "tool_profile": self.tool_profile,
         }
 
 
@@ -401,6 +416,7 @@ class TraceBehaviorEvaluationSuite:
                 "example_count": len(scores),
                 "pass_threshold": self.pass_threshold,
                 "metrics": self._metrics(scores),
+                "category_metrics": self._category_metrics(scores),
                 "examples": [score.as_record() for score in scores],
             },
         )
@@ -410,6 +426,10 @@ class TraceBehaviorEvaluationSuite:
 
         payload = {
             "goal": example.input.get("goal", ""),
+            "available_tools": tool_profile_for_example(
+                example,
+                default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+            )["available_tools"],
             "retrieved_context": example.input.get("retrieved_context", {}),
             "tool_history": example.input.get("tool_history", []),
             "steps": example.input.get("steps", []),
@@ -439,8 +459,13 @@ class TraceBehaviorEvaluationSuite:
             return TraceExampleScore(
                 example_id=str(example.id),
                 trace_id=self._trace_id(example),
+                category=self._category(example),
                 raw_response=raw_response,
                 parsed_response=None,
+                tool_profile=tool_profile_for_example(
+                    example,
+                    default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+                ),
                 score=0.0,
                 parse_success=False,
                 final_response_match=False,
@@ -475,8 +500,13 @@ class TraceBehaviorEvaluationSuite:
         return TraceExampleScore(
             example_id=str(example.id),
             trace_id=self._trace_id(example),
+            category=self._category(example),
             raw_response=raw_response,
             parsed_response=response,
+            tool_profile=tool_profile_for_example(
+                example,
+                default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+            ),
             score=score,
             parse_success=True,
             final_response_match=final_response_match,
@@ -561,6 +591,20 @@ class TraceBehaviorEvaluationSuite:
     def _rate(self, scores: list[TraceExampleScore], field_name: str, total: int) -> float:
         return sum(1.0 for score in scores if bool(getattr(score, field_name))) / total
 
+    def _category_metrics(self, scores: list[TraceExampleScore]) -> dict[str, dict[str, float]]:
+        grouped_scores: dict[str, list[TraceExampleScore]] = {}
+        for score in scores:
+            grouped_scores.setdefault(score.category or "uncategorized", []).append(score)
+
+        return {
+            category: {
+                "example_count": float(len(category_scores)),
+                "score": sum(score.score for score in category_scores) / len(category_scores),
+                **self._metrics(category_scores),
+            }
+            for category, category_scores in sorted(grouped_scores.items())
+        }
+
     def _similarity(self, expected: str, actual: str) -> float:
         return SequenceMatcher(
             None,
@@ -574,3 +618,7 @@ class TraceBehaviorEvaluationSuite:
     def _trace_id(self, example: DatasetExample) -> str | None:
         trace_id = example.metadata.get("trace_id")
         return trace_id if isinstance(trace_id, str) else None
+
+    def _category(self, example: DatasetExample) -> str | None:
+        category = example.metadata.get("category")
+        return category if isinstance(category, str) else None

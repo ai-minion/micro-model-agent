@@ -126,6 +126,7 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     assert "validated 3 examples" in validate.output
     assert "Categories:" in validate.output
     assert "Outcomes:" in validate.output
+    assert "Tool profile:" in validate.output
 
     export = runner.invoke(
         app,
@@ -155,10 +156,17 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     assert train.exit_code == 0, train.output
     assert (run_dir / "run.json").exists()
     assert (run_dir / "artifact.json").exists()
+    artifact = json.loads((run_dir / "artifact.json").read_text(encoding="utf-8"))
+    assert "repo.search" in artifact["metadata"]["dataset_tool_profile"]["available_tools"]
 
     evaluate = runner.invoke(app, ["eval", "synthetic", "--run-id", str(run_dir)])
     assert evaluate.exit_code == 0, evaluate.output
     assert (run_dir / "evaluation.json").exists()
+    report = json.loads((run_dir / "evaluation.json").read_text(encoding="utf-8"))
+    assert report["details"]["evaluation_metadata"]["tool_profile"]["example_count"] == 15
+    assert "repo.read" in report["details"]["evaluation_metadata"]["tool_profile"][
+        "available_tools"
+    ]
 
 
 def test_cli_synthetic_eval_failure_names_category_and_example(tmp_path: Path) -> None:
@@ -243,6 +251,10 @@ def test_cli_trace_eval_scores_held_out_trace_examples(tmp_path: Path) -> None:
     assert f"report written to {report_path}" in result.output
     report = json.loads(report_path.read_text(encoding="utf-8"))
     assert report["details"]["metrics"]["tool_history_match_rate"] == 1.0
+    assert report["details"]["evaluation_metadata"]["provider"] == "scripted"
+    assert "repo.write_patch" in report["details"]["evaluation_metadata"]["tool_profile"][
+        "available_tools"
+    ]
 
 
 def test_cli_promotion_gate_requires_all_evaluation_reports(tmp_path: Path) -> None:
@@ -310,6 +322,120 @@ def test_cli_promotion_gate_requires_all_evaluation_reports(tmp_path: Path) -> N
     report = json.loads((run_dir / "promotion.json").read_text(encoding="utf-8"))
     assert report["promoted"] is False
     assert [evaluation["can_promote"] for evaluation in report["evaluations"]] == [True, False]
+
+
+def test_cli_eval_compare_writes_comparison_report(tmp_path: Path) -> None:
+    runner = CliRunner()
+    baseline_report = tmp_path / "base-synthetic-evaluation.json"
+    adapter_report = tmp_path / "adapter-synthetic-evaluation.json"
+    output = tmp_path / "comparison.json"
+    baseline_report.write_text(
+        json.dumps(
+            {
+                "passed": False,
+                "summary": "base",
+                "score": 0.70,
+                "details": {
+                    "metrics": {
+                        "correct_tool_rate": 0.60,
+                        "valid_argument_rate": 0.75,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    adapter_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "summary": "adapter",
+                "score": 0.84,
+                "details": {
+                    "metrics": {
+                        "correct_tool_rate": 0.74,
+                        "valid_argument_rate": 0.90,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "compare",
+            "--baseline-report",
+            str(baseline_report),
+            "--adapter-report",
+            str(adapter_report),
+            "--minimum-score-delta",
+            "0.10",
+            "--minimum-metric-delta",
+            "correct_tool_rate=0.10",
+            "--output",
+            str(output),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "evaluation comparison passed" in result.output
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["passed"] is True
+    assert report["score_delta"] == pytest.approx(0.14)
+    metric_deltas = {delta["name"]: delta for delta in report["metric_deltas"]}
+    assert metric_deltas["correct_tool_rate"]["passed"] is True
+
+
+def test_cli_eval_compare_fails_when_adapter_misses_threshold(tmp_path: Path) -> None:
+    runner = CliRunner()
+    baseline_report = tmp_path / "base-trace-evaluation.json"
+    adapter_report = tmp_path / "adapter-trace-evaluation.json"
+    baseline_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "summary": "base",
+                "score": 0.80,
+                "details": {"metrics": {"tool_history_match_rate": 0.80}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    adapter_report.write_text(
+        json.dumps(
+            {
+                "passed": True,
+                "summary": "adapter",
+                "score": 0.82,
+                "details": {"metrics": {"tool_history_match_rate": 0.84}},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "compare",
+            "--baseline-report",
+            str(baseline_report),
+            "--adapter-report",
+            str(adapter_report),
+            "--minimum-score-delta",
+            "0.05",
+            "--minimum-metric-delta",
+            "tool_history_match_rate=0.10",
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "evaluation comparison failed" in result.output
+    assert "score delta 0.0200 is below minimum 0.0500" in result.output
+    assert "metric 'tool_history_match_rate' delta 0.0400 is below minimum 0.1000" in result.output
 
 
 def test_cli_promotion_record_writes_local_registry(tmp_path: Path) -> None:

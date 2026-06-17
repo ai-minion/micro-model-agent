@@ -61,6 +61,9 @@ skipped.
 
 `repo.semantic_search` uses this index for default all-files searches when the
 index exists, and falls back to direct repository scanning when it does not.
+Indexed search results include `metadata.index_status` with `is_stale` plus
+changed, missing, and extra file counts so callers can decide when to rerun
+`micro-agent index`.
 The command prints indexed file counts, source-type distribution, skipped file
 counts, and code metadata coverage.
 
@@ -176,7 +179,8 @@ micro-agent dataset validate [OPTIONS]
 | --- | --- | --- |
 | `--path PATH` | `.micro_model_agent/datasets/synthetic_seed.jsonl` | JSONL dataset path to validate. |
 
-Validation prints error count plus category, kind, and outcome distributions.
+Validation prints error count plus category, kind, outcome, and tool-profile
+metadata distributions.
 
 ## `micro-agent dataset export`
 
@@ -304,9 +308,38 @@ micro-agent eval traces [OPTIONS]
 | `--scripted-response-file PATH` | None | JSONL file containing scripted model responses for evaluation tests. |
 | `--output PATH` | `<run>/evaluation.json` | Evaluation report path. |
 
+Synthetic and trace evaluation reports include `details.evaluation_metadata`
+with the evaluated dataset path, provider type, and tool-profile summary.
 Trace evaluation scores final responses, exact patch text, and expected tool
 call order when those fields are available. Keep held-out trace fixtures
 separate from curated examples that are merged into training data.
+
+## `micro-agent eval compare`
+
+```text
+micro-agent eval compare [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--baseline-report PATH` | Required | Persisted evaluation JSON report for the base model. |
+| `--adapter-report PATH` | Required | Persisted evaluation JSON report for the trained adapter. |
+| `--minimum-score-delta FLOAT` | `0.0` | Minimum adapter score improvement over baseline. |
+| `--minimum-metric-delta TEXT` | None | Required metric improvement as `metric_name=delta`. Can be passed more than once. |
+| `--require-adapter-passed / --allow-failing-adapter` | `--require-adapter-passed` | Require the adapter report itself to pass before comparing improvements. |
+| `--output PATH` | `<adapter-report>.comparison.json` | Comparison report path. |
+
+The command compares the top-level score and any shared numeric values under
+`details.metrics`, writes a JSON comparison report, and exits nonzero when the
+adapter misses the requested improvement thresholds. Example:
+
+```bash
+uv run micro-agent eval compare \
+  --baseline-report .micro_model_agent/training/runs/base-qwen-tool-profile/synthetic-evaluation.json \
+  --adapter-report .micro_model_agent/training/runs/qwen-tool-profile-proof/synthetic-evaluation.json \
+  --minimum-score-delta 0.00 \
+  --minimum-metric-delta correct_tool_rate=0.10
+```
 
 ## `micro-agent promote gate`
 
