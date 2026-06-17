@@ -229,8 +229,8 @@ uv run micro-agent promote gate \
 3. Expand held-out trace fixtures with real accepted and rejected workflow
    traces.
 4. Add tool-profile metadata to datasets, training runs, and evaluation reports.
-   Done for dataset serialization/export metadata, training artifact metadata,
-   and synthetic/trace evaluation report details.
+   Done for dataset serialization/export metadata, training artifact metadata
+   with dataset hashes, and synthetic/trace evaluation report details.
 5. Add a command that selects a promoted adapter as the local default without
    bypassing manual approval. Done with `micro-agent promote select --confirm`,
    which only selects artifacts already recorded in the promotion registry.

@@ -14,6 +14,7 @@ from micro_model_agent.domain.datasets import (
     QualityLabel,
 )
 from micro_model_agent.domain.training import TrainingConfig
+from micro_model_agent.infrastructure.dataset_metadata import dataset_file_sha256
 from micro_model_agent.infrastructure.dataset_store import (
     JsonlDatasetExampleStore,
     load_dataset_examples,
@@ -213,6 +214,7 @@ def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> N
     run_dir = tmp_path / "training" / "runs" / "latest"
     examples = asyncio.run(SyntheticTemplateGenerator("examples/synthetic-data").generate(4))
     asyncio.run(JsonlDatasetExampleStore(dataset_path).save_many(examples))
+    dataset_sha256 = dataset_file_sha256(dataset_path)
 
     config = TrainingConfig(
         base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
@@ -220,6 +222,8 @@ def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> N
         parameters={
             "dataset_path": str(dataset_path),
             "source_dataset_path": str(dataset_path),
+            "source_dataset_sha256": dataset_sha256,
+            "training_dataset_sha256": dataset_sha256,
             "example_count": len(examples),
             "dataset_tool_profile": {
                 "available_tools": ["repo.read", "repo.search"],
@@ -232,9 +236,12 @@ def test_fake_training_runner_writes_artifact_and_evaluates(tmp_path: Path) -> N
     evaluation = asyncio.run(SyntheticEvaluationSuite().evaluate_artifact(artifact))
 
     assert run.status.value == "succeeded"
+    assert run.dataset_version == dataset_sha256
     assert (run_dir / "run.json").exists()
     assert artifact.metrics["synthetic_example_count"] == 4.0
     assert artifact.metadata["source_dataset_path"] == str(dataset_path)
+    assert artifact.metadata["source_dataset_sha256"] == dataset_sha256
+    assert artifact.metadata["training_dataset_sha256"] == dataset_sha256
     assert artifact.metadata["dataset_tool_profile"]["tool_schema_versions"] == ["v1"]
     assert evaluation.passed is True
     assert load_dataset_examples(dataset_path)

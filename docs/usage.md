@@ -267,6 +267,9 @@ uv run micro-agent promote select \
 Selection updates `.micro_model_agent/config.json` with the promoted artifact's
 base model, adapter path, and promotion provenance. It does not bypass the gate
 or record step.
+After selection, `micro-agent loop` and MCP both use the repository-local
+adapter defaults unless explicit CLI/MCP arguments or environment variables
+override them.
 
 To prepare the selected artifact for Ollama, generate a Modelfile from the
 registry entry:
@@ -420,9 +423,9 @@ Outputs are written under the run directory:
 
 The real runner trains a PEFT adapter using Hugging Face Transformers, PEFT, and
 the exported SFT JSONL. It saves adapter and tokenizer files to `adapter/`.
-Training metadata records the source dataset path and a dataset tool-profile
-summary so adapter runs can be compared against the tool set they were trained
-on.
+Training metadata records the source dataset path, source dataset SHA-256,
+exported SFT JSONL SHA-256, and dataset tool-profile summary so adapter runs can
+be compared against the exact data and tool set they were trained on.
 
 Evaluate the run:
 

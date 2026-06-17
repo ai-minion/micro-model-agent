@@ -29,7 +29,10 @@ from micro_model_agent.infrastructure.dataset_curation import (
     merge_datasets,
     relabel_examples,
 )
-from micro_model_agent.infrastructure.dataset_metadata import summarize_tool_profiles
+from micro_model_agent.infrastructure.dataset_metadata import (
+    dataset_file_sha256,
+    summarize_tool_profiles,
+)
 from micro_model_agent.infrastructure.dataset_store import (
     JsonlDatasetExampleStore,
     load_dataset_examples,
@@ -47,6 +50,7 @@ from micro_model_agent.infrastructure.ollama_packaging import (
 )
 from micro_model_agent.infrastructure.repository_metadata import (
     initialize_repository,
+    load_repository_config,
     update_model_configuration,
 )
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
@@ -138,6 +142,63 @@ def _base_model_from_adapter(adapter_path: Path | None) -> str:
     if not isinstance(base_model, str) or not base_model:
         _fail(f"adapter config does not contain base_model_name_or_path: {config_path}")
     return base_model
+
+
+def _resolve_loop_model_options(
+    *,
+    repository_root: Path,
+    model: str | None,
+    base_model: str | None,
+    adapter_path: Path | None,
+) -> dict[str, str | Path | None]:
+    """Resolve CLI loop model settings from args, env vars, and local config."""
+
+    config = load_repository_config(repository_root) or {}
+    model_config = config.get("model")
+    if not isinstance(model_config, dict):
+        model_config = {}
+
+    resolved_adapter_path = (
+        adapter_path
+        or _path_env("MICRO_MODEL_AGENT_ADAPTER_PATH")
+        or _path_config_value(model_config, "adapter_path")
+    )
+    resolved_base_model = (
+        base_model
+        or os.environ.get("MICRO_MODEL_AGENT_BASE_MODEL")
+        or _string_config_value(model_config, "base_model")
+    )
+    resolved_ollama_model = (
+        model
+        or os.environ.get("MICRO_MODEL_AGENT_DEFAULT_MODEL")
+        or _string_config_value(model_config, "default_model")
+    )
+    return {
+        "adapter_path": resolved_adapter_path,
+        "base_model": resolved_base_model,
+        "model": resolved_ollama_model,
+    }
+
+
+def _path_env(name: str) -> Path | None:
+    """Read one path environment variable."""
+
+    value = os.environ.get(name)
+    return Path(value) if value else None
+
+
+def _path_config_value(config: dict[str, Any], key: str) -> Path | None:
+    """Read one path value from repository config."""
+
+    value = _string_config_value(config, key)
+    return Path(value) if value else None
+
+
+def _string_config_value(config: dict[str, Any], key: str) -> str | None:
+    """Read one string value from repository config."""
+
+    value = config.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 def _format_behavioral_eval_failures(details: dict[str, Any]) -> list[str]:
@@ -488,24 +549,35 @@ def loop(
             if line.strip()
         )
 
+    model_options = _resolve_loop_model_options(
+        repository_root=repository_root,
+        model=model,
+        base_model=base_model,
+        adapter_path=adapter_path,
+    )
     model_provider: ModelProvider
     if responses:
         # Scripted responses make local smoke tests deterministic.
         model_provider = ScriptedModelProvider(responses)
-    elif adapter_path or base_model:
+    elif model_options["adapter_path"] or model_options["base_model"]:
         # Direct Transformers inference is used when a base model or adapter is supplied.
-        resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
+        resolved_adapter_path = cast(Path | None, model_options["adapter_path"])
+        resolved_base_model = cast(str | None, model_options["base_model"])
+        resolved_base_model = resolved_base_model or _base_model_from_adapter(
+            resolved_adapter_path
+        )
         model_provider = TransformersPeftModelProvider(
             base_model=resolved_base_model,
-            adapter_path=adapter_path,
+            adapter_path=resolved_adapter_path,
             max_new_tokens=max_new_tokens,
         )
     else:
         # Otherwise, use Ollama as the local model server.
-        model_name = model or os.environ.get("MICRO_MODEL_AGENT_DEFAULT_MODEL")
+        model_name = cast(str | None, model_options["model"])
         if not model_name:
             _fail(
-                "--model or MICRO_MODEL_AGENT_DEFAULT_MODEL is required without scripted responses"
+                "--model, MICRO_MODEL_AGENT_DEFAULT_MODEL, or configured model default is "
+                "required without scripted responses"
             )
         model_provider = OllamaModelProvider(
             model_name=model_name,
@@ -918,6 +990,8 @@ def train_synthetic(
     training_dataset = output_dir / "synthetic.sft.jsonl"
     # Training backends consume SFT JSONL, so export a run-local copy first.
     export_sft_jsonl(training_dataset, examples)
+    source_dataset_sha256 = dataset_file_sha256(dataset)
+    training_dataset_sha256 = dataset_file_sha256(training_dataset)
 
     config = TrainingConfig(
         base_model=base_model,
@@ -930,6 +1004,8 @@ def train_synthetic(
         parameters={
             "dataset_path": str(training_dataset),
             "source_dataset_path": str(dataset),
+            "source_dataset_sha256": source_dataset_sha256,
+            "training_dataset_sha256": training_dataset_sha256,
             "example_count": len(examples),
             "dataset_tool_profile": summarize_tool_profiles(examples),
             "max_seq_length": max_seq_length,

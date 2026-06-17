@@ -20,7 +20,11 @@ from micro_model_agent.infrastructure.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
 )
-from micro_model_agent.interfaces.cli import _load_dotenv, app
+from micro_model_agent.infrastructure.repository_metadata import (
+    initialize_repository,
+    update_model_configuration,
+)
+from micro_model_agent.interfaces.cli import _load_dotenv, _resolve_loop_model_options, app
 
 
 def test_load_dotenv_sets_values_without_overriding_existing_env(
@@ -71,6 +75,47 @@ def test_cli_init_creates_idempotent_repository_metadata(tmp_path: Path) -> None
     assert "Already initialized MicroModelAgent metadata" in second.output
     config = json.loads((tmp_path / ".micro_model_agent" / "config.json").read_text())
     assert config["model"]["default_model"] == "qwen"
+
+
+def test_cli_loop_model_options_use_selected_repository_config(tmp_path: Path) -> None:
+    update_model_configuration(
+        tmp_path,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        adapter_path=tmp_path / "training" / "runs" / "proof" / "adapter",
+        selected_promotion={"artifact_id": "00000000-0000-4000-8000-000000000001"},
+    )
+
+    options = _resolve_loop_model_options(
+        repository_root=tmp_path,
+        model=None,
+        base_model=None,
+        adapter_path=None,
+    )
+
+    assert options["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert options["adapter_path"] == tmp_path / "training" / "runs" / "proof" / "adapter"
+
+
+def test_cli_loop_model_options_prefer_args_over_repository_config(tmp_path: Path) -> None:
+    initialize_repository(
+        tmp_path,
+        default_model="configured-ollama",
+        base_model="configured-base",
+        adapter_path="configured-adapter",
+    )
+
+    options = _resolve_loop_model_options(
+        repository_root=tmp_path,
+        model="explicit-ollama",
+        base_model="explicit-base",
+        adapter_path=Path("explicit-adapter"),
+    )
+
+    assert options == {
+        "model": "explicit-ollama",
+        "base_model": "explicit-base",
+        "adapter_path": Path("explicit-adapter"),
+    }
 
 
 def test_cli_index_writes_local_lexical_index(tmp_path: Path) -> None:
@@ -158,6 +203,10 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     assert (run_dir / "artifact.json").exists()
     artifact = json.loads((run_dir / "artifact.json").read_text(encoding="utf-8"))
     assert "repo.search" in artifact["metadata"]["dataset_tool_profile"]["available_tools"]
+    assert len(artifact["metadata"]["source_dataset_sha256"]) == 64
+    assert len(artifact["metadata"]["training_dataset_sha256"]) == 64
+    run_record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_record["dataset_version"] == artifact["metadata"]["source_dataset_sha256"]
 
     evaluate = runner.invoke(app, ["eval", "synthetic", "--run-id", str(run_dir)])
     assert evaluate.exit_code == 0, evaluate.output

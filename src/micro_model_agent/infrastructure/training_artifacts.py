@@ -114,6 +114,8 @@ class FakeTrainingRunner:
             metadata={
                 "dataset_path": config.parameters.get("dataset_path"),
                 "source_dataset_path": config.parameters.get("source_dataset_path"),
+                "source_dataset_sha256": config.parameters.get("source_dataset_sha256"),
+                "training_dataset_sha256": config.parameters.get("training_dataset_sha256"),
                 "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                 "runner": "fake",
             },
@@ -122,6 +124,7 @@ class FakeTrainingRunner:
             kind=TrainingRunKind.SYNTHETIC,
             config=config,
             status=TrainingRunStatus.SUCCEEDED,
+            dataset_version=_dataset_version(config),
             artifacts=(artifact,),
             metrics=artifact.metrics,
             started_at=now,
@@ -550,6 +553,7 @@ class LocalFineTuningRunner:
                 kind=TrainingRunKind.SYNTHETIC,
                 config=config,
                 status=TrainingRunStatus.FAILED,
+                dataset_version=_dataset_version(config),
                 error="dataset_path is required for local fine-tuning",
                 started_at=now,
                 finished_at=datetime.now(UTC),
@@ -566,6 +570,8 @@ class LocalFineTuningRunner:
             metadata={
                 "dataset_path": str(dataset_path),
                 "source_dataset_path": config.parameters.get("source_dataset_path"),
+                "source_dataset_sha256": config.parameters.get("source_dataset_sha256"),
+                "training_dataset_sha256": config.parameters.get("training_dataset_sha256"),
                 "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                 "runner": "local_hf_peft",
                 "requires": ["accelerate", "datasets", "peft", "torch", "transformers", "trl"],
@@ -586,6 +592,10 @@ class LocalFineTuningRunner:
                     metadata={
                         **result.metadata,
                         "source_dataset_path": config.parameters.get("source_dataset_path"),
+                        "source_dataset_sha256": config.parameters.get("source_dataset_sha256"),
+                        "training_dataset_sha256": config.parameters.get(
+                            "training_dataset_sha256"
+                        ),
                         "dataset_tool_profile": config.parameters.get("dataset_tool_profile"),
                     },
                 )
@@ -593,6 +603,7 @@ class LocalFineTuningRunner:
                     kind=TrainingRunKind.SYNTHETIC,
                     config=config,
                     status=TrainingRunStatus.SUCCEEDED,
+                    dataset_version=_dataset_version(config),
                     artifacts=(artifact,),
                     metrics=artifact.metrics,
                     started_at=now,
@@ -604,6 +615,7 @@ class LocalFineTuningRunner:
                     kind=TrainingRunKind.SYNTHETIC,
                     config=config,
                     status=TrainingRunStatus.CANCELLED,
+                    dataset_version=_dataset_version(config),
                     artifacts=(artifact,),
                     error="training interrupted",
                     started_at=now,
@@ -616,6 +628,7 @@ class LocalFineTuningRunner:
                     kind=TrainingRunKind.SYNTHETIC,
                     config=config,
                     status=TrainingRunStatus.FAILED,
+                    dataset_version=_dataset_version(config),
                     artifacts=(artifact,),
                     error=f"{type(exc).__name__}: {exc}",
                     started_at=now,
@@ -627,6 +640,7 @@ class LocalFineTuningRunner:
                 kind=TrainingRunKind.SYNTHETIC,
                 config=config,
                 status=TrainingRunStatus.SUCCEEDED,
+                dataset_version=_dataset_version(config),
                 artifacts=(artifact,),
                 metrics=artifact.metrics,
                 started_at=now,
@@ -718,6 +732,13 @@ def _target_modules(value: Any) -> list[str]:
     if isinstance(value, (tuple, list)):
         return [str(part) for part in value]
     raise TypeError("lora_target_modules must be a comma-separated string or list")
+
+
+def _dataset_version(config: TrainingConfig) -> str | None:
+    """Use the source dataset hash as the training run dataset version."""
+
+    value = config.parameters.get("source_dataset_sha256")
+    return value if isinstance(value, str) and value else None
 
 
 def _model_load_kwargs(

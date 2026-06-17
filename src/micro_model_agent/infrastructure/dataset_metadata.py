@@ -6,7 +6,9 @@ evaluation reports can be compared without adding a new domain abstraction yet.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Iterable, Sequence
+from pathlib import Path
 from typing import Any
 
 from micro_model_agent.domain.datasets import DatasetExample
@@ -97,6 +99,16 @@ def metadata_with_tool_profile(
         tool_profile_for_example(example, default_available_tools=default_available_tools),
     )
     return metadata
+
+
+def dataset_file_sha256(path: Path) -> str:
+    """Return the SHA-256 digest for a dataset file."""
+
+    digest = hashlib.sha256()
+    with path.open("rb") as file:
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _available_tools(

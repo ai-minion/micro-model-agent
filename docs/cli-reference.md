@@ -119,9 +119,9 @@ micro-agent loop PROMPT [OPTIONS]
 | Option | Default | Description |
 | --- | --- | --- |
 | `--repository-root PATH` | `.` | Repository root to operate on. |
-| `--model TEXT` | None | Ollama model name. Defaults to `MICRO_MODEL_AGENT_DEFAULT_MODEL`. |
-| `--base-model TEXT` | None | Transformers base model for direct PEFT adapter inference. |
-| `--adapter-path PATH` | None | Local PEFT adapter path for direct Transformers inference. |
+| `--model TEXT` | None | Ollama model name. Defaults to `MICRO_MODEL_AGENT_DEFAULT_MODEL` or `.micro_model_agent/config.json` `model.default_model`. |
+| `--base-model TEXT` | None | Transformers base model for direct PEFT adapter inference. Defaults to `MICRO_MODEL_AGENT_BASE_MODEL` or selected local config. |
+| `--adapter-path PATH` | None | Local PEFT adapter path for direct Transformers inference. Defaults to `MICRO_MODEL_AGENT_ADAPTER_PATH` or selected local config. |
 | `--ollama-base-url TEXT` | None | Ollama host URL. Defaults to `MICRO_MODEL_AGENT_OLLAMA_BASE_URL`. |
 | `--max-new-tokens INTEGER` | `384` | Maximum generated tokens per model turn. Range: 1 to 4096. |
 | `--max-tool-result-prompt-chars INTEGER` | `12000` | Maximum serialized tool-result characters fed back to the model. |
@@ -265,6 +265,9 @@ micro-agent train synthetic [OPTIONS]
 | `--lora-r INTEGER` | `16` | LoRA rank for real training. Minimum: 1. |
 | `--lora-alpha INTEGER` | `32` | LoRA alpha for real training. Minimum: 1. |
 | `--lora-dropout FLOAT` | `0.05` | LoRA dropout. Range: 0 to 1. |
+
+Training artifacts include the source dataset path, source dataset SHA-256,
+exported SFT JSONL SHA-256, and dataset tool-profile summary.
 
 ## `micro-agent eval synthetic`
 
