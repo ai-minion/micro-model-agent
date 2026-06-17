@@ -42,7 +42,13 @@ from micro_model_agent.infrastructure.evaluation_comparison import (
     compare_evaluation_results,
 )
 from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
-from micro_model_agent.infrastructure.repository_metadata import initialize_repository
+from micro_model_agent.infrastructure.ollama_packaging import (
+    package_promoted_adapter_for_ollama,
+)
+from micro_model_agent.infrastructure.repository_metadata import (
+    initialize_repository,
+    update_model_configuration,
+)
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
 from micro_model_agent.infrastructure.synthetic_evaluation import (
     SyntheticBehaviorEvaluationSuite,
@@ -1471,6 +1477,135 @@ def promote_list(
             f"{entry.artifact_name} {entry.artifact_id} "
             f"score>={entry.minimum_score:.2f} path={entry.artifact_path}"
         )
+
+
+@promote_app.command("select")
+def promote_select(
+    artifact_id: str = typer.Option(
+        ...,
+        "--artifact-id",
+        help="Promoted artifact id from the local registry.",
+    ),
+    repository_root: Path = typer.Option(
+        Path("."),
+        "--repository-root",
+        help="Repository root whose local model defaults should be updated.",
+    ),
+    registry: Path = typer.Option(
+        Path(".micro_model_agent/training/promoted_models.jsonl"),
+        "--registry",
+        help="Local JSONL registry path for approved artifacts.",
+    ),
+    confirm: bool = typer.Option(
+        False,
+        "--confirm",
+        help="Required explicit confirmation before changing local defaults.",
+    ),
+) -> None:
+    """Select a recorded promoted artifact as the repository-local default adapter."""
+
+    if not confirm:
+        _fail("Selecting a promoted adapter changes local defaults; rerun with --confirm")
+
+    entries = load_promotion_registry(registry)
+    entry = next((item for item in entries if str(item.artifact_id) == artifact_id), None)
+    if entry is None:
+        _fail(f"promoted artifact id not found in {registry}: {artifact_id}")
+
+    result = update_model_configuration(
+        repository_root,
+        base_model=entry.base_model,
+        adapter_path=entry.artifact_path,
+        selected_promotion={
+            "artifact_id": str(entry.artifact_id),
+            "artifact_name": entry.artifact_name,
+            "promotion_report_path": entry.promotion_report_path,
+            "registry_path": str(registry),
+            "minimum_score": entry.minimum_score,
+            "approved_by": entry.approved_by,
+            "created_at": entry.created_at.isoformat(),
+        },
+    )
+    if not result.ok:
+        _fail(result.error or "failed to update MicroModelAgent config")
+
+    typer.echo(
+        f"Selected promoted adapter {entry.artifact_name} "
+        f"({entry.artifact_id}) in {result.config_path}"
+    )
+
+
+@promote_app.command("package-ollama")
+def promote_package_ollama(
+    artifact_id: str = typer.Option(
+        ...,
+        "--artifact-id",
+        help="Promoted artifact id from the local registry.",
+    ),
+    model_name: str = typer.Option(
+        ...,
+        "--model-name",
+        help="Ollama model name to create, such as micro-agent-proof:qwen.",
+    ),
+    registry: Path = typer.Option(
+        Path(".micro_model_agent/training/promoted_models.jsonl"),
+        "--registry",
+        help="Local JSONL registry path for approved artifacts.",
+    ),
+    output_dir: Path | None = typer.Option(
+        None,
+        "--output-dir",
+        help="Directory for the generated Modelfile and package manifest.",
+    ),
+    ollama_base_model: str | None = typer.Option(
+        None,
+        "--ollama-base-model",
+        help="Ollama FROM value. Defaults to the artifact training base model.",
+    ),
+    create: bool = typer.Option(
+        False,
+        "--create",
+        help="Run `ollama create` after writing the Modelfile.",
+    ),
+) -> None:
+    """Package a recorded promoted adapter for Ollama with a generated Modelfile."""
+
+    entries = load_promotion_registry(registry)
+    entry = next((item for item in entries if str(item.artifact_id) == artifact_id), None)
+    if entry is None:
+        _fail(f"promoted artifact id not found in {registry}: {artifact_id}")
+
+    package_dir = output_dir or Path(".micro_model_agent/training/ollama") / _path_safe_name(
+        model_name
+    )
+    result = package_promoted_adapter_for_ollama(
+        entry=entry,
+        model_name=model_name,
+        output_dir=package_dir,
+        ollama_base_model=ollama_base_model,
+        create=create,
+    )
+
+    typer.echo(f"Wrote Ollama Modelfile to {result.modelfile_path}")
+    typer.echo(f"Wrote package manifest to {result.manifest_path}")
+    typer.echo("Command: " + " ".join(result.command))
+    for warning in result.warnings:
+        typer.echo(f"Warning: {warning}", err=True)
+    if create:
+        if result.created:
+            typer.echo(f"Created Ollama model {result.model_name}")
+            return
+        typer.echo(f"ollama create failed with exit code {result.return_code}", err=True)
+        if result.stderr:
+            typer.echo(result.stderr, err=True)
+        raise typer.Exit(1)
+
+
+def _path_safe_name(value: str) -> str:
+    """Return a conservative directory name for a model tag."""
+
+    safe = "".join(character if character.isalnum() else "-" for character in value.lower())
+    return "-".join(part for part in safe.split("-") if part) or "ollama-model"
 
 
 if __name__ == "__main__":

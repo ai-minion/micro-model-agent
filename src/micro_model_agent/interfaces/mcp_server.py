@@ -24,6 +24,7 @@ from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelPr
 from micro_model_agent.infrastructure.repository_metadata import (
     initialize_repository,
     is_repository_initialized,
+    load_repository_config,
 )
 from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
 from micro_model_agent.infrastructure.tools.catalog import (
@@ -108,9 +109,15 @@ async def run_agent_loop(
         apply_patches=apply_patches,
         allow_test_run=allow_test_run or bool(test_command_name),
     )
-    model_provider = _model_provider(
+    model_settings = _resolve_model_settings(
+        repository_root=repository,
         adapter_path=adapter_path,
         base_model=base_model,
+        allow_missing_base_model=bool(scripted_responses),
+    )
+    model_provider = _model_provider(
+        adapter_path=model_settings["adapter_path"],
+        base_model=model_settings["base_model"],
         max_new_tokens=max_new_tokens,
         scripted_responses=scripted_responses,
         offline=offline,
@@ -147,6 +154,7 @@ async def run_agent_loop(
         "response": result.response,
         "trace_id": str(result.trace_id),
         "tool_calls_made": result.tool_calls_made,
+        "model": model_settings,
         "steps": [
             {
                 "name": step.name,
@@ -401,12 +409,9 @@ def _model_provider(
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
-    resolved_adapter_path = adapter_path or os.environ.get(
-        "MICRO_MODEL_AGENT_ADAPTER_PATH",
-        DEFAULT_7B_ADAPTER_PATH,
-    )
+    resolved_adapter_path = adapter_path or DEFAULT_7B_ADAPTER_PATH
     adapter = Path(resolved_adapter_path)
-    resolved_base_model = base_model or os.environ.get("MICRO_MODEL_AGENT_BASE_MODEL")
+    resolved_base_model = base_model
     if resolved_base_model is None:
         resolved_base_model = _base_model_from_adapter(adapter)
 
@@ -421,6 +426,54 @@ def _model_provider(
         )
         _MODEL_CACHE[cache_key] = provider
     return provider
+
+
+def _resolve_model_settings(
+    *,
+    repository_root: str | Path,
+    adapter_path: str | None,
+    base_model: str | None,
+    allow_missing_base_model: bool = False,
+) -> dict[str, str | None]:
+    """Resolve MCP model settings from explicit args, env, selected config, defaults."""
+
+    repository_config = load_repository_config(repository_root) or {}
+    model_config = repository_config.get("model")
+    if not isinstance(model_config, dict):
+        model_config = {}
+
+    resolved_adapter_path = (
+        adapter_path
+        or os.environ.get("MICRO_MODEL_AGENT_ADAPTER_PATH")
+        or _string_config_value(model_config, "adapter_path")
+        or DEFAULT_7B_ADAPTER_PATH
+    )
+    resolved_base_model = (
+        base_model
+        or os.environ.get("MICRO_MODEL_AGENT_BASE_MODEL")
+        or _string_config_value(model_config, "base_model")
+    )
+    if resolved_base_model is None and not allow_missing_base_model:
+        resolved_base_model = _base_model_from_adapter(Path(resolved_adapter_path))
+
+    selected_promotion = model_config.get("selected_promotion")
+    selected_artifact_id = None
+    if isinstance(selected_promotion, dict):
+        raw_artifact_id = selected_promotion.get("artifact_id")
+        selected_artifact_id = raw_artifact_id if isinstance(raw_artifact_id, str) else None
+
+    return {
+        "base_model": resolved_base_model,
+        "adapter_path": resolved_adapter_path,
+        "selected_promotion_artifact_id": selected_artifact_id,
+    }
+
+
+def _string_config_value(config: dict[str, Any], key: str) -> str | None:
+    """Read one string value from repository config."""
+
+    value = config.get(key)
+    return value if isinstance(value, str) and value else None
 
 
 def _base_model_from_adapter(adapter_path: Path) -> str:

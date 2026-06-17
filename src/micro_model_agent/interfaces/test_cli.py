@@ -524,6 +524,220 @@ def test_cli_promotion_record_writes_local_registry(tmp_path: Path) -> None:
     assert "synthetic-dry-run-adapter" in listed.output
 
 
+def test_cli_promote_select_requires_confirmation(tmp_path: Path) -> None:
+    runner = CliRunner()
+    registry_path = tmp_path / "training" / "promoted_models.jsonl"
+
+    result = runner.invoke(
+        app,
+        [
+            "promote",
+            "select",
+            "--artifact-id",
+            "00000000-0000-4000-8000-000000000001",
+            "--registry",
+            str(registry_path),
+            "--repository-root",
+            str(tmp_path),
+        ],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "rerun with --confirm" in result.output
+    assert not (tmp_path / ".micro_model_agent" / "config.json").exists()
+
+
+def test_cli_promote_select_updates_repository_model_config(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = tmp_path / "synthetic.jsonl"
+    run_dir = tmp_path / "training" / "runs" / "latest"
+    registry_path = tmp_path / "training" / "promoted_models.jsonl"
+
+    synthesize = runner.invoke(
+        app,
+        [
+            "dataset",
+            "synthesize",
+            "--count",
+            "1",
+            "--output",
+            str(dataset_path),
+            "--template-dir",
+            "examples/synthetic-data",
+            "--seed",
+            "25",
+        ],
+    )
+    train = runner.invoke(
+        app,
+        [
+            "train",
+            "synthetic",
+            "--dataset",
+            str(dataset_path),
+            "--output-dir",
+            str(run_dir),
+        ],
+    )
+    eval_report = run_dir / "synthetic-evaluation.json"
+    eval_report.write_text(
+        json.dumps({"passed": True, "summary": "synthetic ok", "score": 0.95, "details": {}}),
+        encoding="utf-8",
+    )
+    gate = runner.invoke(
+        app,
+        [
+            "promote",
+            "gate",
+            "--run-id",
+            str(run_dir),
+            "--evaluation-report",
+            str(eval_report),
+            "--minimum-score",
+            "0.9",
+        ],
+    )
+    record = runner.invoke(
+        app,
+        [
+            "promote",
+            "record",
+            "--run-id",
+            str(run_dir),
+            "--registry",
+            str(registry_path),
+            "--approved-by",
+            "tests",
+        ],
+    )
+    registry_record = json.loads(registry_path.read_text(encoding="utf-8").splitlines()[0])
+
+    select = runner.invoke(
+        app,
+        [
+            "promote",
+            "select",
+            "--artifact-id",
+            registry_record["artifact_id"],
+            "--registry",
+            str(registry_path),
+            "--repository-root",
+            str(tmp_path),
+            "--confirm",
+        ],
+    )
+
+    assert synthesize.exit_code == 0, synthesize.output
+    assert train.exit_code == 0, train.output
+    assert gate.exit_code == 0, gate.output
+    assert record.exit_code == 0, record.output
+    assert select.exit_code == 0, select.output
+    config = json.loads((tmp_path / ".micro_model_agent" / "config.json").read_text())
+    assert config["model"]["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert config["model"]["adapter_path"] == registry_record["artifact_path"]
+    assert config["model"]["selected_promotion"]["artifact_id"] == registry_record["artifact_id"]
+    assert config["model"]["selected_promotion"]["approved_by"] == "tests"
+
+
+def test_cli_promote_package_ollama_writes_modelfile(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = tmp_path / "synthetic.jsonl"
+    run_dir = tmp_path / "training" / "runs" / "latest"
+    registry_path = tmp_path / "training" / "promoted_models.jsonl"
+    package_dir = tmp_path / "ollama-package"
+
+    synthesize = runner.invoke(
+        app,
+        [
+            "dataset",
+            "synthesize",
+            "--count",
+            "1",
+            "--output",
+            str(dataset_path),
+            "--template-dir",
+            "examples/synthetic-data",
+            "--seed",
+            "26",
+        ],
+    )
+    train = runner.invoke(
+        app,
+        [
+            "train",
+            "synthetic",
+            "--dataset",
+            str(dataset_path),
+            "--output-dir",
+            str(run_dir),
+        ],
+    )
+    adapter_dir = run_dir / "adapter"
+    adapter_dir.mkdir(parents=True, exist_ok=True)
+    (adapter_dir / "adapter_model.safetensors").write_text("weights", encoding="utf-8")
+    eval_report = run_dir / "synthetic-evaluation.json"
+    eval_report.write_text(
+        json.dumps({"passed": True, "summary": "synthetic ok", "score": 0.95, "details": {}}),
+        encoding="utf-8",
+    )
+    gate = runner.invoke(
+        app,
+        [
+            "promote",
+            "gate",
+            "--run-id",
+            str(run_dir),
+            "--evaluation-report",
+            str(eval_report),
+            "--minimum-score",
+            "0.9",
+        ],
+    )
+    record = runner.invoke(
+        app,
+        [
+            "promote",
+            "record",
+            "--run-id",
+            str(run_dir),
+            "--registry",
+            str(registry_path),
+        ],
+    )
+    registry_record = json.loads(registry_path.read_text(encoding="utf-8").splitlines()[0])
+
+    package = runner.invoke(
+        app,
+        [
+            "promote",
+            "package-ollama",
+            "--artifact-id",
+            registry_record["artifact_id"],
+            "--registry",
+            str(registry_path),
+            "--model-name",
+            "micro-agent-proof:qwen",
+            "--ollama-base-model",
+            "qwen2.5-coder:7b",
+            "--output-dir",
+            str(package_dir),
+        ],
+    )
+
+    assert synthesize.exit_code == 0, synthesize.output
+    assert train.exit_code == 0, train.output
+    assert gate.exit_code == 0, gate.output
+    assert record.exit_code == 0, record.output
+    assert package.exit_code == 0, package.output
+    modelfile = (package_dir / "Modelfile").read_text(encoding="utf-8")
+    manifest = json.loads((package_dir / "ollama-package.json").read_text(encoding="utf-8"))
+    assert "FROM qwen2.5-coder:7b" in modelfile
+    assert f"ADAPTER {adapter_dir}" in modelfile
+    assert manifest["model_name"] == "micro-agent-proof:qwen"
+    assert manifest["created"] is False
+    assert "ollama create micro-agent-proof:qwen" in package.output
+
+
 def test_cli_loop_runs_scripted_tool_call_and_final_response(tmp_path: Path) -> None:
     runner = CliRunner()
     (tmp_path / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")

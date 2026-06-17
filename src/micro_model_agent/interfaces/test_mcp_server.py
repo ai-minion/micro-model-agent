@@ -6,8 +6,12 @@ import asyncio
 import json
 from pathlib import Path
 
-from micro_model_agent.infrastructure.repository_metadata import initialize_repository
+from micro_model_agent.infrastructure.repository_metadata import (
+    initialize_repository,
+    update_model_configuration,
+)
 from micro_model_agent.interfaces.mcp_server import (
+    _resolve_model_settings,
     call_builtin_tool,
     create_mcp_server,
     init_repository,
@@ -80,6 +84,48 @@ def test_init_repository_is_idempotent(tmp_path: Path) -> None:
     assert second["config"]["model"]["default_model"] == "qwen"
 
 
+def test_mcp_model_settings_use_selected_repository_config(tmp_path: Path) -> None:
+    update = update_model_configuration(
+        tmp_path,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        adapter_path=tmp_path / "training" / "runs" / "proof" / "adapter",
+        selected_promotion={
+            "artifact_id": "00000000-0000-4000-8000-000000000123",
+            "artifact_name": "proof-adapter",
+        },
+    )
+
+    settings = _resolve_model_settings(
+        repository_root=tmp_path,
+        adapter_path=None,
+        base_model=None,
+    )
+
+    assert update.ok is True
+    assert settings == {
+        "base_model": "Qwen/Qwen2.5-Coder-7B-Instruct",
+        "adapter_path": str(tmp_path / "training" / "runs" / "proof" / "adapter"),
+        "selected_promotion_artifact_id": "00000000-0000-4000-8000-000000000123",
+    }
+
+
+def test_mcp_model_settings_prefer_explicit_args_over_selected_config(tmp_path: Path) -> None:
+    update_model_configuration(
+        tmp_path,
+        base_model="configured-base",
+        adapter_path="configured-adapter",
+    )
+
+    settings = _resolve_model_settings(
+        repository_root=tmp_path,
+        adapter_path="explicit-adapter",
+        base_model="explicit-base",
+    )
+
+    assert settings["base_model"] == "explicit-base"
+    assert settings["adapter_path"] == "explicit-adapter"
+
+
 def test_list_builtin_tools_marks_safe_defaults() -> None:
     result = list_builtin_tools()
 
@@ -138,3 +184,46 @@ def test_run_agent_loop_with_scripted_model_saves_trace(tmp_path: Path) -> None:
     assert result["tool_calls_made"] == 1
     assert trace["ok"] is True
     assert trace["trace"]["final_output"]["response"] == "status is tiny"
+
+
+def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "README.md").write_text("# Demo\n\nstatus: promoted\n", encoding="utf-8")
+    update_model_configuration(
+        tmp_path,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        adapter_path=tmp_path / "training" / "runs" / "proof" / "adapter",
+        selected_promotion={
+            "artifact_id": "00000000-0000-4000-8000-000000000456",
+            "artifact_name": "proof-adapter",
+        },
+    )
+
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Read README.md.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.read", "test.run"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.read",
+                        "arguments": {"files": [{"path": "README.md"}]},
+                    }
+                ),
+                _model_response({"final_response": "status is promoted", "ok": True}),
+            ],
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["model"]["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert result["model"]["adapter_path"] == str(
+        tmp_path / "training" / "runs" / "proof" / "adapter"
+    )
+    assert result["model"]["selected_promotion_artifact_id"] == (
+        "00000000-0000-4000-8000-000000000456"
+    )
+    assert [step["tool_name"] for step in result["steps"] if step["tool_name"]] == ["repo.read"]

@@ -29,11 +29,24 @@ Create `.vscode/mcp.json` in this repository:
 }
 ```
 
-This launches the server inside WSL so it can use the cached
-`Qwen/Qwen2.5-Coder-7B-Instruct` base model and the local PEFT adapter at:
+This launches the server inside WSL so it can use direct Transformers adapter
+inference. Model resolution uses this order:
+
+1. `micro_agent_run_loop` `base_model` / `adapter_path` arguments.
+2. `MICRO_MODEL_AGENT_BASE_MODEL` / `MICRO_MODEL_AGENT_ADAPTER_PATH`.
+3. The selected promoted adapter in `.micro_model_agent/config.json`.
+4. The legacy default local PEFT adapter path:
 
 ```text
 .micro_model_agent/training/runs/qwen-coder-7b-tool-schema-20260613-205520/adapter
+```
+
+Select a promoted adapter for the repository before starting MCP:
+
+```bash
+uv run micro-agent promote list
+uv run micro-agent promote select --artifact-id <artifact-id> --confirm
+uv run micro-agent serve-mcp
 ```
 
 ## Exposed Tools
@@ -98,3 +111,19 @@ Use available_tools ["repo.read"], max_tool_calls 1, max_turns 4, and schema_pro
 The first model-backed call can take about 90 seconds while the 7B model loads.
 The server process caches the loaded provider for later calls with the same
 model settings.
+
+## Promoted Adapter Smoke Test
+
+After selecting a promoted adapter, run a narrow MCP smoke through the public
+tool:
+
+```text
+Use micro_agent_run_loop with goal "Read docs/architecture.md and summarize the dependency direction."
+Use available_tools ["repo.read"], max_tool_calls 1, max_turns 4, and schema_prompt true.
+```
+
+Verify that the response is concise, `tool_calls_made` is `1`, the single tool
+step is `repo.read`, and the returned `model` object shows the selected
+promotion artifact id from `.micro_model_agent/config.json`. Patch-capable tools
+remain dry-run unless `apply_patches` is explicitly true, and `test.run` remains
+unavailable unless `allow_test_run` or a test command allowlist is supplied.

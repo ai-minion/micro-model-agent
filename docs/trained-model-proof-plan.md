@@ -232,10 +232,15 @@ uv run micro-agent promote gate \
    Done for dataset serialization/export metadata, training artifact metadata,
    and synthetic/trace evaluation report details.
 5. Add a command that selects a promoted adapter as the local default without
-   bypassing manual approval.
-6. Add MCP smoke documentation and tests for a promoted adapter path.
+   bypassing manual approval. Done with `micro-agent promote select --confirm`,
+   which only selects artifacts already recorded in the promotion registry.
+6. Add MCP smoke documentation and tests for a promoted adapter path. Done for
+   selected repository config resolution, MCP scripted smoke coverage, and
+   documented promoted-adapter smoke checks.
 7. Add Ollama packaging for promoted PEFT adapters after the direct Transformers
-   adapter path is proven.
+   adapter path is proven. Done as `micro-agent promote package-ollama`, which
+   writes a Modelfile/package manifest for a recorded promoted artifact and only
+   runs `ollama create` when explicitly requested.
 
 ## Non-Goals For This Proof
 

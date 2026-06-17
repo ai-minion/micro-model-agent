@@ -383,3 +383,39 @@ micro-agent promote list [OPTIONS]
 | Option | Default | Description |
 | --- | --- | --- |
 | `--registry PATH` | `.micro_model_agent/training/promoted_models.jsonl` | Local JSONL registry path for approved artifacts. |
+
+## `micro-agent promote select`
+
+```text
+micro-agent promote select [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--artifact-id TEXT` | Required | Promoted artifact id from the local registry. |
+| `--repository-root PATH` | `.` | Repository root whose local model defaults should be updated. |
+| `--registry PATH` | `.micro_model_agent/training/promoted_models.jsonl` | Local JSONL registry path for approved artifacts. |
+| `--confirm` | Disabled | Required explicit confirmation before changing local defaults. |
+
+The command selects an already recorded promoted artifact as the repository-local
+default adapter by updating `.micro_model_agent/config.json`. It never promotes
+an artifact by itself; run `promote gate` and `promote record` first.
+
+## `micro-agent promote package-ollama`
+
+```text
+micro-agent promote package-ollama [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--artifact-id TEXT` | Required | Promoted artifact id from the local registry. |
+| `--model-name TEXT` | Required | Ollama model name to create, such as `micro-agent-proof:qwen`. |
+| `--registry PATH` | `.micro_model_agent/training/promoted_models.jsonl` | Local JSONL registry path for approved artifacts. |
+| `--output-dir PATH` | `.micro_model_agent/training/ollama/<model-name>` | Directory for the generated Modelfile and package manifest. |
+| `--ollama-base-model TEXT` | Artifact base model | Ollama `FROM` value. Use an Ollama model tag, GGUF file, or supported local model directory compatible with the adapter. |
+| `--create` | Disabled | Run `ollama create` after writing the Modelfile. |
+
+By default, this command writes a Modelfile and `ollama-package.json` manifest
+without invoking Ollama. Pass `--create` only after verifying the base model and
+adapter path are compatible.

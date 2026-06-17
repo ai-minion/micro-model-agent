@@ -253,8 +253,35 @@ Use `--output` on each eval command to keep synthetic behavior and held-out
 trace reports separate. The promotion command writes `promotion.json` and exits
 nonzero unless every required report passed and met the minimum score. A passing
 gate can then be recorded in
-`.micro_model_agent/training/promoted_models.jsonl`; recording does not change
-the active adapter or package the model.
+`.micro_model_agent/training/promoted_models.jsonl`; recording does not package
+the model or change the active adapter.
+
+After reviewing the local registry entry, select the promoted adapter explicitly:
+
+```bash
+uv run micro-agent promote select \
+  --artifact-id <artifact-id-from-promote-list> \
+  --confirm
+```
+
+Selection updates `.micro_model_agent/config.json` with the promoted artifact's
+base model, adapter path, and promotion provenance. It does not bypass the gate
+or record step.
+
+To prepare the selected artifact for Ollama, generate a Modelfile from the
+registry entry:
+
+```bash
+uv run micro-agent promote package-ollama \
+  --artifact-id <artifact-id-from-promote-list> \
+  --model-name micro-agent-proof:qwen \
+  --ollama-base-model qwen2.5-coder:7b
+```
+
+This writes `.micro_model_agent/training/ollama/<model-name>/Modelfile` and
+`ollama-package.json` without invoking Ollama. After verifying the `FROM` value
+matches the adapter's training base model, rerun with `--create` to execute
+`ollama create`.
 
 ## Synthetic Dataset Workflow
 
@@ -279,6 +306,12 @@ uv run micro-agent promote gate \
   --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/synthetic-evaluation.json \
   --evaluation-report .micro_model_agent/training/runs/synthetic-smoke/trace-evaluation.json
 uv run micro-agent promote record --run-id synthetic-smoke
+uv run micro-agent promote list
+uv run micro-agent promote select --artifact-id <artifact-id> --confirm
+uv run micro-agent promote package-ollama \
+  --artifact-id <artifact-id> \
+  --model-name micro-agent-proof:qwen \
+  --ollama-base-model qwen2.5-coder:7b
 ```
 
 `dataset validate` prints the total error count plus category, kind, and outcome
@@ -493,8 +526,11 @@ uv run micro-agent init \
   --adapter-path .micro_model_agent/training/runs/qwen-tool-schema-smoke/adapter
 ```
 
-Packaging the adapter into an Ollama model is not implemented in this repository
-yet. Today, adapter inference is handled by the direct Transformers provider.
+Use `micro-agent promote package-ollama` to generate an Ollama Modelfile for a
+promoted adapter. The command keeps `ollama create` opt-in with `--create`
+because the Ollama base model must be compatible with the adapter's training
+base. Direct Transformers adapter inference remains the primary proven path
+until the packaged Ollama model has passed the same held-out evaluations.
 
 ## MCP Usage
 
@@ -503,6 +539,11 @@ Start the MCP server:
 ```bash
 uv run micro-agent serve-mcp
 ```
+
+When a promoted adapter has been selected with `micro-agent promote select
+--confirm`, MCP uses that repository-local base model and adapter path unless
+the MCP call or environment variables override them. See [`docs/mcp.md`](mcp.md)
+for the promoted-adapter smoke prompt and safety checks.
 
 The default public MCP tool is:
 
@@ -569,8 +610,9 @@ Use this progression:
 
 8. Gate, then promote manually.
    Require passing evaluation reports with `micro-agent promote gate`, record
-   approved artifacts with `micro-agent promote record`, and use a human review
-   before changing the default adapter or MCP configuration.
+   approved artifacts with `micro-agent promote record`, and explicitly select a
+   registry entry with `micro-agent promote select --confirm` before changing the
+   default adapter or MCP configuration.
 
 The practical transition point is when real labeled traces outnumber the
 synthetic templates for the behaviors you care about. Keep synthetic examples in
@@ -584,7 +626,8 @@ These items are described in roadmap docs but are not complete today:
 - Synthetic generation creates deterministic template variants, but it is not
   model-authored generation.
 - The held-out synthetic evaluation suite is still small and hand-authored.
-- The local promotion registry records approved artifacts, but there is no
-  automatic promotion workflow.
-- There is no Ollama packaging step for trained PEFT adapters.
-- MCP defaults use direct Transformers adapter inference, not Ollama.
+- The local promotion registry and explicit selection command record approved
+  artifacts and local defaults, but there is no automatic promotion workflow.
+- Ollama packaging is scaffolded through Modelfile generation, but packaged
+  Ollama models still need the same held-out proof run as direct Transformers
+  adapters before they should replace the selected adapter path.

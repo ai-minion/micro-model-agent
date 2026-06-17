@@ -44,6 +44,23 @@ class RepositoryInitializationResult:
         return asdict(self)
 
 
+@dataclass(frozen=True, slots=True)
+class RepositoryConfigUpdateResult:
+    """Result of updating local MicroModelAgent repository configuration."""
+
+    ok: bool
+    repository_root: str
+    metadata_dir: str
+    config_path: str
+    config: dict[str, Any]
+    error: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Return a JSON-serializable representation."""
+
+        return asdict(self)
+
+
 def repository_config_path(repository_root: str | Path = ".") -> Path:
     """Return the MicroModelAgent repository config path."""
 
@@ -63,6 +80,18 @@ def is_repository_initialized(repository_root: str | Path = ".") -> bool:
     except ValueError:
         return False
     return config.get("schema_version") == CONFIG_SCHEMA_VERSION
+
+
+def load_repository_config(repository_root: str | Path = ".") -> dict[str, Any] | None:
+    """Load repository-local MicroModelAgent config when it exists and is valid."""
+
+    config_path = repository_config_path(repository_root)
+    if not config_path.exists():
+        return None
+    config = _read_config(config_path)
+    if config.get("schema_version") != CONFIG_SCHEMA_VERSION:
+        return None
+    return config
 
 
 def initialize_repository(
@@ -123,6 +152,70 @@ def initialize_repository(
         metadata_dir=str(metadata_dir),
         config_path=str(config_path),
         created_directories=created_directories,
+        config=config,
+    )
+
+
+def update_model_configuration(
+    repository_root: str | Path = ".",
+    *,
+    base_model: str,
+    adapter_path: str | Path,
+    selected_promotion: dict[str, Any] | None = None,
+) -> RepositoryConfigUpdateResult:
+    """Update repository-local model defaults.
+
+    This is used after a promoted artifact has already passed the manual gate
+    and been recorded in the local promotion registry.
+    """
+
+    root = Path(repository_root).resolve()
+    metadata_dir = root / METADATA_DIR_NAME
+    config_path = metadata_dir / CONFIG_FILE_NAME
+    _ensure_metadata_directories(metadata_dir)
+
+    if config_path.exists():
+        try:
+            config = _read_config(config_path)
+        except ValueError as exc:
+            return RepositoryConfigUpdateResult(
+                ok=False,
+                repository_root=str(root),
+                metadata_dir=str(metadata_dir),
+                config_path=str(config_path),
+                config={},
+                error=str(exc),
+            )
+        if config.get("schema_version") != CONFIG_SCHEMA_VERSION:
+            return RepositoryConfigUpdateResult(
+                ok=False,
+                repository_root=str(root),
+                metadata_dir=str(metadata_dir),
+                config_path=str(config_path),
+                config=config,
+                error=f"unsupported MicroModelAgent config schema: {config_path}",
+            )
+    else:
+        config = _build_config(
+            repository_root=root,
+            default_model=None,
+            base_model=None,
+            adapter_path=None,
+        )
+
+    model_config = dict(config.get("model", {}))
+    model_config["base_model"] = base_model
+    model_config["adapter_path"] = str(Path(adapter_path))
+    if selected_promotion is not None:
+        model_config["selected_promotion"] = selected_promotion
+    config["model"] = model_config
+    config["updated_at"] = datetime.now(UTC).isoformat()
+    config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return RepositoryConfigUpdateResult(
+        ok=True,
+        repository_root=str(root),
+        metadata_dir=str(metadata_dir),
+        config_path=str(config_path),
         config=config,
     )
 
