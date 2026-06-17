@@ -11,16 +11,16 @@ capture.
 
 ## Status
 
-Pre-alpha bootstrap. The repository currently contains the project skeleton, DDD
-boundaries, dependency metadata, and documentation scaffolding for the first coding
-agent vertical slice.
+Pre-alpha, but past the skeleton stage. The repository includes a runnable CLI,
+an MCP server, a model-driven tool loop, constrained repository tools, trace
+capture, synthetic dataset generation, local training artifacts, behavioral
+evaluation, and a manual promotion gate.
 
 ## Stack
 
 - Python 3.12+
 - uv
 - Pydantic
-- Pydantic AI
 - Official MCP Python SDK
 - Ollama
 - pytest
@@ -91,6 +91,10 @@ fine-tuning datasets from day one.
 See [docs/training-pipeline.md](docs/training-pipeline.md) for the synthetic
 training pipeline that will generate validated examples, run local fine-tuning,
 evaluate artifacts, and keep production promotion manual.
+
+See [docs/trained-model-proof-plan.md](docs/trained-model-proof-plan.md) for
+the current priority: proving a trained local adapter beats the base model in
+the agent loop and MCP path.
 
 See [docs/usage.md](docs/usage.md) for the current setup, agent execution,
 fine-tuning, MCP, and synthetic-to-real data workflow.

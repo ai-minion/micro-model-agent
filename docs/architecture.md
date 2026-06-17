@@ -20,9 +20,9 @@ User
 ### Domain
 
 Pure business contracts and policy. No infrastructure, framework, network, file
-system, Pydantic AI, or MCP dependencies.
+system, or MCP dependencies.
 
-Initial concepts:
+Implemented concepts:
 
 - `AgentProfile`
 - `ModelProfile`
@@ -42,27 +42,38 @@ Initial concepts:
 Use cases and orchestration. This layer coordinates domain contracts with
 infrastructure ports.
 
-Planned services:
+Implemented services:
 
 - `RunAgentWorkflow`
-- `RouteTaskToModel`
-- `ExecuteToolCall`
-- `PerformSemanticSearch`
-- `EvaluateWorkflowResult`
+- `TraceDatasetBuilder`
+- `DefaultWorkflowEvaluator`
+
+The model-driven loop currently lives in `agents.ToolLoopAgent`, while safe tool
+execution is exposed through the `ToolExecutor` application port and implemented
+by `BuiltinToolExecutor`.
 
 ### Infrastructure
 
 Adapters for external systems and local capabilities:
 
 - `OllamaModelProvider`
-- `PydanticAiAgentRunner`
 - `LocalSemanticRetriever`
 - `LocalLexicalIndexWriter`
-- future `LocalVectorStore`
-- `FileSystemRepositoryAdapter`
-- `GitAdapter`
+- `LocalLexicalIndexReader`
+- `BuiltinToolExecutor`
+- `RepoSearchTool`
+- `RepoReadTool`
+- `RepoSemanticSearchTool`
+- `RepoWritePatchTool`
+- `TestRunTool`
+- `GitDiffTool`
 - `TraceStore`
 - `McpServerAdapter`
+
+`LocalSemanticRetriever` adapts the same lexical repository retrieval used by
+`repo.semantic_search` to the application `SemanticRetriever` port. Future
+vector or hybrid stores can be added behind that port without changing domain
+contracts.
 
 ### Interfaces
 

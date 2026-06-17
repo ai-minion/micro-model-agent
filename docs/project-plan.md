@@ -49,7 +49,10 @@ The training data should teach the model:
 - verification-driven repair behavior
 
 See [fine-tuning-data-plan.md](fine-tuning-data-plan.md) and
-[training-pipeline.md](training-pipeline.md).
+[training-pipeline.md](training-pipeline.md). The immediate priority is
+[trained-model-proof-plan.md](trained-model-proof-plan.md): prove that a trained
+local adapter beats the base model on held-out tool-use, repair, and workspace
+tasks before expanding the framework surface.
 
 ## Product Thesis
 
@@ -83,8 +86,7 @@ the default execution engine for every request.
 - Python 3.12 or newer.
 - Modern `src/` package layout.
 - Strict Domain Driven Design boundaries.
-- Domain layer has no framework, file system, network, MCP, or Pydantic AI
-  dependencies.
+- Domain layer has no framework, file system, network, or MCP dependencies.
 - Pydantic models define external contracts, tool payloads, and interface-layer
   validation.
 - Application services depend on ports, not concrete infrastructure adapters.
@@ -119,11 +121,9 @@ Path: `src/micro_model_agent/application`
 Owns use cases and orchestration:
 
 - `RunAgentWorkflow`
-- `RouteTaskToModel`
-- `ExecuteToolCall`
-- `PerformSemanticSearch`
-- `EvaluateWorkflowResult`
-- trace capture decorators or orchestration helpers
+- `TraceDatasetBuilder`
+- `DefaultWorkflowEvaluator`
+- trace capture and labeling helpers
 
 Application services accept dependencies through constructors. They should be
 easy to test with fake model providers, fake tools, fake retrievers, and in-memory
@@ -136,11 +136,12 @@ Path: `src/micro_model_agent/infrastructure`
 Owns adapters:
 
 - `OllamaModelProvider`
-- `PydanticAiAgentRunner`
-- `LocalVectorStore`
-- `LocalRepositoryIndexer`
-- `FileSystemRepositoryAdapter`
-- `GitAdapter`
+- `TransformersModelProvider`
+- `LocalLexicalIndexWriter`
+- `LocalLexicalIndexReader`
+- `LocalSemanticRetriever`
+- `BuiltinToolExecutor`
+- repository tools such as `RepoReadTool`, `RepoWritePatchTool`, and `GitDiffTool`
 - `JsonlTraceStore`
 - `McpServerAdapter`
 
@@ -332,7 +333,7 @@ Exit criteria:
 - Good and bad outcomes can be stored with labels and failure modes.
 - The application service can run without Ollama.
 
-### Milestone 5: Local Inference With Ollama And Pydantic AI
+### Milestone 5: Local Inference With Ollama And Transformers
 
 Goal: connect the local inference provider without contaminating the domain
 layer.
@@ -340,7 +341,7 @@ layer.
 Deliverables:
 
 - `OllamaModelProvider`.
-- `PydanticAiAgentRunner`.
+- `TransformersModelProvider`.
 - model profile configuration.
 - provider abstraction for future vLLM, Hugging Face, OpenAI-compatible APIs,
   LM Studio, and SGLang.
@@ -640,12 +641,17 @@ tools, trace capture, dataset synthesis/export/curation, local training
 metadata, behavioral evaluation, held-out trace evaluation, and manual
 promotion records.
 
-1. Implement `micro-agent index` with a local lexical index first, then leave a
-   vector or hybrid retrieval backend behind the existing retrieval port.
-2. Expand held-out synthetic and trace-derived evaluation fixtures, especially
+1. Expand held-out synthetic and trace-derived evaluation fixtures, especially
    failure cases and patch-repair tasks.
-3. Add an Ollama packaging path for promoted PEFT adapters.
+2. Run and document the first real local adapter training proof against the
+   configured tool profile.
+3. Add tool-profile metadata to datasets, training artifacts, and evaluation
+   reports.
 4. Add an explicit default-adapter selection command that can read the local
    promotion registry but still requires a human action.
-5. Continue curating real trace examples and keep a strict held-out split before
+5. Add a vector or hybrid retrieval backend behind the existing retrieval port
+   if lexical search stops being enough.
+6. Add an Ollama packaging path for promoted PEFT adapters after the direct
+   Transformers adapter path is proven.
+7. Continue curating real trace examples and keep a strict held-out split before
    merging accepted traces into training.

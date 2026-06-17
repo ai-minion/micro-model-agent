@@ -18,6 +18,11 @@ tool schemas + docs + codebase facts
 The goal is not to solve all model training in V1. The goal is to make training
 a normal part of the product loop from the first working CLI.
 
+The current priority is the proof plan in
+[trained-model-proof-plan.md](trained-model-proof-plan.md): train a local
+adapter, compare it against the base model on held-out examples, and only then
+promote it for agent-loop and MCP use.
+
 ## Initial Training Target
 
 The first target is a Qwen-Coder 7B-class base model trained locally on developer
