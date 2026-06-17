@@ -122,6 +122,43 @@ def test_local_index_reader_filters_ranked_paths_by_metadata(tmp_path: Path) -> 
     assert [match.path for match in matches] == ["docs/workflow.md"]
 
 
+def test_local_index_reader_reports_fresh_index(tmp_path: Path) -> None:
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "service.py").write_text("workflow\n", encoding="utf-8")
+    LocalLexicalIndexWriter(tmp_path).write()
+
+    freshness = LocalLexicalIndexReader(tmp_path).freshness()
+
+    assert freshness is not None
+    assert freshness.is_stale is False
+    assert freshness.as_metadata() == {
+        "is_stale": False,
+        "indexed_file_count": 1,
+        "changed_file_count": 0,
+        "missing_file_count": 0,
+        "extra_file_count": 0,
+    }
+
+
+def test_local_index_reader_reports_changed_missing_and_extra_files(tmp_path: Path) -> None:
+    (tmp_path / "docs").mkdir()
+    (tmp_path / "docs" / "changed.md").write_text("old workflow\n", encoding="utf-8")
+    (tmp_path / "docs" / "missing.md").write_text("removed workflow\n", encoding="utf-8")
+    LocalLexicalIndexWriter(tmp_path).write()
+
+    (tmp_path / "docs" / "changed.md").write_text("new workflow\n", encoding="utf-8")
+    (tmp_path / "docs" / "missing.md").unlink()
+    (tmp_path / "docs" / "extra.md").write_text("extra workflow\n", encoding="utf-8")
+
+    freshness = LocalLexicalIndexReader(tmp_path).freshness()
+
+    assert freshness is not None
+    assert freshness.is_stale is True
+    assert freshness.changed_file_count == 1
+    assert freshness.missing_file_count == 1
+    assert freshness.extra_file_count == 1
+
+
 def test_local_index_extracts_python_import_metadata(tmp_path: Path) -> None:
     (tmp_path / "src").mkdir()
     (tmp_path / "src" / "test_service.py").write_text(

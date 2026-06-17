@@ -163,6 +163,30 @@ def test_semantic_search_uses_local_index_when_available(tmp_path: Path) -> None
     assert result.results[0].metadata["indexed_score"] > 0
 
 
+def test_semantic_search_includes_local_index_freshness_metadata(tmp_path: Path) -> None:
+    _write_sample_repo(tmp_path)
+    LocalLexicalIndexWriter(tmp_path).write()
+    _write_text(
+        tmp_path / "docs" / "architecture.md",
+        "# Architecture\n\nThe domain layer changed.\n",
+    )
+    (tmp_path / "docs" / "new.md").write_text("framework independent\n", encoding="utf-8")
+
+    result = RepoSemanticSearchTool(tmp_path).run(
+        SemanticSearchRequest(query="framework independent", intent="architecture_rules")
+    )
+
+    assert result.results
+    assert result.results[0].metadata["retrieval_backend"] == "local_lexical_index"
+    assert result.results[0].metadata["index_status"] == {
+        "is_stale": True,
+        "indexed_file_count": 5,
+        "changed_file_count": 1,
+        "missing_file_count": 0,
+        "extra_file_count": 1,
+    }
+
+
 def test_semantic_search_includes_indexed_code_metadata(tmp_path: Path) -> None:
     _write_sample_repo(tmp_path)
     LocalLexicalIndexWriter(tmp_path).write()

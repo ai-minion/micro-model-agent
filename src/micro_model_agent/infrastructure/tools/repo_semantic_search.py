@@ -160,6 +160,8 @@ class RepoSemanticSearchTool:
             return None
 
         documents: list[CandidateDocument] = []
+        freshness = index.freshness()
+        index_status = freshness.as_metadata() if freshness is not None else None
         # Pull extra candidates because stale paths can drop some indexed
         # results before final scoring.
         for candidate in index.search_paths(
@@ -179,6 +181,7 @@ class RepoSemanticSearchTool:
                 retrieval_backend="local_lexical_index",
                 indexed_score=candidate.score,
                 indexed_metadata=index.file_metadata(candidate.path),
+                index_status=index_status,
             )
             if document is not None:
                 documents.append(document)
@@ -195,6 +198,7 @@ class RepoSemanticSearchTool:
         retrieval_backend: str,
         indexed_score: float | None = None,
         indexed_metadata: dict[str, Any] | None = None,
+        index_status: dict[str, int | bool] | None = None,
     ) -> CandidateDocument | None:
         """Load one candidate document if it passes filters and text checks."""
 
@@ -217,6 +221,8 @@ class RepoSemanticSearchTool:
         }
         if indexed_score is not None:
             metadata["indexed_score"] = indexed_score
+        if index_status is not None:
+            metadata["index_status"] = index_status
         if indexed_metadata is not None:
             metadata["symbols"] = indexed_metadata.get("symbols", [])
             metadata["imports"] = indexed_metadata.get("imports", [])

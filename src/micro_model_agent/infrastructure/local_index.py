@@ -87,6 +87,37 @@ class LocalIndexResult:
 
 
 @dataclass(frozen=True, slots=True)
+class LocalIndexFreshness:
+    """Current repository drift from the persisted lexical index."""
+
+    indexed_file_count: int
+    changed_file_count: int
+    missing_file_count: int
+    extra_file_count: int
+
+    @property
+    def is_stale(self) -> bool:
+        """Return true when current repository files differ from the index."""
+
+        return (
+            self.changed_file_count > 0
+            or self.missing_file_count > 0
+            or self.extra_file_count > 0
+        )
+
+    def as_metadata(self) -> dict[str, int | bool]:
+        """Return a JSON-ready freshness summary for tool metadata."""
+
+        return {
+            "is_stale": self.is_stale,
+            "indexed_file_count": self.indexed_file_count,
+            "changed_file_count": self.changed_file_count,
+            "missing_file_count": self.missing_file_count,
+            "extra_file_count": self.extra_file_count,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class IndexedPathScore:
     """One path match loaded from a persisted lexical index."""
 
@@ -391,6 +422,34 @@ class LocalLexicalIndexReader:
                 }
         return None
 
+    def freshness(self) -> LocalIndexFreshness | None:
+        """Compare the persisted index with current repository files."""
+
+        index = self._load_index()
+        if index is None:
+            return None
+
+        metadata_by_path = self._metadata_by_path(index)
+        current_hashes = self._current_file_hashes()
+        changed_file_count = 0
+        missing_file_count = 0
+
+        for relative_path, metadata in metadata_by_path.items():
+            current_sha256 = current_hashes.get(relative_path)
+            if current_sha256 is None:
+                missing_file_count += 1
+                continue
+            indexed_sha256 = metadata.get("sha256")
+            if isinstance(indexed_sha256, str) and indexed_sha256 != current_sha256:
+                changed_file_count += 1
+
+        return LocalIndexFreshness(
+            indexed_file_count=len(metadata_by_path),
+            changed_file_count=changed_file_count,
+            missing_file_count=missing_file_count,
+            extra_file_count=len(set(current_hashes) - set(metadata_by_path)),
+        )
+
     def _metadata_by_path(self, index: dict[str, Any]) -> dict[str, dict[str, Any]]:
         """Return valid file records keyed by repository-relative path."""
 
@@ -435,3 +494,19 @@ class LocalLexicalIndexReader:
         if loaded.get("schema_version") != INDEX_SCHEMA_VERSION:
             return None
         return cast(dict[str, Any], loaded)
+
+    def _current_file_hashes(self) -> dict[str, str]:
+        """Return SHA-256 hashes for files currently eligible for indexing."""
+
+        hashes: dict[str, str] = {}
+        for path in self.repository.iter_files("**/*"):
+            try:
+                if path.stat().st_size > DEFAULT_MAX_FILE_BYTES:
+                    continue
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            if looks_binary(raw[:4096]):
+                continue
+            hashes[self.repository.relative_path(path)] = hashlib.sha256(raw).hexdigest()
+        return hashes
