@@ -220,6 +220,22 @@ uv run micro-agent promote gate \
   --evaluation-report .micro_model_agent/training/runs/qwen-tool-profile-proof/trace-evaluation.json
 ```
 
+## Latest Local Proof Attempt
+
+The existing non-dry-run 7B adapter at
+`.micro_model_agent/training/runs/qwen-coder-7b-tool-schema-20260613-205520`
+was evaluated against the committed held-out suites and promotion gate.
+
+- Synthetic behavior: failed, score `0.38` over 15 examples. JSON parsing was
+  available, but correct tool and argument rates were both `0.20`.
+- Trace behavior: failed, score `0.00` over 8 examples. Tool-history match rate
+  was `0.125`.
+- Promotion gate: blocked at the `0.80` minimum score threshold.
+
+The proof is therefore complete as a negative result: the current adapter is not
+promotable. The next training iteration should improve data quality and
+supervised target formatting before another non-dry-run adapter run.
+
 ## Implementation Priorities
 
 1. Add explicit baseline-vs-adapter comparison reporting. Done for persisted
