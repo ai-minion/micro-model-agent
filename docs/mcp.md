@@ -112,6 +112,48 @@ The first model-backed call can take about 90 seconds while the 7B model loads.
 The server process caches the loaded provider for later calls with the same
 model settings.
 
+## Base-Model Trace Collection
+
+For real data collection, use the base coder model with explicit runtime schemas
+instead of a trained adapter:
+
+```text
+Use micro_agent_run_loop with goal "<repo task>".
+Set base_model "Qwen/Qwen2.5-Coder-7B-Instruct", use_adapter false,
+schema_prompt true, capture_prompts true, apply_patches true when you want real
+edits, and include the tools needed for the task.
+```
+
+This stores workflow traces under:
+
+```text
+.micro_model_agent/traces/workflows.jsonl
+```
+
+Review labels are stored separately from the raw trace log:
+
+```bash
+uv run micro-agent dataset review-trace \
+  --trace-id <trace-id> \
+  --outcome accepted \
+  --quality good \
+  --reviewer-notes "Useful real task trace."
+```
+
+Export only reviewed traces when building a curated real-data dataset:
+
+```bash
+uv run micro-agent dataset export-traces \
+  --label-mode reviewed \
+  --outcome accepted \
+  --quality good \
+  --require-tool-call \
+  --output .micro_model_agent/datasets/reviewed_real_traces.jsonl
+```
+
+Rejected raw traces should be used for analysis and later corrected examples,
+not as direct SFT targets.
+
 ## Promoted Adapter Smoke Test
 
 After selecting a promoted adapter, run a narrow MCP smoke through the public

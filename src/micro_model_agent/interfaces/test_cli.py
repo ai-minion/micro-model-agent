@@ -218,6 +218,39 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     ]
 
 
+def test_cli_dataset_synthesize_filters_categories(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = tmp_path / "filtered.jsonl"
+
+    result = runner.invoke(
+        app,
+        [
+            "dataset",
+            "synthesize",
+            "--count",
+            "6",
+            "--output",
+            str(dataset_path),
+            "--template-dir",
+            "examples/synthetic-data",
+            "--include-category",
+            "trace_patch_training",
+            "--include-category",
+            "trace_final_response_training",
+            "--seed",
+            "41",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    examples = load_dataset_examples(dataset_path)
+    assert len(examples) == 6
+    assert {example.metadata["category"] for example in examples} == {
+        "trace_patch_training",
+        "trace_final_response_training",
+    }
+
+
 def test_cli_synthetic_eval_failure_names_category_and_example(tmp_path: Path) -> None:
     runner = CliRunner()
     dataset_path = Path("examples/synthetic-data/held-out.behavior.jsonl")
@@ -304,6 +337,140 @@ def test_cli_trace_eval_scores_held_out_trace_examples(tmp_path: Path) -> None:
     assert "repo.write_patch" in report["details"]["evaluation_metadata"]["tool_profile"][
         "available_tools"
     ]
+
+
+def test_cli_workspace_staged_eval_scores_held_out_examples(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = Path("examples/workspace-eval/held-out.workspace-staged.jsonl")
+    examples = load_dataset_examples(dataset_path)
+    responses = []
+    for example in examples:
+        stages = example.target["stages"]
+        responses.append(
+            {
+                "read_search": {
+                    "files": stages["read_search"]["required_files"],
+                    "queries": stages["read_search"]["required_queries"],
+                },
+                "diagnosis": {
+                    "root_cause": " ".join(stages["diagnosis"]["required_terms"]),
+                    "plan": ["read", "diagnose", "dry-run patch"],
+                },
+                "patch_proposal": {
+                    "changed_files": stages["patch_proposal"]["required_changed_files"],
+                    "patch": " ".join(stages["patch_proposal"]["patch_contains"]),
+                },
+                "test_selection": {
+                    "commands": stages["test_selection"]["required_commands"],
+                },
+                "final_summary": {
+                    "summary": "dry-run "
+                    + " ".join(stages["final_summary"]["required_summary_terms"]),
+                },
+            }
+        )
+    response_file = tmp_path / "workspace_staged_responses.jsonl"
+    response_file.write_text(
+        "\n".join(json.dumps(response, sort_keys=True) for response in responses),
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "training" / "runs" / "latest"
+    report_path = run_dir / "workspace-staged-evaluation.json"
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "workspace-staged",
+            "--run-id",
+            str(run_dir),
+            "--dataset",
+            str(dataset_path),
+            "--scripted-response-file",
+            str(response_file),
+            "--pass-threshold",
+            "1.0",
+            "--output",
+            str(report_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "staged workspace eval scored 1.00" in result.output
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    assert report["details"]["metrics"]["patch_proposal_score"] == 1.0
+    assert report["details"]["metrics"]["test_selection_score"] == 1.0
+    assert report["details"]["evaluation_metadata"]["provider"] == "scripted"
+    assert "repo.write_patch" in report["details"]["evaluation_metadata"]["tool_profile"][
+        "available_tools"
+    ]
+
+
+def test_cli_review_workspace_staged_writes_auto_triage_queue(tmp_path: Path) -> None:
+    runner = CliRunner()
+    dataset_path = Path("examples/workspace-eval/held-out.workspace-staged.jsonl")
+    examples = load_dataset_examples(dataset_path)
+    report_path = tmp_path / "workspace-staged-evaluation.json"
+    output_path = tmp_path / "workspace-review.jsonl"
+    report_path.write_text(
+        json.dumps(
+            {
+                "passed": False,
+                "summary": "staged weak",
+                "score": 0.3,
+                "details": {
+                    "evaluation_metadata": {"run_id": "base", "provider": "scripted"},
+                    "examples": [
+                        {
+                            "example_id": str(examples[0].id),
+                            "score": 0.25,
+                            "parse_success": True,
+                            "stages": [
+                                {"name": "read_search", "score": 0.25, "errors": ["missing"]}
+                            ],
+                            "raw_response": "{}",
+                            "parsed_response": {},
+                        },
+                        {
+                            "example_id": str(examples[1].id),
+                            "score": 0.98,
+                            "parse_success": True,
+                            "stages": [
+                                {"name": "read_search", "score": 1.0, "errors": []}
+                            ],
+                            "raw_response": "{}",
+                            "parsed_response": {},
+                        },
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "eval",
+            "review-workspace-staged",
+            "--dataset",
+            str(dataset_path),
+            "--report",
+            str(report_path),
+            "--output",
+            str(output_path),
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "auto_reject_simple_failure=1" in result.output
+    assert "auto_accept_candidate=1" in result.output
+    records = [json.loads(line) for line in output_path.read_text(encoding="utf-8").splitlines()]
+    assert records[0]["auto_triage"]["decision"] == "auto_reject_simple_failure"
+    assert records[1]["auto_triage"]["decision"] == "auto_accept_candidate"
+    assert "workspace_files" in records[0]
+    assert "gold_response" in records[0]
+    assert records[0]["model_results"][0]["run_id"] == "base"
 
 
 def test_cli_promotion_gate_requires_all_evaluation_reports(tmp_path: Path) -> None:

@@ -25,11 +25,17 @@ class SyntheticTemplateGenerator:
         seed: int | None = None,
         balance_categories: bool = True,
         vary_scenarios: bool = True,
+        include_categories: tuple[str, ...] = (),
+        exclude_categories: tuple[str, ...] = (),
     ) -> list[DatasetExample]:
         if count < 1:
             raise ValueError("count must be greater than zero")
 
-        templates = self._load_templates()
+        templates = self._filter_templates(
+            self._load_templates(),
+            include_categories=include_categories,
+            exclude_categories=exclude_categories,
+        )
         if not templates:
             raise ValueError(f"no synthetic template records found in {self.templates_dir}")
 
@@ -73,6 +79,32 @@ class SyntheticTemplateGenerator:
         for path in sorted(self.templates_dir.glob("*.seed.jsonl")):
             examples.extend(load_dataset_examples(path))
         return examples
+
+    def _filter_templates(
+        self,
+        templates: list[DatasetExample],
+        *,
+        include_categories: tuple[str, ...],
+        exclude_categories: tuple[str, ...],
+    ) -> list[DatasetExample]:
+        """Filter templates by metadata.category before selection."""
+
+        includes = set(include_categories)
+        excludes = set(exclude_categories)
+        if not includes and not excludes:
+            return templates
+
+        selected: list[DatasetExample] = []
+        for template in templates:
+            category = template.metadata.get("category")
+            if not isinstance(category, str):
+                category = "uncategorized"
+            if includes and category not in includes:
+                continue
+            if category in excludes:
+                continue
+            selected.append(template)
+        return selected
 
     def _select_templates(
         self,
@@ -128,9 +160,9 @@ class SyntheticTemplateGenerator:
             ]
         )
         if isinstance(input_payload.get("goal"), str):
-            input_payload["goal"] = f"{input_payload['goal']} Scenario {index + 1}: {focus}."
+            input_payload["variant_focus"] = focus
         if isinstance(input_payload.get("context"), str):
-            input_payload["context"] = f"{input_payload['context']} Variant focus: {focus}."
+            input_payload["variant_focus"] = focus
         return input_payload
 
     def _example_id(self, seed: int | None, index: int) -> UUID:

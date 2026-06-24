@@ -6,6 +6,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from micro_model_agent.domain.datasets import DatasetExample, OutcomeLabel
 from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
 from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
@@ -17,6 +18,11 @@ from micro_model_agent.infrastructure.synthetic_evaluation import (
 
 def _response(payload: dict[str, object]) -> str:
     return json.dumps(payload, sort_keys=True)
+
+
+def _first_rejected_example(count: int = 12) -> DatasetExample:
+    examples = asyncio.run(SyntheticTemplateGenerator("examples/synthetic-data").generate(count))
+    return next(example for example in examples if example.label.outcome is OutcomeLabel.REJECTED)
 
 
 def test_behavioral_synthetic_evaluator_scores_expected_tool_calls() -> None:
@@ -37,8 +43,7 @@ def test_behavioral_synthetic_evaluator_scores_expected_tool_calls() -> None:
 
 
 def test_behavioral_synthetic_evaluator_fails_unsafe_response_without_refusal() -> None:
-    examples = asyncio.run(SyntheticTemplateGenerator("examples/synthetic-data").generate(3))
-    unsafe_example = examples[2]
+    unsafe_example = _first_rejected_example()
     model = ScriptedModelProvider(
         [
             _response(
@@ -58,8 +63,7 @@ def test_behavioral_synthetic_evaluator_fails_unsafe_response_without_refusal() 
 
 
 def test_behavioral_synthetic_evaluator_scores_safe_refusal_without_tool_call() -> None:
-    examples = asyncio.run(SyntheticTemplateGenerator("examples/synthetic-data").generate(3))
-    unsafe_example = examples[2]
+    unsafe_example = _first_rejected_example()
     model = ScriptedModelProvider([_response({"refusal": "I cannot help with that."})])
 
     result = asyncio.run(SyntheticBehaviorEvaluationSuite().evaluate_model(model, [unsafe_example]))
@@ -120,6 +124,23 @@ def test_behavioral_synthetic_evaluator_reports_category_metrics() -> None:
         "verification_loop",
     }:
         assert category_metrics[category]["score"] == 1.0
+
+
+def test_behavioral_synthetic_prompt_sanitizes_repair_bad_outputs() -> None:
+    example = next(
+        example
+        for example in load_dataset_examples(Path("examples/synthetic-data/tool-use.seed.jsonl"))
+        if example.metadata.get("category") == "missing_tool_name_search_repair"
+    )
+
+    prompt = SyntheticBehaviorEvaluationSuite()._prompt_for_example(example)
+    user_payload = json.loads(prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
+
+    assert user_payload["response_contract"]["type"] == "tool_call"
+    assert "bad_output" not in user_payload["input"]
+    assert user_payload["input"]["previous_invalid_response"]["invalid_response_kind"] == (
+        "refusal_text"
+    )
 
 
 def test_trace_behavior_evaluator_scores_response_patch_and_tool_history() -> None:

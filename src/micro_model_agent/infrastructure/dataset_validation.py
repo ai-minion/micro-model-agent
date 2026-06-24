@@ -21,8 +21,17 @@ from micro_model_agent.domain.datasets import (
 from micro_model_agent.infrastructure.dataset_metadata import (
     metadata_with_tool_profile,
     summarize_tool_profiles,
+    tool_profile_for_example,
 )
-from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
+from micro_model_agent.infrastructure.dataset_prompting import synthetic_prompt_payload
+from micro_model_agent.infrastructure.tools.catalog import (
+    TOOL_ARGUMENT_CONTRACTS,
+)
+from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+    WORKSPACE_STAGED_SYSTEM_PROMPT,
+    is_workspace_staged_example,
+    workspace_staged_prompt_payload,
+)
 
 
 class LocalDatasetValidator:
@@ -69,6 +78,8 @@ class LocalDatasetValidator:
 
         if example.kind is DatasetExampleKind.TOOL_USE:
             # Tool-use examples must also match the tool argument schemas.
+            if self._has_refusal(example.target) and "tool_name" not in example.target:
+                return errors
             errors.extend(self._validate_tool_target(example, prefix))
         if example.kind is DatasetExampleKind.REPAIR:
             errors.extend(self._validate_repair_target(example, prefix))
@@ -132,14 +143,19 @@ class LocalDatasetValidator:
         prefix: str,
     ) -> list[str]:
         errors: list[str] = []
-        refusal = example.target.get("refusal")
-        has_refusal = isinstance(refusal, str) and bool(refusal.strip())
+        has_refusal = self._has_refusal(example.target)
 
         if example.label.outcome is OutcomeLabel.REJECTED and not has_refusal:
             errors.append(f"{prefix}: rejected examples must include target.refusal")
         if example.label.outcome is not OutcomeLabel.REJECTED and "refusal" in example.target:
             errors.append(f"{prefix}: only rejected examples may include target.refusal")
+        if has_refusal and "arguments" in example.target:
+            errors.append(f"{prefix}: refusal targets must not include tool arguments")
         return errors
+
+    def _has_refusal(self, target: dict[str, object]) -> bool:
+        refusal = target.get("refusal")
+        return isinstance(refusal, str) and bool(refusal.strip())
 
     def _category_counts(self, examples: list[DatasetExample]) -> dict[str, int]:
         counts: dict[str, int] = {}
@@ -171,19 +187,33 @@ def export_sft_jsonl(path: Path, examples: list[DatasetExample]) -> None:
     with path.open("w", encoding="utf-8") as file:
         for example in examples:
             # The training backend expects chat-style records: system, user,
-            # assistant. We serialize the flexible input/target dictionaries as
-            # JSON strings inside those messages.
+            # assistant. The payload mirrors the runtime loop prompt closely so
+            # SFT teaches one strict JSON decision instead of a loose dataset
+            # dictionary shape.
+            user_payload = _sft_user_payload(example)
+            assistant_payload = _sft_assistant_payload(example)
             record = {
                 "messages": [
                     {
                         "role": "system",
-                        "content": (
-                            "You are MicroModelAgent's workflow executor. "
-                            "Choose safe typed tool calls and follow retrieved context."
+                        "content": _sft_system_prompt(example),
+                    },
+                    {
+                        "role": "user",
+                        "content": json.dumps(
+                            user_payload,
+                            separators=(",", ":"),
+                            sort_keys=True,
                         ),
                     },
-                    {"role": "user", "content": json.dumps(example.input, sort_keys=True)},
-                    {"role": "assistant", "content": json.dumps(example.target, sort_keys=True)},
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(
+                            assistant_payload,
+                            separators=(",", ":"),
+                            sort_keys=True,
+                        ),
+                    },
                 ],
                 "metadata": {
                     "id": str(example.id),
@@ -202,3 +232,167 @@ def export_sft_jsonl(path: Path, examples: list[DatasetExample]) -> None:
             }
             file.write(json.dumps(record, sort_keys=True))
             file.write("\n")
+
+
+_SFT_SYSTEM_PROMPT = (
+    "You are MicroModelAgent's workflow executor. "
+    "Respond with exactly one JSON object and no markdown. "
+    "Use only these tool_name values when making a tool call: repo.search, repo.read, "
+    "repo.semantic_search, repo.write_patch, test.run, git.diff. "
+    "Never invent tool names such as shell.command, none, or null. "
+    "Tool arguments must use exactly the schema keys shown in tool_schemas; do not rename "
+    "fields such as command_name to command. "
+    "When response_contract.type is tool_call, you must return tool_name and arguments; "
+    "do not return refusal, final_response, or ok. "
+    "For tool_call responses, do not return helper or analysis keys such as "
+    "argument_keys, argument_values, argument_changes, argument_reconciliation, "
+    "selected_tool, or changed_fields. "
+    "When response_contract.type is refusal, return refusal only and no tool call. "
+    "When response_contract.type is final_response, return final_response and ok only. "
+    "For safe unfinished work, choose one available typed tool call using "
+    '{"tool_name":"repo.read","arguments":{"files":[{"path":"README.md"}]},'
+    '"reason":"..."}. '
+    "When the request is unsafe or impossible, return "
+    '{"refusal":"Concise reason the request cannot be performed safely."}. '
+    "When the task is complete and no tool call is needed, return "
+    '{"final_response":"Concise answer to the user.","ok":true}.'
+)
+
+_TRACE_SFT_SYSTEM_PROMPT = (
+    "You are MicroModelAgent replaying a held-out workflow trace. "
+    "Respond with exactly one JSON object and no markdown. "
+    "Include final_response when the task is complete, "
+    "patch when a code change is required, "
+    "and tool_history when tool calls were part of the workflow."
+)
+
+
+def _sft_system_prompt(example: DatasetExample) -> str:
+    """Return the system prompt that matches the example's evaluation surface."""
+
+    if example.kind is DatasetExampleKind.EVALUATION:
+        if is_workspace_staged_example(example):
+            return WORKSPACE_STAGED_SYSTEM_PROMPT
+        return _TRACE_SFT_SYSTEM_PROMPT
+    return _SFT_SYSTEM_PROMPT
+
+
+def _sft_user_payload(example: DatasetExample) -> dict[str, object]:
+    """Build the model-facing training prompt payload for one example."""
+
+    if example.kind is DatasetExampleKind.EVALUATION:
+        if is_workspace_staged_example(example):
+            return workspace_staged_prompt_payload(example)
+        return _sft_trace_user_payload(example)
+
+    return synthetic_prompt_payload(example, include_tool_schemas=True)
+
+
+def _sft_trace_user_payload(example: DatasetExample) -> dict[str, object]:
+    """Build the same trace payload shape used by held-out trace evaluation."""
+
+    return {
+        "goal": example.input.get("goal", ""),
+        "available_tools": tool_profile_for_example(
+            example,
+            default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
+        )["available_tools"],
+        "retrieved_context": example.input.get("retrieved_context", {}),
+        "tool_history": example.input.get("tool_history", []),
+        "steps": example.input.get("steps", []),
+    }
+
+
+def _sft_assistant_payload(example: DatasetExample) -> dict[str, object]:
+    """Canonicalize dataset targets to a strict runtime JSON decision."""
+
+    if example.kind is DatasetExampleKind.EVALUATION:
+        if is_workspace_staged_example(example):
+            return _sft_workspace_staged_assistant_payload(example)
+        return _sft_trace_assistant_payload(example)
+
+    target = example.target
+    refusal = target.get("refusal")
+    if isinstance(refusal, str) and refusal.strip():
+        return {"refusal": refusal}
+
+    final_response = target.get("final_response")
+    if isinstance(final_response, str) and final_response.strip():
+        ok = target.get("ok", True)
+        return {"final_response": final_response, "ok": ok if isinstance(ok, bool) else True}
+
+    tool_name = target.get("tool_name")
+    arguments = target.get("arguments")
+    if isinstance(tool_name, str) and isinstance(arguments, dict):
+        payload: dict[str, object] = {
+            "tool_name": tool_name,
+            "arguments": arguments,
+        }
+        reason = target.get("reason")
+        if isinstance(reason, str) and reason.strip():
+            payload["reason"] = reason
+        return payload
+
+    return dict(target)
+
+
+def _sft_trace_assistant_payload(example: DatasetExample) -> dict[str, object]:
+    """Build the trace-evaluation response shape expected by trace scoring."""
+
+    target = example.target
+    payload: dict[str, object] = {}
+
+    final_response = target.get("final_response") or target.get("summary")
+    if isinstance(final_response, str) and final_response.strip():
+        payload["final_response"] = final_response
+
+    patch = target.get("patch")
+    if isinstance(patch, str) and patch.strip():
+        payload["patch"] = patch
+
+    changed_files = target.get("changed_files")
+    if isinstance(changed_files, list) and all(isinstance(path, str) for path in changed_files):
+        payload["changed_files"] = changed_files
+
+    tool_history = _sft_trace_tool_history(example)
+    if tool_history:
+        payload["tool_history"] = tool_history
+
+    refusal = target.get("refusal")
+    if isinstance(refusal, str) and refusal.strip():
+        payload["refusal"] = refusal
+
+    return payload or dict(target)
+
+
+def _sft_workspace_staged_assistant_payload(example: DatasetExample) -> dict[str, object]:
+    """Return the reviewed gold staged workspace answer for SFT."""
+
+    gold_response = example.target.get("gold_response")
+    if isinstance(gold_response, dict):
+        return gold_response
+    return dict(example.target)
+
+
+def _sft_trace_tool_history(example: DatasetExample) -> list[dict[str, object]]:
+    """Return compact tool calls from trace input history for SFT targets."""
+
+    history = example.input.get("tool_history")
+    if not isinstance(history, list):
+        return []
+
+    tool_calls: list[dict[str, object]] = []
+    for item in history:
+        if not isinstance(item, dict):
+            continue
+        tool_call = item.get("tool_call")
+        if not isinstance(tool_call, dict):
+            continue
+        tool_name = tool_call.get("tool_name")
+        arguments = tool_call.get("arguments")
+        if isinstance(tool_name, str):
+            entry: dict[str, object] = {"tool_name": tool_name}
+            if isinstance(arguments, dict):
+                entry["arguments"] = arguments
+            tool_calls.append(entry)
+    return tool_calls

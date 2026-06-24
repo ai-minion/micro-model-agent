@@ -7,7 +7,7 @@ from dataclasses import replace
 from typing import Any
 
 from micro_model_agent.application.workflows import TraceDatasetBuilder
-from micro_model_agent.domain.contracts import WorkflowTrace
+from micro_model_agent.domain.contracts import WorkflowStatus, WorkflowTrace
 from micro_model_agent.domain.datasets import (
     DatasetExample,
     DatasetExampleKind,
@@ -16,6 +16,7 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.infrastructure.trace_review import TraceReview
 
 SECRET_KEY_PATTERN = re.compile(
     r"(api[_-]?key|auth|credential|password|secret|token)", re.IGNORECASE
@@ -41,15 +42,26 @@ class TraceDatasetExporter:
         *,
         kind: DatasetExampleKind = DatasetExampleKind.REPAIR,
         label_mode: str = "review",
+        reviews_by_trace_id: dict[str, TraceReview] | None = None,
         outcome: OutcomeLabel | None = None,
         quality: QualityLabel | None = None,
+        workflow_status: WorkflowStatus | None = None,
+        require_tool_call: bool = False,
         max_examples: int | None = None,
     ) -> list[DatasetExample]:
         """Convert traces to redacted dataset examples after filtering."""
 
         examples: list[DatasetExample] = []
         for trace in traces:
-            label = self._label_for_trace(trace, label_mode)
+            if workflow_status is not None and trace.status is not workflow_status:
+                continue
+            if require_tool_call and not _has_tool_call(trace):
+                continue
+
+            review = (reviews_by_trace_id or {}).get(str(trace.id))
+            if label_mode == "reviewed" and review is None:
+                continue
+            label = self._label_for_trace(trace, label_mode, review)
             if outcome is not None and label.outcome is not outcome:
                 continue
             if quality is not None and label.quality is not quality:
@@ -62,20 +74,33 @@ class TraceDatasetExporter:
                 metadata={
                     "export_label_mode": label_mode,
                     "review_required": label.quality is QualityLabel.UNKNOWN,
+                    "review_id": str(review.id) if review else None,
+                    "has_corrected_target": bool(review and review.corrected_target),
                 },
             )
+            if review is not None and review.corrected_target is not None:
+                example = replace(example, target=review.corrected_target)
             examples.append(redact_dataset_example(example))
             if max_examples is not None and len(examples) >= max_examples:
                 break
         return examples
 
-    def _label_for_trace(self, trace: WorkflowTrace, label_mode: str) -> DatasetLabel:
+    def _label_for_trace(
+        self,
+        trace: WorkflowTrace,
+        label_mode: str,
+        review: TraceReview | None,
+    ) -> DatasetLabel:
         if label_mode == "review":
             return DatasetLabel(
                 outcome=OutcomeLabel.NEEDS_REVIEW,
                 quality=QualityLabel.UNKNOWN,
                 reviewer_notes="Exported from stored trace; requires human review.",
             )
+        if label_mode == "reviewed":
+            if review is None:
+                raise ValueError("reviewed label mode requires a trace review")
+            return review.label
         if label_mode == "evaluation":
             return _label_from_trace_evaluation(trace)
         raise ValueError(f"unsupported trace export label mode: {label_mode}")
@@ -100,6 +125,10 @@ def validate_trace_export_examples(examples: list[DatasetExample]) -> list[str]:
         if not isinstance(trace_id, str) or not trace_id:
             errors.append(f"{prefix}: metadata.trace_id is required")
     return errors
+
+
+def _has_tool_call(trace: WorkflowTrace) -> bool:
+    return any(step.tool_call is not None for step in trace.steps)
 
 
 def _label_from_trace_evaluation(trace: WorkflowTrace) -> DatasetLabel:

@@ -52,6 +52,8 @@ class ToolLoopAgentTask:
     # the tool results it already has.
     max_tool_calls: int | None = None
     required_tools: tuple[str, ...] = ()
+    capture_prompts: bool = False
+    run_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,14 +123,17 @@ class ToolLoopAgent:
                 # Some tasks require evidence from tools before an answer is
                 # allowed, so early final responses are fed back as policy errors.
                 if task.require_tool_call and tool_calls_made == 0:
+                    output = {
+                        "raw_response": decision.raw_response,
+                        "error": "final_response_before_tool_call",
+                    }
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
                             status=WorkflowStatus.FAILED,
-                            output={
-                                "raw_response": decision.raw_response,
-                                "error": "final_response_before_tool_call",
-                            },
+                            output=output,
                         )
                     )
                     transcript.append({"role": "assistant", "content": decision.raw_response})
@@ -146,15 +151,18 @@ class ToolLoopAgent:
                     continue
                 missing_required_tools = self._missing_required_tools(task, steps)
                 if missing_required_tools:
+                    output = {
+                        "raw_response": decision.raw_response,
+                        "error": "final_response_before_required_tools",
+                        "missing_required_tools": list(missing_required_tools),
+                    }
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
                             status=WorkflowStatus.FAILED,
-                            output={
-                                "raw_response": decision.raw_response,
-                                "error": "final_response_before_required_tools",
-                                "missing_required_tools": list(missing_required_tools),
-                            },
+                            output=output,
                         )
                     )
                     transcript.append({"role": "assistant", "content": decision.raw_response})
@@ -182,13 +190,18 @@ class ToolLoopAgent:
                             status=WorkflowStatus.SUCCEEDED
                             if final_ok
                             else WorkflowStatus.FAILED,
-                            output={
+                            output=self._step_output(
+                                {
                                 "raw_response": decision.raw_response,
                                 "response": decision.response,
                                 "ok": final_ok,
-                            },
+                                },
+                                prompt=prompt,
+                                capture_prompt=task.capture_prompts,
+                            ),
                         ),
                     ],
+                    run_metadata=task.run_metadata,
                     ok=final_ok,
                     response=decision.response,
                     tool_calls_made=tool_calls_made,
@@ -197,14 +210,17 @@ class ToolLoopAgent:
             if decision.kind == "parse_error":
                 # Bad JSON does not immediately end the workflow. The parser
                 # error is shown to the model so it has a chance to recover.
+                output = {
+                    "raw_response": decision.raw_response,
+                    "error": decision.error,
+                }
+                if task.capture_prompts:
+                    output["prompt"] = prompt
                 steps.append(
                     WorkflowStep(
                         name=f"model_turn_{turn_number}",
                         status=WorkflowStatus.FAILED,
-                        output={
-                            "raw_response": decision.raw_response,
-                            "error": decision.error,
-                        },
+                        output=output,
                     )
                 )
                 transcript.append({"role": "assistant", "content": decision.raw_response})
@@ -221,14 +237,17 @@ class ToolLoopAgent:
             if self._tool_budget_exhausted(task, tool_calls_made, steps):
                 # Once the budget is exhausted, the agent tells the model to
                 # answer using existing tool results instead of calling more tools.
+                output = {
+                    "raw_response": decision.raw_response,
+                    "error": "tool_call_after_budget_exhausted",
+                }
+                if task.capture_prompts:
+                    output["prompt"] = prompt
                 steps.append(
                     WorkflowStep(
                         name=f"model_turn_{turn_number}",
                         status=WorkflowStatus.FAILED,
-                        output={
-                            "raw_response": decision.raw_response,
-                            "error": "tool_call_after_budget_exhausted",
-                        },
+                        output=output,
                     )
                 )
                 transcript.append({"role": "assistant", "content": decision.raw_response})
@@ -271,10 +290,14 @@ class ToolLoopAgent:
                     else WorkflowStatus.FAILED,
                     tool_call=tool_call,
                     tool_result=tool_result,
-                    output={
-                        "raw_response": decision.raw_response,
-                        "reason": decision.reason,
-                    },
+                    output=self._step_output(
+                        {
+                            "raw_response": decision.raw_response,
+                            "reason": decision.reason,
+                        },
+                        prompt=prompt,
+                        capture_prompt=task.capture_prompts,
+                    ),
                 )
             )
             transcript.append({"role": "assistant", "content": decision.raw_response})
@@ -288,6 +311,7 @@ class ToolLoopAgent:
         return await self._finish(
             trace=trace,
             steps=steps,
+            run_metadata=task.run_metadata,
             ok=False,
             response="model did not produce a final response before max_turns",
             tool_calls_made=tool_calls_made,
@@ -526,6 +550,7 @@ class ToolLoopAgent:
         *,
         trace: WorkflowTrace,
         steps: list[WorkflowStep],
+        run_metadata: dict[str, Any],
         ok: bool,
         response: str,
         tool_calls_made: int,
@@ -540,6 +565,8 @@ class ToolLoopAgent:
         }
         if error:
             final_output["error"] = error
+        if run_metadata:
+            final_output["run_metadata"] = run_metadata
 
         trace = replace(
             trace,
@@ -556,3 +583,16 @@ class ToolLoopAgent:
             tool_calls_made=tool_calls_made,
             trace=trace,
         )
+
+    def _step_output(
+        self,
+        output: dict[str, Any],
+        *,
+        prompt: str,
+        capture_prompt: bool,
+    ) -> dict[str, Any]:
+        """Attach the exact prompt to a trace step when collection asks for it."""
+
+        if not capture_prompt:
+            return output
+        return {**output, "prompt": prompt}

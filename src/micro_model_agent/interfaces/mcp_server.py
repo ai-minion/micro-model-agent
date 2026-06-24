@@ -86,6 +86,7 @@ async def run_agent_loop(
     context: str = "",
     adapter_path: str | None = None,
     base_model: str | None = None,
+    use_adapter: bool = True,
     available_tools: list[str] | None = None,
     required_tools: list[str] | None = None,
     max_turns: int = 4,
@@ -93,6 +94,7 @@ async def run_agent_loop(
     max_new_tokens: int = 350,
     max_tool_result_prompt_chars: int = 2500,
     schema_prompt: bool = False,
+    capture_prompts: bool = False,
     apply_patches: bool = False,
     allow_test_run: bool = False,
     test_command_name: str | None = None,
@@ -113,6 +115,7 @@ async def run_agent_loop(
         repository_root=repository,
         adapter_path=adapter_path,
         base_model=base_model,
+        use_adapter=use_adapter,
         allow_missing_base_model=bool(scripted_responses),
     )
     model_provider = _model_provider(
@@ -145,6 +148,16 @@ async def run_agent_loop(
             tool_schemas=builtin_tool_prompt_schemas(allowed_tool_names) if schema_prompt else {},
             max_tool_calls=max_tool_calls,
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+            capture_prompts=capture_prompts,
+            run_metadata={
+                "interface": "mcp",
+                "schema_prompt": schema_prompt,
+                "capture_prompts": capture_prompts,
+                "apply_patches": apply_patches,
+                "available_tools": list(allowed_tool_names),
+                "required_tools": list(required_tools or ()),
+                "model": model_settings,
+            },
         )
     )
     # Return a compact summary rather than the full trace. The full trace can be
@@ -276,6 +289,7 @@ def create_mcp_server(
         context: str = "",
         adapter_path: str | None = None,
         base_model: str | None = None,
+        use_adapter: bool = True,
         available_tools: list[str] | None = None,
         required_tools: list[str] | None = None,
         max_turns: int = 4,
@@ -283,6 +297,7 @@ def create_mcp_server(
         max_new_tokens: int = 350,
         max_tool_result_prompt_chars: int = 2500,
         schema_prompt: bool = False,
+        capture_prompts: bool = False,
         apply_patches: bool = False,
         allow_test_run: bool = False,
         test_command_name: str | None = None,
@@ -296,6 +311,7 @@ def create_mcp_server(
             context=context,
             adapter_path=adapter_path,
             base_model=base_model,
+            use_adapter=use_adapter,
             available_tools=available_tools,
             required_tools=required_tools,
             max_turns=max_turns,
@@ -303,6 +319,7 @@ def create_mcp_server(
             max_new_tokens=max_new_tokens,
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
             schema_prompt=schema_prompt,
+            capture_prompts=capture_prompts,
             apply_patches=apply_patches,
             allow_test_run=allow_test_run,
             test_command_name=test_command_name,
@@ -409,13 +426,14 @@ def _model_provider(
         os.environ.setdefault("HF_HUB_OFFLINE", "1")
         os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
 
-    resolved_adapter_path = adapter_path or DEFAULT_7B_ADAPTER_PATH
-    adapter = Path(resolved_adapter_path)
+    adapter = Path(adapter_path) if adapter_path else None
     resolved_base_model = base_model
     if resolved_base_model is None:
+        if adapter is None:
+            raise ValueError("base_model is required when adapter_path is not set")
         resolved_base_model = _base_model_from_adapter(adapter)
 
-    cache_key = (resolved_base_model, str(adapter), max_new_tokens)
+    cache_key = (resolved_base_model, str(adapter) if adapter else None, max_new_tokens)
     provider = _MODEL_CACHE.get(cache_key)
     if provider is None:
         # Cache providers so repeated MCP calls do not reload model weights.
@@ -433,6 +451,7 @@ def _resolve_model_settings(
     repository_root: str | Path,
     adapter_path: str | None,
     base_model: str | None,
+    use_adapter: bool,
     allow_missing_base_model: bool = False,
 ) -> dict[str, str | None]:
     """Resolve MCP model settings from explicit args, env, selected config, defaults."""
@@ -442,18 +461,22 @@ def _resolve_model_settings(
     if not isinstance(model_config, dict):
         model_config = {}
 
-    resolved_adapter_path = (
-        adapter_path
-        or os.environ.get("MICRO_MODEL_AGENT_ADAPTER_PATH")
-        or _string_config_value(model_config, "adapter_path")
-        or DEFAULT_7B_ADAPTER_PATH
-    )
+    resolved_adapter_path = None
+    if use_adapter:
+        resolved_adapter_path = (
+            adapter_path
+            or os.environ.get("MICRO_MODEL_AGENT_ADAPTER_PATH")
+            or _string_config_value(model_config, "adapter_path")
+            or DEFAULT_7B_ADAPTER_PATH
+        )
     resolved_base_model = (
         base_model
         or os.environ.get("MICRO_MODEL_AGENT_BASE_MODEL")
         or _string_config_value(model_config, "base_model")
     )
     if resolved_base_model is None and not allow_missing_base_model:
+        if resolved_adapter_path is None:
+            raise ValueError("--base-model is required when use_adapter is false")
         resolved_base_model = _base_model_from_adapter(Path(resolved_adapter_path))
 
     selected_promotion = model_config.get("selected_promotion")

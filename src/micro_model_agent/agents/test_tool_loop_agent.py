@@ -187,6 +187,46 @@ def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> 
     assert result.trace.steps[0].output["error"] == "final_response_before_tool_call"
 
 
+def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "value() returns 1.", "ok": True}),
+        ]
+    )
+    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=trace_store,
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py and tell me what value() returns.",
+                available_tools=("repo.read",),
+                capture_prompts=True,
+                run_metadata={"interface": "test", "schema_prompt": True},
+            )
+        )
+    )
+    loaded_trace = asyncio.run(trace_store.get(str(result.trace_id)))
+
+    assert loaded_trace is not None
+    assert loaded_trace.steps[0].output["prompt"].startswith("<|system|>")
+    assert loaded_trace.final_output["run_metadata"] == {
+        "interface": "test",
+        "schema_prompt": True,
+    }
+
+
 def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(

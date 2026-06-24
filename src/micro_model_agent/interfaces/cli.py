@@ -16,9 +16,10 @@ from typing import Any, Never, cast
 
 import typer
 
-from micro_model_agent.domain.contracts import EvaluationResult
+from micro_model_agent.domain.contracts import EvaluationResult, WorkflowStatus
 from micro_model_agent.domain.datasets import (
     DatasetExample,
+    DatasetExampleKind,
     FailureMode,
     OutcomeLabel,
     QualityLabel,
@@ -63,6 +64,10 @@ from micro_model_agent.infrastructure.trace_export import (
     TraceDatasetExporter,
     validate_trace_export_examples,
 )
+from micro_model_agent.infrastructure.trace_review import (
+    JsonlTraceReviewStore,
+    TraceReview,
+)
 from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
@@ -76,6 +81,10 @@ from micro_model_agent.infrastructure.training_artifacts import (
     record_promoted_artifact,
     write_evaluation_result,
     write_promotion_gate_result,
+)
+from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+    WorkspaceStagedEvaluationSuite,
+    build_workspace_staged_review_records,
 )
 
 app = typer.Typer(help="MicroModelAgent CLI.")
@@ -150,6 +159,7 @@ def _resolve_loop_model_options(
     model: str | None,
     base_model: str | None,
     adapter_path: Path | None,
+    use_adapter: bool = True,
 ) -> dict[str, str | Path | None]:
     """Resolve CLI loop model settings from args, env vars, and local config."""
 
@@ -158,11 +168,13 @@ def _resolve_loop_model_options(
     if not isinstance(model_config, dict):
         model_config = {}
 
-    resolved_adapter_path = (
-        adapter_path
-        or _path_env("MICRO_MODEL_AGENT_ADAPTER_PATH")
-        or _path_config_value(model_config, "adapter_path")
-    )
+    resolved_adapter_path = None
+    if use_adapter:
+        resolved_adapter_path = (
+            adapter_path
+            or _path_env("MICRO_MODEL_AGENT_ADAPTER_PATH")
+            or _path_config_value(model_config, "adapter_path")
+        )
     resolved_base_model = (
         base_model
         or os.environ.get("MICRO_MODEL_AGENT_BASE_MODEL")
@@ -454,6 +466,11 @@ def loop(
         "--adapter-path",
         help="Local PEFT adapter path for direct Transformers inference.",
     ),
+    use_adapter: bool = typer.Option(
+        True,
+        "--adapter/--no-adapter",
+        help="Load the configured PEFT adapter. Disable for base-model trace collection.",
+    ),
     ollama_base_url: str | None = typer.Option(
         None,
         "--ollama-base-url",
@@ -506,6 +523,11 @@ def loop(
         "--schema-prompt/--no-schema-prompt",
         help="Include built-in tool argument schemas in the model prompt.",
     ),
+    capture_prompts: bool = typer.Option(
+        False,
+        "--capture-prompts",
+        help="Store exact model prompts in the workflow trace for data collection review.",
+    ),
     allow_no_tool_final: bool = typer.Option(
         False,
         "--allow-no-tool-final",
@@ -554,6 +576,7 @@ def loop(
         model=model,
         base_model=base_model,
         adapter_path=adapter_path,
+        use_adapter=use_adapter,
     )
     model_provider: ModelProvider
     if responses:
@@ -618,6 +641,24 @@ def loop(
                 require_tool_call=not allow_no_tool_final,
                 max_tool_result_prompt_chars=max_tool_result_prompt_chars,
                 max_tool_calls=max_tool_calls,
+                capture_prompts=capture_prompts,
+                run_metadata={
+                    "interface": "cli.loop",
+                    "schema_prompt": schema_prompt,
+                    "capture_prompts": capture_prompts,
+                    "use_adapter": use_adapter,
+                    "available_tools": list(available_tool or DEFAULT_TOOL_NAMES),
+                    "required_tools": list(required_tool or ()),
+                    "model": {
+                        "model": str(model_options["model"])
+                        if model_options["model"]
+                        else None,
+                        "base_model": model_options["base_model"],
+                        "adapter_path": str(model_options["adapter_path"])
+                        if model_options["adapter_path"]
+                        else None,
+                    },
+                },
             )
         )
     )
@@ -673,6 +714,16 @@ def synthesize(
         "--vary-scenarios/--no-vary-scenarios",
         help="Create deterministic prompt variants while preserving validated targets.",
     ),
+    include_category: list[str] | None = typer.Option(
+        None,
+        "--include-category",
+        help="Only synthesize templates with this metadata category. Can be repeated.",
+    ),
+    exclude_category: list[str] | None = typer.Option(
+        None,
+        "--exclude-category",
+        help="Skip templates with this metadata category. Can be repeated.",
+    ),
 ) -> None:
     """Generate synthetic tool-use and workflow examples."""
 
@@ -684,6 +735,8 @@ def synthesize(
             seed=seed,
             balance_categories=balance_categories,
             vary_scenarios=vary_scenarios,
+            include_categories=tuple(include_category or ()),
+            exclude_categories=tuple(exclude_category or ()),
         )
     )
     validation = _run(LocalDatasetValidator().validate(examples))
@@ -759,6 +812,10 @@ def export_traces(
         Path(".micro_model_agent/traces/workflows.jsonl"),
         help="Stored workflow trace JSONL path.",
     ),
+    review_path: Path = typer.Option(
+        Path(".micro_model_agent/traces/reviews.jsonl"),
+        help="Stored human trace review JSONL path for --label-mode reviewed.",
+    ),
     output: Path = typer.Option(
         Path(".micro_model_agent/datasets/trace_examples.jsonl"),
         help="Output JSONL path for trace-derived examples.",
@@ -767,6 +824,11 @@ def export_traces(
         "review",
         "--label-mode",
         help="Label mode: review or evaluation.",
+    ),
+    kind: DatasetExampleKind = typer.Option(
+        DatasetExampleKind.REPAIR,
+        "--kind",
+        help="Dataset example kind to export.",
     ),
     outcome: OutcomeLabel | None = typer.Option(
         None,
@@ -777,6 +839,16 @@ def export_traces(
         None,
         "--quality",
         help="Only export examples with this quality after label assignment.",
+    ),
+    workflow_status: WorkflowStatus | None = typer.Option(
+        None,
+        "--workflow-status",
+        help="Only export traces with this workflow status.",
+    ),
+    require_tool_call: bool = typer.Option(
+        False,
+        "--require-tool-call",
+        help="Only export traces that include at least one tool call.",
     ),
     max_examples: int | None = typer.Option(
         None,
@@ -789,13 +861,18 @@ def export_traces(
 
     store = JsonlTraceStore(trace_path)
     traces = _run(store.list())
+    reviews_by_trace_id = _run(JsonlTraceReviewStore(review_path).latest_by_trace_id())
     exporter = TraceDatasetExporter()
     try:
         examples = exporter.export(
             traces,
+            kind=kind,
             label_mode=label_mode,
+            reviews_by_trace_id=reviews_by_trace_id,
             outcome=outcome,
             quality=quality,
+            workflow_status=workflow_status,
+            require_tool_call=require_tool_call,
             max_examples=max_examples,
         )
     except ValueError as exc:
@@ -812,6 +889,7 @@ def export_traces(
     redacted_count = sum(1 for example in examples if example.metadata.get("redacted"))
     typer.echo(f"Exported {len(examples)} trace-derived examples to {output}")
     typer.echo(f"Traces read: {len(traces)}")
+    typer.echo(f"Reviews read: {len(reviews_by_trace_id)}")
     typer.echo(f"Redacted examples: {redacted_count}")
     typer.echo(
         "Outcomes: "
@@ -822,6 +900,72 @@ def export_traces(
             }
         )
     )
+
+
+@dataset_app.command("review-trace")
+def review_trace(
+    trace_id: str = typer.Option(..., "--trace-id", help="Stored workflow trace id to review."),
+    outcome: OutcomeLabel = typer.Option(..., "--outcome", help="Human outcome label."),
+    quality: QualityLabel = typer.Option(..., "--quality", help="Human quality label."),
+    failure_mode: list[FailureMode] | None = typer.Option(
+        None,
+        "--failure-mode",
+        help="Failure mode label. Can be passed more than once.",
+    ),
+    reviewer_notes: str | None = typer.Option(
+        None,
+        "--reviewer-notes",
+        help="Human review notes for this trace.",
+    ),
+    corrected_target_json: str | None = typer.Option(
+        None,
+        "--corrected-target-json",
+        help="Optional corrected dataset target JSON object for this trace.",
+    ),
+    corrected_target_file: Path | None = typer.Option(
+        None,
+        "--corrected-target-file",
+        help="Optional file containing a corrected dataset target JSON object.",
+    ),
+    output: Path = typer.Option(
+        Path(".micro_model_agent/traces/reviews.jsonl"),
+        "--output",
+        help="Append-only human trace review JSONL path.",
+    ),
+) -> None:
+    """Record a human review label for one stored workflow trace."""
+
+    if corrected_target_json and corrected_target_file:
+        _fail("pass only one of --corrected-target-json or --corrected-target-file")
+
+    corrected_target: dict[str, Any] | None = None
+    raw_corrected_target: str | None = corrected_target_json
+    if corrected_target_file:
+        if not corrected_target_file.exists():
+            _fail(f"corrected target file does not exist: {corrected_target_file}")
+        raw_corrected_target = corrected_target_file.read_text(encoding="utf-8")
+    if raw_corrected_target:
+        try:
+            parsed = json.loads(raw_corrected_target)
+        except json.JSONDecodeError as exc:
+            _fail(f"corrected target must be valid JSON: {exc}")
+        if not isinstance(parsed, dict):
+            _fail("corrected target must be a JSON object")
+        corrected_target = parsed
+
+    review = TraceReview(
+        trace_id=trace_id,
+        label=DatasetLabel(
+            outcome=outcome,
+            quality=quality,
+            failure_modes=tuple(failure_mode or ()),
+            reviewer_notes=reviewer_notes,
+        ),
+        corrected_target=corrected_target,
+    )
+    _run(JsonlTraceReviewStore(output).save(review))
+    typer.echo(f"Recorded {quality.value}/{outcome.value} review for trace {trace_id}")
+    typer.echo(f"Review: {review.id}")
 
 
 @dataset_app.command("relabel")
@@ -1347,6 +1491,248 @@ def eval_traces(
     typer.echo(f"{result.summary}; report written to {report_path}")
     if not result.passed:
         raise typer.Exit(1)
+
+
+@eval_app.command("workspace-staged")
+def eval_workspace_staged(
+    run_id: str = typer.Option("latest", help="Training run id or alias to evaluate."),
+    dataset: Path = typer.Option(
+        Path("examples/workspace-eval/held-out.workspace-staged.jsonl"),
+        help="Held-out staged workspace JSONL dataset to evaluate against.",
+    ),
+    model: str | None = typer.Option(
+        None,
+        "--model",
+        help="Ollama model name to evaluate.",
+    ),
+    base_model: str | None = typer.Option(
+        None,
+        "--base-model",
+        help="Transformers base model for direct PEFT adapter evaluation.",
+    ),
+    adapter_path: Path | None = typer.Option(
+        None,
+        "--adapter-path",
+        help="Local PEFT adapter path for direct Transformers evaluation.",
+    ),
+    ollama_base_url: str | None = typer.Option(
+        None,
+        "--ollama-base-url",
+        help="Ollama host URL. Defaults to MICRO_MODEL_AGENT_OLLAMA_BASE_URL.",
+    ),
+    max_new_tokens: int = typer.Option(
+        1024,
+        min=1,
+        max=4096,
+        help="Maximum generated tokens per evaluation example.",
+    ),
+    max_examples: int | None = typer.Option(
+        None,
+        min=1,
+        help="Optional cap on evaluated examples.",
+    ),
+    pass_threshold: float = typer.Option(
+        0.8,
+        min=0.0,
+        max=1.0,
+        help="Minimum average staged workspace score required to pass.",
+    ),
+    rubric_version: str = typer.Option(
+        "legacy",
+        "--rubric-version",
+        help="Staged rubric version: legacy, v2, or auto.",
+    ),
+    scripted_response: list[str] | None = typer.Option(
+        None,
+        "--scripted-response",
+        help="Scripted JSON model response. Can be passed more than once.",
+    ),
+    scripted_response_file: Path | None = typer.Option(
+        None,
+        "--scripted-response-file",
+        help="JSONL file containing scripted model responses for evaluation tests.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        help="Evaluation report path. Defaults to <run>/evaluation.json.",
+    ),
+) -> None:
+    """Evaluate staged workspace reasoning without applying patches."""
+
+    from micro_model_agent.application.ports import ModelProvider
+    from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
+    from micro_model_agent.infrastructure.ollama_model_provider import OllamaModelProvider
+    from micro_model_agent.infrastructure.transformers_model_provider import (
+        TransformersPeftModelProvider,
+    )
+
+    run_dir = Path(run_id)
+    if not run_dir.exists():
+        run_dir = Path(".micro_model_agent/training/runs") / run_id
+
+    _load_dotenv()
+    responses = list(scripted_response or [])
+    if scripted_response_file:
+        if not scripted_response_file.exists():
+            _fail(f"scripted response file does not exist: {scripted_response_file}")
+        responses.extend(
+            line
+            for line in scripted_response_file.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        )
+
+    provider: ModelProvider | None = None
+    provider_kind = "metadata"
+    resolved_base_model: str | None = base_model
+    resolved_adapter_path: Path | None = adapter_path
+    if responses:
+        provider = ScriptedModelProvider(responses)
+        provider_kind = "scripted"
+    elif adapter_path or base_model:
+        resolved_base_model = base_model or _base_model_from_adapter(adapter_path)
+        provider = TransformersPeftModelProvider(
+            base_model=resolved_base_model,
+            adapter_path=adapter_path,
+            max_new_tokens=max_new_tokens,
+        )
+        provider_kind = "transformers_peft"
+    elif model:
+        provider = OllamaModelProvider(
+            model_name=model,
+            base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
+            options={"num_predict": max_new_tokens},
+        )
+        provider_kind = "ollama"
+    else:
+        artifact = load_artifact_from_training_run(run_dir)
+        artifact_path = Path(artifact.path)
+        if artifact_path.exists():
+            provider = TransformersPeftModelProvider(
+                base_model=artifact.base_model,
+                adapter_path=artifact_path,
+                max_new_tokens=max_new_tokens,
+            )
+            provider_kind = "training_artifact"
+            resolved_base_model = artifact.base_model
+            resolved_adapter_path = artifact_path
+
+    if provider is None:
+        _fail("workspace-staged eval requires a runnable model, adapter, or scripted response")
+    if rubric_version not in {"legacy", "v2", "auto"}:
+        _fail(f"Unsupported workspace-staged rubric version: {rubric_version}")
+
+    examples = load_dataset_examples(dataset)
+    if max_examples is not None:
+        examples = examples[:max_examples]
+    result = _run(
+        WorkspaceStagedEvaluationSuite(
+            pass_threshold=pass_threshold,
+            rubric_version=rubric_version,
+        ).evaluate_model(provider, examples)
+    )
+    result = _with_evaluation_metadata(
+        result,
+        run_id=run_id,
+        dataset=dataset,
+        examples=examples,
+        provider_kind=provider_kind,
+        model=model,
+        base_model=resolved_base_model,
+        adapter_path=resolved_adapter_path,
+    )
+    report_path = write_evaluation_result(run_dir, result, output)
+    typer.echo(f"{result.summary}; report written to {report_path}")
+    if not result.passed:
+        raise typer.Exit(1)
+
+
+@eval_app.command("review-workspace-staged")
+def review_workspace_staged(
+    dataset: Path = typer.Option(
+        Path("examples/workspace-eval/held-out.workspace-staged.jsonl"),
+        help="Staged workspace scenario JSONL dataset.",
+    ),
+    report: list[Path] | None = typer.Option(
+        None,
+        "--report",
+        help="Staged workspace evaluation JSON report. Can be passed more than once.",
+    ),
+    output: Path = typer.Option(
+        Path(".micro_model_agent/datasets/workspace_staged_review_queue.jsonl"),
+        "--output",
+        help="Output JSONL review queue path.",
+    ),
+    simple_failure_threshold: float = typer.Option(
+        0.4,
+        min=0.0,
+        max=1.0,
+        help="Auto-reject examples whose best model score is at or below this value.",
+    ),
+    auto_accept_threshold: float = typer.Option(
+        0.95,
+        min=0.0,
+        max=1.0,
+        help="Mark examples as auto-accept candidates at or above this best score.",
+    ),
+    interactive: bool = typer.Option(
+        False,
+        "--interactive",
+        help="Prompt for a human decision and notes for each review record.",
+    ),
+) -> None:
+    """Build or complete a staged workspace review queue from eval reports."""
+
+    report_paths = list(report or [])
+    if not report_paths:
+        _fail("at least one --report is required")
+
+    examples = load_dataset_examples(dataset)
+    reports = [(path, load_evaluation_result(path)) for path in report_paths]
+    records = build_workspace_staged_review_records(
+        examples=examples,
+        reports=reports,
+        simple_failure_threshold=simple_failure_threshold,
+        auto_accept_threshold=auto_accept_threshold,
+    )
+
+    if interactive:
+        for index, record in enumerate(records, start=1):
+            typer.echo("")
+            typer.echo(f"[{index}/{len(records)}] {record['category']}: {record['goal']}")
+            typer.echo(f"Auto triage: {record['auto_triage']['decision']}")
+            typer.echo(f"Reason: {record['auto_triage']['reason']}")
+            for result_record in record["model_results"]:
+                score = result_record["score"]
+                score_text = "none" if score is None else f"{score:.2f}"
+                typer.echo(
+                    f"- {result_record['run_id'] or result_record['report_path']}: "
+                    f"score={score_text} provider={result_record['provider']}"
+                )
+            decision = typer.prompt(
+                "Decision [accepted/rejected/needs_review/skip]",
+                default="needs_review",
+            )
+            if decision not in {"accepted", "rejected", "needs_review", "skip"}:
+                _fail(f"unsupported review decision: {decision}")
+            notes = typer.prompt("Notes", default="")
+            record["review"] = {
+                "decision": decision,
+                "notes": notes or None,
+            }
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with output.open("w", encoding="utf-8") as file:
+        for record in records:
+            file.write(json.dumps(record, sort_keys=True))
+            file.write("\n")
+
+    counts: dict[str, int] = {}
+    for record in records:
+        decision = str(record["auto_triage"]["decision"])
+        counts[decision] = counts.get(decision, 0) + 1
+    typer.echo(f"Wrote {len(records)} staged workspace review record(s) to {output}")
+    typer.echo("Auto triage: " + _format_count_distribution(counts))
 
 
 @eval_app.command("compare")

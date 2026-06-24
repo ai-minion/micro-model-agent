@@ -99,6 +99,7 @@ def test_mcp_model_settings_use_selected_repository_config(tmp_path: Path) -> No
         repository_root=tmp_path,
         adapter_path=None,
         base_model=None,
+        use_adapter=True,
     )
 
     assert update.ok is True
@@ -120,10 +121,31 @@ def test_mcp_model_settings_prefer_explicit_args_over_selected_config(tmp_path: 
         repository_root=tmp_path,
         adapter_path="explicit-adapter",
         base_model="explicit-base",
+        use_adapter=True,
     )
 
     assert settings["base_model"] == "explicit-base"
     assert settings["adapter_path"] == "explicit-adapter"
+
+
+def test_mcp_model_settings_can_disable_adapter_for_base_collection(
+    tmp_path: Path,
+) -> None:
+    update_model_configuration(
+        tmp_path,
+        base_model="configured-base",
+        adapter_path="configured-adapter",
+    )
+
+    settings = _resolve_model_settings(
+        repository_root=tmp_path,
+        adapter_path=None,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        use_adapter=False,
+    )
+
+    assert settings["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert settings["adapter_path"] is None
 
 
 def test_list_builtin_tools_marks_safe_defaults() -> None:

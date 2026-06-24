@@ -122,6 +122,7 @@ micro-agent loop PROMPT [OPTIONS]
 | `--model TEXT` | None | Ollama model name. Defaults to `MICRO_MODEL_AGENT_DEFAULT_MODEL` or `.micro_model_agent/config.json` `model.default_model`. |
 | `--base-model TEXT` | None | Transformers base model for direct PEFT adapter inference. Defaults to `MICRO_MODEL_AGENT_BASE_MODEL` or selected local config. |
 | `--adapter-path PATH` | None | Local PEFT adapter path for direct Transformers inference. Defaults to `MICRO_MODEL_AGENT_ADAPTER_PATH` or selected local config. |
+| `--adapter / --no-adapter` | `--adapter` | Load the configured PEFT adapter. Use `--no-adapter` for base-model trace collection. |
 | `--ollama-base-url TEXT` | None | Ollama host URL. Defaults to `MICRO_MODEL_AGENT_OLLAMA_BASE_URL`. |
 | `--max-new-tokens INTEGER` | `384` | Maximum generated tokens per model turn. Range: 1 to 4096. |
 | `--max-tool-result-prompt-chars INTEGER` | `12000` | Maximum serialized tool-result characters fed back to the model. |
@@ -133,6 +134,7 @@ micro-agent loop PROMPT [OPTIONS]
 | `--max-turns INTEGER` | `8` | Maximum model turns before failing. |
 | `--context TEXT` | Empty string | Extra model-facing task context. |
 | `--schema-prompt / --no-schema-prompt` | `--schema-prompt` | Include built-in tool argument schemas in the model prompt. |
+| `--capture-prompts` | Disabled | Store exact model prompts in the workflow trace for data collection review. |
 | `--allow-no-tool-final` | Disabled | Allow a final response before any tool call has run. |
 | `--verification-command TEXT` | None | Allowed test command name that `test.run` can select. |
 | `--test-command TEXT` | None | Shell-free command tokens for the verification command name. Can be passed more than once. |
@@ -203,15 +205,41 @@ micro-agent dataset export-traces [OPTIONS]
 | Option | Default | Description |
 | --- | --- | --- |
 | `--trace-path PATH` | `.micro_model_agent/traces/workflows.jsonl` | Stored workflow trace JSONL path. |
+| `--review-path PATH` | `.micro_model_agent/traces/reviews.jsonl` | Human trace review JSONL path used by `--label-mode reviewed`. |
 | `--output PATH` | `.micro_model_agent/datasets/trace_examples.jsonl` | Output JSONL path for trace-derived examples. |
-| `--label-mode TEXT` | `review` | Label mode: `review` or `evaluation`. `review` exports `needs_review`/`unknown` examples for human review. |
+| `--label-mode TEXT` | `review` | Label mode: `review`, `reviewed`, or `evaluation`. `reviewed` exports only traces with a human review record. |
+| `--kind VALUE` | `repair` | Dataset example kind to export. |
 | `--outcome accepted\|rejected\|needs_review\|partial\|errored` | None | Only export examples with this outcome after label assignment. |
 | `--quality good\|bad\|mixed\|unknown` | None | Only export examples with this quality after label assignment. |
+| `--workflow-status pending\|running\|succeeded\|failed` | None | Only export traces with this workflow status. |
+| `--require-tool-call` | Disabled | Only export traces that include at least one tool call. |
 | `--max-examples INTEGER` | None | Optional maximum number of examples to export. |
 
 Trace export redacts common secret-looking keys and token values before writing
 examples. The default `review` mode is intentionally not training-ready; curate
-and relabel examples before SFT export.
+and relabel examples before SFT export. For real collection runs, prefer
+`--label-mode reviewed --outcome accepted --quality good` so raw rejected traces
+do not enter SFT data by accident.
+
+## `micro-agent dataset review-trace`
+
+```text
+micro-agent dataset review-trace [OPTIONS]
+```
+
+Records a human review decision in `.micro_model_agent/traces/reviews.jsonl`
+without modifying the raw workflow trace.
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--trace-id TEXT` | Required | Stored workflow trace id to review. |
+| `--outcome accepted\|rejected\|needs_review\|partial\|errored` | Required | Human outcome label. |
+| `--quality good\|bad\|mixed\|unknown` | Required | Human quality label. |
+| `--failure-mode VALUE` | None | Failure mode label. Can be passed more than once. |
+| `--reviewer-notes TEXT` | None | Human review notes for this trace. |
+| `--corrected-target-json TEXT` | None | Optional corrected dataset target JSON object for this trace. |
+| `--corrected-target-file PATH` | None | Optional file containing a corrected dataset target JSON object. |
+| `--output PATH` | `.micro_model_agent/traces/reviews.jsonl` | Append-only human trace review JSONL path. |
 
 ## `micro-agent dataset relabel`
 
@@ -316,6 +344,63 @@ with the evaluated dataset path, provider type, and tool-profile summary.
 Trace evaluation scores final responses, exact patch text, and expected tool
 call order when those fields are available. Keep held-out trace fixtures
 separate from curated examples that are merged into training data.
+
+## `micro-agent eval workspace-staged`
+
+```text
+micro-agent eval workspace-staged [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--run-id TEXT` | `latest` | Training run id, run name under `.micro_model_agent/training/runs/`, or direct run directory path. |
+| `--dataset PATH` | `examples/workspace-eval/held-out.workspace-staged.jsonl` | Held-out staged workspace JSONL dataset to evaluate against. |
+| `--model TEXT` | None | Ollama model name to evaluate. |
+| `--base-model TEXT` | None | Transformers base model for direct PEFT adapter evaluation. |
+| `--adapter-path PATH` | None | Local PEFT adapter path for direct Transformers evaluation. |
+| `--ollama-base-url TEXT` | None | Ollama host URL. Defaults to `MICRO_MODEL_AGENT_OLLAMA_BASE_URL`. |
+| `--max-new-tokens INTEGER` | `1024` | Maximum generated tokens per evaluation example. Range: 1 to 4096. |
+| `--max-examples INTEGER` | None | Optional cap on evaluated examples. Minimum: 1. |
+| `--pass-threshold FLOAT` | `0.8` | Minimum average staged workspace score required to pass. Range: 0 to 1. |
+| `--scripted-response TEXT` | None | Scripted JSON model response. Can be passed more than once. |
+| `--scripted-response-file PATH` | None | JSONL file containing scripted model responses for evaluation tests. |
+| `--output PATH` | `<run>/evaluation.json` | Evaluation report path. |
+
+This dry-run suite asks the model for one JSON object with five staged fields:
+`read_search`, `diagnosis`, `patch_proposal`, `test_selection`, and
+`final_summary`. Reports include separate metrics for read/search accuracy,
+plan-before-patch accuracy, dry-run patch proposal accuracy, focused test
+selection, and final summary accuracy. This suite is evidence about workspace
+reasoning, not a promotion gate by itself.
+
+Staged scenario records may include `input.workspace_files`, a JSON object whose
+keys are repository-relative paths and whose values are the relevant file
+contents or excerpts. Process-rich training records should also include
+`target.gold_response`, the five-stage JSON answer used for SFT export, plus
+`target.stages`, the looser scoring rubric used by evaluation. The evaluator
+includes this virtual filesystem in the model prompt and review queue so
+scenario batches can be self-contained.
+
+## `micro-agent eval review-workspace-staged`
+
+```text
+micro-agent eval review-workspace-staged [OPTIONS]
+```
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--dataset PATH` | `examples/workspace-eval/held-out.workspace-staged.jsonl` | Staged workspace scenario JSONL dataset. |
+| `--report PATH` | Required | Staged workspace evaluation JSON report. Can be passed more than once. |
+| `--output PATH` | `.micro_model_agent/datasets/workspace_staged_review_queue.jsonl` | Output JSONL review queue path. |
+| `--simple-failure-threshold FLOAT` | `0.4` | Auto-reject examples whose best model score is at or below this value. |
+| `--auto-accept-threshold FLOAT` | `0.95` | Mark examples as auto-accept candidates at or above this best score. |
+| `--interactive` | Disabled | Prompt for a human decision and notes for each review record. |
+
+This command builds a review queue from one or more staged evaluation reports.
+Each JSONL record includes the goal, virtual filesystem, expected stages, model
+outputs, stage scores, and an `auto_triage` decision. Use the non-interactive
+mode to weed out obvious failures before human review, then rerun with
+`--interactive` when you want to record decisions and notes from the terminal.
 
 ## `micro-agent eval compare`
 
