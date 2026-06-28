@@ -173,6 +173,49 @@ class RepoWritePatchResult(StrictBaseModel):
     errors: list[ToolError] = Field(default_factory=list)
 
 
+class RepoWriteFileRequest(StrictBaseModel):
+    """One file to create or replace through repo.write_files."""
+
+    path: str = Field(min_length=1)
+    content: str
+
+    @field_validator("path")
+    @classmethod
+    def reject_obviously_unsafe_path(cls, value: str) -> str:
+        """Reject path strings that are clearly not repository-relative."""
+
+        normalized = value.replace("\\", "/")
+        if "\x00" in normalized:
+            raise ValueError("path cannot contain null bytes")
+        if normalized.startswith("/") or normalized.startswith("../") or "/../" in normalized:
+            raise ValueError("path must be repository-relative")
+        return value
+
+
+class RepoWriteFilesRequest(StrictBaseModel):
+    """Arguments accepted by repo.write_files."""
+
+    files: list[RepoWriteFileRequest] = Field(min_length=1, max_length=100)
+    dry_run: bool = True
+    require_approval: bool = True
+
+
+class RepoWriteFileResult(StrictBaseModel):
+    path: str
+    bytes: int = Field(ge=0)
+    created: bool
+
+
+class RepoWriteFilesResult(StrictBaseModel):
+    ok: bool
+    dry_run: bool
+    applied: bool = False
+    changed_files: list[str] = Field(default_factory=list)
+    files: list[RepoWriteFileResult] = Field(default_factory=list)
+    preview: str = ""
+    errors: list[ToolError] = Field(default_factory=list)
+
+
 class TestRunRequest(StrictBaseModel):
     """Arguments accepted by test.run."""
 

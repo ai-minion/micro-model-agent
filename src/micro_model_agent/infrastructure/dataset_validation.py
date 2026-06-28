@@ -238,7 +238,7 @@ _SFT_SYSTEM_PROMPT = (
     "You are MicroModelAgent's workflow executor. "
     "Respond with exactly one JSON object and no markdown. "
     "Use only these tool_name values when making a tool call: repo.search, repo.read, "
-    "repo.semantic_search, repo.write_patch, test.run, git.diff. "
+    "repo.semantic_search, repo.write_patch, repo.write_files, test.run, git.diff. "
     "Never invent tool names such as shell.command, none, or null. "
     "Tool arguments must use exactly the schema keys shown in tool_schemas; do not rename "
     "fields such as command_name to command. "

@@ -16,6 +16,7 @@ from micro_model_agent.infrastructure.tools.contracts import (
     GitDiffRequest,
     RepoReadRequest,
     RepoSearchRequest,
+    RepoWriteFilesRequest,
     RepoWritePatchRequest,
     SemanticSearchRequest,
     TestRunRequest,
@@ -51,6 +52,14 @@ BUILTIN_TOOL_SPECS: dict[str, BuiltinToolSpec] = {
         name="repo.write_patch",
         description="Preview or apply a unified diff constrained to repository files.",
         argument_contract=RepoWritePatchRequest,
+    ),
+    "repo.write_files": BuiltinToolSpec(
+        name="repo.write_files",
+        description=(
+            "Create or replace repository-relative text files from explicit path/content "
+            "entries. Prefer this for greenfield scaffolds and new files."
+        ),
+        argument_contract=RepoWriteFilesRequest,
     ),
     "test.run": BuiltinToolSpec(
         name="test.run",

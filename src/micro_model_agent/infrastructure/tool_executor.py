@@ -18,6 +18,7 @@ from micro_model_agent.infrastructure.tools.contracts import (
     GitDiffRequest,
     RepoReadRequest,
     RepoSearchRequest,
+    RepoWriteFilesRequest,
     RepoWritePatchRequest,
     SemanticSearchRequest,
     TestRunRequest,
@@ -26,6 +27,7 @@ from micro_model_agent.infrastructure.tools.git_diff import GitDiffTool
 from micro_model_agent.infrastructure.tools.repo_read import RepoReadTool
 from micro_model_agent.infrastructure.tools.repo_search import RepoSearchTool
 from micro_model_agent.infrastructure.tools.repo_semantic_search import RepoSemanticSearchTool
+from micro_model_agent.infrastructure.tools.repo_write_files import RepoWriteFilesTool
 from micro_model_agent.infrastructure.tools.repo_write_patch import RepoWritePatchTool
 
 ToolRunner = Callable[[dict[str, object]], BaseModel]
@@ -48,6 +50,7 @@ class BuiltinToolExecutor:
             "repo.read": self._repo_read,
             "repo.semantic_search": self._repo_semantic_search,
             "repo.write_patch": self._repo_write_patch,
+            "repo.write_files": self._repo_write_files,
             "test.run": self._test_run,
             "git.diff": self._git_diff,
         }
@@ -100,6 +103,11 @@ class BuiltinToolExecutor:
     def _repo_write_patch(self, arguments: dict[str, object]) -> BaseModel:
         return RepoWritePatchTool(self.repository_root).run(
             RepoWritePatchRequest.model_validate(arguments)
+        )
+
+    def _repo_write_files(self, arguments: dict[str, object]) -> BaseModel:
+        return RepoWriteFilesTool(self.repository_root).run(
+            RepoWriteFilesRequest.model_validate(arguments)
         )
 
     def _test_run(self, arguments: dict[str, object]) -> BaseModel:

@@ -142,7 +142,7 @@ micro-agent loop PROMPT [OPTIONS]
 Built-in tool names:
 
 ```text
-repo.search, repo.read, repo.semantic_search, repo.write_patch, test.run, git.diff
+repo.search, repo.read, repo.semantic_search, repo.write_patch, repo.write_files, test.run, git.diff
 ```
 
 ## `micro-agent serve-mcp`

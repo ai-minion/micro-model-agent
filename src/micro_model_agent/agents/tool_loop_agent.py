@@ -27,6 +27,7 @@ DEFAULT_TOOL_NAMES: tuple[str, ...] = (
     "repo.read",
     "repo.semantic_search",
     "repo.write_patch",
+    "repo.write_files",
     "test.run",
     "git.diff",
 )
@@ -332,6 +333,9 @@ class ToolLoopAgent:
         if task.required_tools:
             payload["required_tools"] = list(task.required_tools)
             payload["missing_required_tools"] = list(missing_required_tools)
+        orchestration_hints = self._orchestration_hints(task, steps)
+        if orchestration_hints:
+            payload["orchestration_hints"] = orchestration_hints
         tool_history = self._tool_history(
             steps,
             max_prompt_chars=task.max_tool_result_prompt_chars,
@@ -365,6 +369,9 @@ class ToolLoopAgent:
                 "Respond with exactly one JSON object and no markdown. "
                 "Call at least one available tool before final_response. "
                 "Final responses must be concise and must not repeat full tool output. "
+                "For greenfield creation or scaffolding tasks, prefer repo.write_files over "
+                "repo.write_patch. If repo.search or repo.semantic_search repeatedly returns "
+                "no matches for a creation task, stop searching and create the requested files. "
                 "For a tool call, return "
                 '{"tool_name":"repo.read","arguments":{"files":[{"path":"README.md"}]},'
                 '"reason":"..."}. '
@@ -411,6 +418,71 @@ class ToolLoopAgent:
         """Check whether any executed tool reported failure."""
 
         return any(step.tool_result is not None and not step.tool_result.ok for step in steps)
+
+    def _orchestration_hints(
+        self,
+        task: ToolLoopAgentTask,
+        steps: list[WorkflowStep],
+    ) -> list[str]:
+        """Return compact process hints derived from repeated tool outcomes."""
+
+        hints: list[str] = []
+        if self._looks_like_creation_task(task):
+            empty_searches = sum(1 for step in steps if self._is_empty_search_step(step))
+            if empty_searches >= 2 and "repo.write_files" in task.available_tools:
+                hints.append(
+                    "This appears to be a creation/scaffolding task in an empty workspace. "
+                    "Repeated search calls returned no matches; stop searching and use "
+                    "repo.write_files to create the requested files."
+                )
+
+        failed_patch_writes = [
+            step
+            for step in steps
+            if step.tool_call is not None
+            and step.tool_call.tool_name == "repo.write_patch"
+            and step.tool_result is not None
+            and not step.tool_result.ok
+            and step.tool_result.error == "tool argument validation failed"
+        ]
+        if failed_patch_writes and "repo.write_files" in task.available_tools:
+            hints.append(
+                "A repo.write_patch call failed validation. For new files and scaffolds, "
+                "use repo.write_files with explicit path/content entries instead of "
+                "hand-authoring unified diffs."
+            )
+        return hints
+
+    def _looks_like_creation_task(self, task: ToolLoopAgentTask) -> bool:
+        """Heuristic for greenfield creation/scaffolding requests."""
+
+        text = f"{task.goal} {task.context}".lower()
+        return any(
+            term in text
+            for term in (
+                "create",
+                "scaffold",
+                "skeleton",
+                "greenfield",
+                "empty repository",
+                "empty workspace",
+                "new file",
+                "new project",
+            )
+        )
+
+    def _is_empty_search_step(self, step: WorkflowStep) -> bool:
+        """Return true for successful search-style calls with zero results."""
+
+        if step.tool_call is None or step.tool_result is None or not step.tool_result.ok:
+            return False
+        if step.tool_call.tool_name == "repo.search":
+            matches = step.tool_result.output.get("matches")
+            return isinstance(matches, list) and len(matches) == 0
+        if step.tool_call.tool_name == "repo.semantic_search":
+            results = step.tool_result.output.get("results")
+            return isinstance(results, list) and len(results) == 0
+        return False
 
     def _missing_required_tools(
         self,

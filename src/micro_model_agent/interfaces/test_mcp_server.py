@@ -11,6 +11,7 @@ from micro_model_agent.infrastructure.repository_metadata import (
     update_model_configuration,
 )
 from micro_model_agent.interfaces.mcp_server import (
+    _path_from_user_input,
     _resolve_model_settings,
     call_builtin_tool,
     create_mcp_server,
@@ -157,6 +158,19 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
     assert started_data["session"]["repository_root"] == str(workspace_root.resolve())
 
 
+def test_path_from_user_input_maps_windows_paths_to_wsl_mounts(tmp_path: Path) -> None:
+    mount_root = tmp_path / "mnt"
+
+    assert _path_from_user_input(
+        "C:/Users/Rodger/workspace5",
+        wsl_mount_root=mount_root,
+    ) == mount_root / "c" / "Users" / "Rodger" / "workspace5"
+    assert _path_from_user_input(
+        r"D:\Projects\code\workspace",
+        wsl_mount_root=mount_root,
+    ) == mount_root / "d" / "Projects" / "code" / "workspace"
+
+
 def test_init_repository_is_idempotent(tmp_path: Path) -> None:
     first = init_repository(repository_root=str(tmp_path), default_model="qwen")
     second = init_repository(repository_root=str(tmp_path), default_model="ignored")
@@ -245,6 +259,7 @@ def test_list_builtin_tools_marks_safe_defaults() -> None:
         "repo.read",
         "repo.semantic_search",
         "repo.write_patch",
+        "repo.write_files",
         "git.diff",
     } <= defaults
 
@@ -295,6 +310,44 @@ def test_run_agent_loop_with_scripted_model_saves_trace(tmp_path: Path) -> None:
     assert result["tool_calls_made"] == 1
     assert trace["ok"] is True
     assert trace["trace"]["final_output"]["response"] == "status is tiny"
+
+
+def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path) -> None:
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Create a tiny project file.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.write_files"],
+            apply_patches=True,
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.write_files",
+                        "arguments": {
+                            "files": [
+                                {
+                                    "path": "README.md",
+                                    "content": "# Tiny\n\ncreated\n",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                _model_response({"final_response": "created README", "ok": True}),
+            ],
+        )
+    )
+
+    assert result["ok"] is True
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Tiny\n\ncreated\n"
+    assert result["steps"][0]["tool_ok"] is True
+    trace = asyncio.run(
+        read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
+    )
+    tool_output = trace["trace"]["steps"][0]["tool_result"]["output"]
+    assert tool_output["applied"] is True
+    assert tool_output["dry_run"] is False
 
 
 def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(

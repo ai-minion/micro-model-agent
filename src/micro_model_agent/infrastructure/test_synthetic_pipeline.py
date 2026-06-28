@@ -423,6 +423,7 @@ def test_export_sft_jsonl_writes_chat_records(tmp_path: Path) -> None:
         "repo.read",
         "repo.semantic_search",
         "repo.write_patch",
+        "repo.write_files",
         "test.run",
         "git.diff",
     ]

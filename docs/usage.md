@@ -29,6 +29,8 @@ The built-in tools are:
 - `repo.semantic_search`: lexical context retrieval over code and docs.
 - `repo.write_patch`: unified diff preview or application, constrained to the
   repository root.
+- `repo.write_files`: structured create/replace for repository-relative text
+  files; prefer this for greenfield scaffolds and new files.
 - `test.run`: one allowlisted verification command by name.
 - `git.diff`: read-only working tree diff inspection.
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -60,6 +61,7 @@ DEFAULT_MCP_AVAILABLE_TOOLS: tuple[str, ...] = (
     "repo.read",
     "repo.semantic_search",
     "repo.write_patch",
+    "repo.write_files",
     "git.diff",
 )
 DEFAULT_7B_ADAPTER_PATH = (
@@ -69,6 +71,7 @@ MCP_DEBUG_TOOLS_ENV = "MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS"
 MCP_EXPOSE_INIT_ENV = "MICRO_MODEL_AGENT_MCP_EXPOSE_INIT"
 MCP_REPOSITORY_ROOT_ENV = "MICRO_MODEL_AGENT_REPOSITORY_ROOT"
 MCP_INIT_TOOL_NAME = "micro_agent_init"
+WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 type McpTransport = Literal["stdio", "sse", "streamable-http"]
 
 _MODEL_CACHE: dict[tuple[str, str | None, int], TransformersPeftModelProvider] = {}
@@ -82,10 +85,19 @@ class PatchPolicyToolExecutor:
         self.apply_patches = apply_patches
 
     async def execute(self, tool_call: ToolCall) -> ToolResult:
-        if tool_call.tool_name != "repo.write_patch" or self.apply_patches:
+        if tool_call.tool_name not in {"repo.write_patch", "repo.write_files"}:
             return await self.wrapped.execute(tool_call)
 
-        # MCP callers can preview patches by default, but real application is
+        if self.apply_patches:
+            arguments = {
+                **tool_call.arguments,
+                "dry_run": tool_call.arguments.get("dry_run", False),
+                "require_approval": tool_call.arguments.get("require_approval", False),
+            }
+            approved_call = replace(tool_call, arguments=arguments)
+            return await self.wrapped.execute(approved_call)
+
+        # MCP callers can preview writes by default, but real application is
         # forced back to dry-run unless apply_patches=True was requested.
         arguments = {
             **tool_call.arguments,
@@ -424,7 +436,7 @@ async def init_workspace(
 
     registry_base = Path(registry_root).resolve()
     if path:
-        workspace_path = Path(path).expanduser().resolve()
+        workspace_path = _path_from_user_input(path).resolve()
     else:
         workspace_id = uuid4()
         directory_name = _path_safe_name(name or f"workspace-{workspace_id}")
@@ -1007,7 +1019,7 @@ def _allowed_tool_names(
     for tool_name in requested:
         if tool_name not in BUILTIN_TOOL_SPECS:
             raise ValueError(f"unknown built-in tool: {tool_name}")
-        if tool_name == "repo.write_patch" and not apply_patches:
+        if tool_name in {"repo.write_patch", "repo.write_files"} and not apply_patches:
             # The wrapper will force this tool into dry-run mode.
             allowed.append(tool_name)
             continue
@@ -1087,6 +1099,17 @@ def _path_safe_name(value: str) -> str:
 
     safe = "".join(character if character.isalnum() else "-" for character in value.lower())
     return "-".join(part for part in safe.split("-") if part) or "workspace"
+
+
+def _path_from_user_input(value: str, *, wsl_mount_root: Path = Path("/mnt")) -> Path:
+    """Convert Windows absolute paths to WSL mount paths when running on POSIX."""
+
+    use_wsl_mounts = os.name != "nt" or wsl_mount_root != Path("/mnt")
+    if use_wsl_mounts and (match := WINDOWS_ABSOLUTE_PATH_RE.match(value)):
+        drive = match.group("drive").lower()
+        rest = match.group("rest").replace("\\", "/")
+        return wsl_mount_root / drive / rest
+    return Path(value).expanduser()
 
 
 def _should_expose_debug_tools(explicit: bool | None) -> bool:

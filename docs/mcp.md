@@ -115,15 +115,16 @@ To expose them, set:
 MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS=1
 ```
 
-Default agent tools include read/search plus dry-run patch proposal:
+Default agent tools include read/search plus dry-run patch and file-write proposals:
 
 ```text
-repo.search, repo.read, repo.semantic_search, repo.write_patch, git.diff
+repo.search, repo.read, repo.semantic_search, repo.write_patch, repo.write_files, git.diff
 ```
 
 Patch application remains dry-run unless `apply_patches` is explicitly true.
 MCP model runs also default `schema_prompt` to true so the model sees the exact
-tool argument schemas.
+tool argument schemas. Prefer `repo.write_files` for greenfield scaffolds and
+new files; use `repo.write_patch` for precise edits to existing files.
 
 ## Useful First Prompt
 

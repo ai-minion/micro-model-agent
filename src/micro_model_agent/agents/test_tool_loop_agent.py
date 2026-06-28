@@ -323,6 +323,86 @@ def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
     assert "content" not in json.dumps(history[0]["output"])
 
 
+def test_tool_loop_agent_hints_to_write_files_after_empty_creation_searches(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py", "limit": 1},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.semantic_search",
+                    "arguments": {"query": "minimal FastAPI ecommerce", "limit": 1},
+                }
+            ),
+            _model_response({"final_response": "no files created", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Create a Python e-commerce skeleton in this empty repository.",
+                available_tools=("repo.search", "repo.semantic_search", "repo.write_files"),
+                max_tool_calls=None,
+            )
+        )
+    )
+    third_prompt = _user_payload_from_prompt(model.prompts[2])
+
+    assert "orchestration_hints" in third_prompt
+    assert "stop searching and use repo.write_files" in third_prompt["orchestration_hints"][0]
+
+
+def test_tool_loop_agent_hints_to_write_files_after_patch_validation_failure(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_patch",
+                    "arguments": {
+                        "patch": "---\n+++ README.md\n@@\n+# Demo\n",
+                        "dry_run": False,
+                        "require_approval": False,
+                    },
+                }
+            ),
+            _model_response({"final_response": "patch failed", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Create README.md.",
+                available_tools=("repo.write_patch", "repo.write_files"),
+            )
+        )
+    )
+    second_prompt = _user_payload_from_prompt(model.prompts[1])
+
+    assert result.ok is False
+    assert "orchestration_hints" in second_prompt
+    assert "use repo.write_files" in second_prompt["orchestration_hints"][0]
+
+
 def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(

@@ -42,3 +42,43 @@ def test_builtin_tool_executor_returns_validation_errors(tmp_path: Path) -> None
     assert result.ok is False
     assert result.error == "tool argument validation failed"
     assert result.output["validation_errors"]
+
+
+def test_builtin_tool_executor_runs_repo_write_files(tmp_path: Path) -> None:
+    executor = BuiltinToolExecutor(tmp_path, allowed_test_commands={})
+
+    result = asyncio.run(
+        executor.execute(
+            ToolCall(
+                tool_name="repo.write_files",
+                arguments={
+                    "files": [{"path": "app/main.py", "content": "VALUE = 1\n"}],
+                    "dry_run": False,
+                    "require_approval": False,
+                },
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.output["changed_files"] == ["app/main.py"]
+    assert (tmp_path / "app" / "main.py").read_text(encoding="utf-8") == "VALUE = 1\n"
+
+
+def test_builtin_tool_executor_validates_repo_write_files_paths(tmp_path: Path) -> None:
+    executor = BuiltinToolExecutor(tmp_path, allowed_test_commands={})
+
+    result = asyncio.run(
+        executor.execute(
+            ToolCall(
+                tool_name="repo.write_files",
+                arguments={
+                    "files": [{"path": "../outside.py", "content": "bad"}],
+                },
+            )
+        )
+    )
+
+    assert result.ok is False
+    assert result.error == "tool argument validation failed"
+    assert result.output["validation_errors"][0]["loc"] == ("files", 0, "path")
