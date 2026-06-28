@@ -49,6 +49,11 @@ def _model_response(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True)
 
 
+def _user_payload_from_prompt(prompt: str) -> dict[str, Any]:
+    payload = prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0]
+    return json.loads(payload)
+
+
 def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(
@@ -225,6 +230,97 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
         "interface": "test",
         "schema_prompt": True,
     }
+
+
+def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py", "limit": 10},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py", "limit": 10},
+                }
+            ),
+            _model_response({"final_response": "searched twice", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Search Python files twice.",
+                available_tools=("repo.search",),
+                max_tool_calls=None,
+            )
+        )
+    )
+    second_prompt = _user_payload_from_prompt(model.prompts[1])
+    third_prompt = _user_payload_from_prompt(model.prompts[2])
+
+    assert result.ok is True
+    assert second_prompt["tool_history"][0]["tool_name"] == "repo.search"
+    assert second_prompt["tool_history"][0]["arguments"] == {
+        "glob": "**/*.py",
+        "limit": 10,
+    }
+    assert [entry["arguments"] for entry in third_prompt["tool_history"]] == [
+        {"glob": "**/*.py", "limit": 10},
+        {"glob": "**/*.py", "limit": 10},
+    ]
+
+
+def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "read app.py", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py.",
+                available_tools=("repo.read",),
+                max_tool_result_prompt_chars=260,
+            )
+        )
+    )
+    second_prompt = _user_payload_from_prompt(model.prompts[1])
+    history = second_prompt["tool_history"]
+
+    assert history[0]["tool_name"] == "repo.read"
+    assert history[0]["arguments"] == {"files": [{"path": "app.py"}]}
+    assert history[0]["output"]["file_count"] == 1
+    assert history[0]["output"]["paths"] == ["app.py"]
+    assert "content" not in json.dumps(history[0]["output"])
 
 
 def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path: Path) -> None:

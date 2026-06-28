@@ -301,12 +301,6 @@ class ToolLoopAgent:
                 )
             )
             transcript.append({"role": "assistant", "content": decision.raw_response})
-            transcript.append(
-                self._tool_result_message(
-                    tool_result,
-                    max_prompt_chars=task.max_tool_result_prompt_chars,
-                )
-            )
 
         return await self._finish(
             trace=trace,
@@ -338,9 +332,15 @@ class ToolLoopAgent:
         if task.required_tools:
             payload["required_tools"] = list(task.required_tools)
             payload["missing_required_tools"] = list(missing_required_tools)
-        tool_results = [entry for entry in transcript if entry.get("role") == "tool"]
-        if tool_results:
-            payload["tool_results"] = tool_results
+        tool_history = self._tool_history(
+            steps,
+            max_prompt_chars=task.max_tool_result_prompt_chars,
+        )
+        if tool_history:
+            payload["tool_history"] = tool_history
+        policy_results = [entry for entry in transcript if entry.get("role") == "tool"]
+        if policy_results:
+            payload["tool_results"] = policy_results
         tool_schemas = self._available_tool_schemas(task)
         if tool_schemas and not budget_exhausted:
             payload["tool_schemas"] = tool_schemas
@@ -528,6 +528,96 @@ class ToolLoopAgent:
             "output": self._truncate_tool_output(tool_result.output, max_prompt_chars),
             "error": tool_result.error,
         }
+
+    def _tool_history(
+        self,
+        steps: list[WorkflowStep],
+        *,
+        max_prompt_chars: int,
+    ) -> list[dict[str, Any]]:
+        """Return prior tool calls/results, compacting outputs near the prompt budget."""
+
+        history: list[dict[str, Any]] = []
+        for step in steps:
+            if step.tool_call is None or step.tool_result is None:
+                continue
+            history.append(
+                {
+                    "step": step.name,
+                    "tool_call_id": str(step.tool_call.id),
+                    "tool_name": step.tool_call.tool_name,
+                    "arguments": step.tool_call.arguments,
+                    "ok": step.tool_result.ok,
+                    "output": step.tool_result.output,
+                    "error": step.tool_result.error,
+                }
+            )
+
+        if not history:
+            return []
+
+        history_json = json.dumps(history, sort_keys=True)
+        if max_prompt_chars < 1 or len(history_json) <= max_prompt_chars:
+            return history
+
+        compacted: list[dict[str, Any]] = []
+        for entry in history:
+            compacted.append(
+                {
+                    **entry,
+                    "output": self._summarize_tool_output(entry["output"]),
+                }
+            )
+
+        compacted_json = json.dumps(compacted, sort_keys=True)
+        if len(compacted_json) <= max_prompt_chars:
+            return compacted
+
+        # Keep the most recent calls with full call metadata. Older calls are
+        # summarized into a count so repetition is still visible under pressure.
+        kept: list[dict[str, Any]] = []
+        omitted = 0
+        for entry in reversed(compacted):
+            candidate = [*reversed(kept), entry]
+            candidate_json = json.dumps(candidate, sort_keys=True)
+            if len(candidate_json) <= max_prompt_chars or not kept:
+                kept.append(entry)
+            else:
+                omitted += 1
+        result = list(reversed(kept))
+        if omitted:
+            result.insert(
+                0,
+                {
+                    "compacted_history": True,
+                    "omitted_older_tool_calls": omitted,
+                },
+            )
+        return result
+
+    def _summarize_tool_output(self, output: dict[str, Any]) -> dict[str, Any]:
+        """Summarize bulky tool output while preserving decision-relevant facts."""
+
+        summary: dict[str, Any] = {}
+        if "matches" in output and isinstance(output["matches"], list):
+            summary["match_count"] = len(output["matches"])
+            summary["truncated"] = output.get("truncated", False)
+        if "results" in output and isinstance(output["results"], list):
+            summary["result_count"] = len(output["results"])
+        if "files" in output and isinstance(output["files"], list):
+            summary["file_count"] = len(output["files"])
+            summary["paths"] = [
+                item.get("path")
+                for item in output["files"]
+                if isinstance(item, dict) and isinstance(item.get("path"), str)
+            ][:20]
+        if "changed_files" in output:
+            summary["changed_files"] = output["changed_files"]
+        if "errors" in output and output["errors"]:
+            summary["errors"] = output["errors"]
+        if "ok" in output:
+            summary["ok"] = output["ok"]
+        return summary or self._truncate_tool_output(output, 500)
 
     def _truncate_tool_output(
         self,
