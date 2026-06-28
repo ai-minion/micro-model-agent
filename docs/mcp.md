@@ -115,15 +115,15 @@ To expose them, set:
 MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS=1
 ```
 
-Default agent tools are read-oriented:
+Default agent tools include read/search plus dry-run patch proposal:
 
 ```text
-repo.search, repo.read, repo.semantic_search, git.diff
+repo.search, repo.read, repo.semantic_search, repo.write_patch, git.diff
 ```
 
-`repo.write_patch` is not enabled by default. When it is enabled through
-`available_tools`, patch application remains dry-run unless `apply_patches` is
-explicitly true.
+Patch application remains dry-run unless `apply_patches` is explicitly true.
+MCP model runs also default `schema_prompt` to true so the model sees the exact
+tool argument schemas.
 
 ## Useful First Prompt
 
@@ -131,7 +131,7 @@ After starting the MCP server in Copilot Agent mode, try:
 
 ```text
 Use micro_agent_run_loop to read README.md and summarize the project status in one sentence.
-Use available_tools ["repo.read"], max_tool_calls 1, max_turns 4, and schema_prompt false.
+Use available_tools ["repo.read"], max_tool_calls 1, and max_turns 4.
 ```
 
 The first model-backed call can take about 90 seconds while the 7B model loads.
@@ -146,8 +146,8 @@ instead of a trained adapter:
 ```text
 Use micro_agent_run_loop with goal "<repo task>".
 Set base_model "Qwen/Qwen2.5-Coder-7B-Instruct", use_adapter false,
-schema_prompt true, capture_prompts true, apply_patches true when you want real
-edits, and include the tools needed for the task.
+capture_prompts true, apply_patches true when you want real edits, and include
+the tools needed for the task. `schema_prompt` is true by default.
 ```
 
 This stores workflow traces under:

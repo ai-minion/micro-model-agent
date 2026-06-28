@@ -240,8 +240,13 @@ def test_list_builtin_tools_marks_safe_defaults() -> None:
         for tool in result["tools"]
         if tool["default_enabled_for_mcp"]
     }
-    assert {"repo.search", "repo.read", "repo.semantic_search", "git.diff"} <= defaults
-    assert "repo.write_patch" not in defaults
+    assert {
+        "repo.search",
+        "repo.read",
+        "repo.semantic_search",
+        "repo.write_patch",
+        "git.diff",
+    } <= defaults
 
 
 def test_call_builtin_tool_reads_repository_file(tmp_path: Path) -> None:
@@ -435,6 +440,13 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
             actual_summary="Codex read README.md and saw status central.",
         )
     )
+    central_workflow_trace = (
+        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    )
+    central_workflow_trace.parent.mkdir(parents=True, exist_ok=True)
+    (
+        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).rename(central_workflow_trace)
     reviewed = asyncio.run(
         review_comparison_trace(
             session_id=session_id,
@@ -451,7 +463,8 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     assert not (
         workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
-    assert (
+    assert central_workflow_trace.exists()
+    assert not (
         workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     ).exists()
     assert model_result["trace_id"] in stopped["session"]["local_trace_ids"]

@@ -59,6 +59,7 @@ DEFAULT_MCP_AVAILABLE_TOOLS: tuple[str, ...] = (
     "repo.search",
     "repo.read",
     "repo.semantic_search",
+    "repo.write_patch",
     "git.diff",
 )
 DEFAULT_7B_ADAPTER_PATH = (
@@ -109,7 +110,7 @@ async def run_agent_loop(
     max_tool_calls: int | None = 1,
     max_new_tokens: int = 350,
     max_tool_result_prompt_chars: int = 2500,
-    schema_prompt: bool = False,
+    schema_prompt: bool = True,
     capture_prompts: bool = False,
     apply_patches: bool = False,
     allow_test_run: bool = False,
@@ -347,10 +348,19 @@ async def review_comparison_trace(
     if session is None:
         return {"ok": False, "error": f"comparison trace not found: {session_id}"}
     local_traces = []
-    trace_root = Path(session.repository_root)
-    trace_store = JsonlTraceStore(trace_root / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_roots = [Path(session.repository_root)]
+    comparison_root = Path(comparison_repository_root or repository)
+    if comparison_root not in trace_roots:
+        trace_roots.append(comparison_root)
     for trace_id in session.local_trace_ids:
-        trace = await trace_store.get(trace_id)
+        trace = None
+        for trace_root in trace_roots:
+            trace_store = JsonlTraceStore(
+                trace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+            )
+            trace = await trace_store.get(trace_id)
+            if trace is not None:
+                break
         if trace is not None:
             local_traces.append(workflow_trace_to_record(trace))
     reviewed = review_comparison_session(
@@ -532,7 +542,7 @@ def create_mcp_server(
         max_tool_calls: int | None = 1,
         max_new_tokens: int = 350,
         max_tool_result_prompt_chars: int = 2500,
-        schema_prompt: bool = False,
+        schema_prompt: bool = True,
         capture_prompts: bool = False,
         apply_patches: bool = False,
         allow_test_run: bool = False,
