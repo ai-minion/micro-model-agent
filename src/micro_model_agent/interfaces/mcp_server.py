@@ -67,6 +67,26 @@ DEFAULT_MCP_AVAILABLE_TOOLS: tuple[str, ...] = (
 DEFAULT_7B_ADAPTER_PATH = (
     ".micro_model_agent/training/runs/qwen-coder-7b-tool-schema-20260613-205520/adapter"
 )
+COMPAT_TOOL_ALIASES: dict[str, tuple[str, ...]] = {
+    # Common Codex/legacy names accepted at the MCP boundary. The model still
+    # only sees MicroModelAgent built-in tool names after normalization.
+    "apply_patch": ("repo.write_files", "repo.write_patch"),
+    "list_files": ("repo.search",),
+    "read_file": ("repo.read",),
+    "run_tests": ("test.run",),
+    "shell": (),
+    "write_file": ("repo.write_files",),
+}
+COMPAT_REQUIRED_TOOL_ALIASES: dict[str, tuple[str, ...]] = {
+    # Treat a legacy apply_patch requirement as "perform a write"; for
+    # greenfield tasks, repo.write_files is the preferred write primitive.
+    "apply_patch": ("repo.write_files",),
+    **{
+        alias: canonical
+        for alias, canonical in COMPAT_TOOL_ALIASES.items()
+        if alias != "apply_patch"
+    },
+}
 MCP_DEBUG_TOOLS_ENV = "MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS"
 MCP_EXPOSE_INIT_ENV = "MICRO_MODEL_AGENT_MCP_EXPOSE_INIT"
 MCP_REPOSITORY_ROOT_ENV = "MICRO_MODEL_AGENT_REPOSITORY_ROOT"
@@ -142,6 +162,7 @@ async def run_agent_loop(
         apply_patches=apply_patches,
         allow_test_run=allow_test_run or bool(test_command_name),
     )
+    required_tool_names = _required_tool_names(required_tools)
     model_settings = _resolve_model_settings(
         repository_root=repository,
         adapter_path=adapter_path,
@@ -173,7 +194,7 @@ async def run_agent_loop(
         ToolLoopAgentTask(
             goal=goal,
             available_tools=allowed_tool_names,
-            required_tools=tuple(required_tools or ()),
+            required_tools=required_tool_names,
             max_turns=max_turns,
             context=context,
             tool_schemas=builtin_tool_prompt_schemas(allowed_tool_names) if schema_prompt else {},
@@ -186,7 +207,7 @@ async def run_agent_loop(
                 "capture_prompts": capture_prompts,
                 "apply_patches": apply_patches,
                 "available_tools": list(allowed_tool_names),
-                "required_tools": list(required_tools or ()),
+                "required_tools": list(required_tool_names),
                 "model": model_settings,
             },
         )
@@ -1014,7 +1035,11 @@ def _allowed_tool_names(
 ) -> tuple[str, ...]:
     """Filter requested tool names according to MCP safety options."""
 
-    requested = tuple(available_tools or DEFAULT_MCP_AVAILABLE_TOOLS)
+    requested = _normalized_tool_names(
+        available_tools,
+        default_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
+        aliases=COMPAT_TOOL_ALIASES,
+    )
     allowed: list[str] = []
     for tool_name in requested:
         if tool_name not in BUILTIN_TOOL_SPECS:
@@ -1027,6 +1052,33 @@ def _allowed_tool_names(
             continue
         allowed.append(tool_name)
     return tuple(dict.fromkeys(allowed))
+
+
+def _required_tool_names(required_tools: list[str] | None) -> tuple[str, ...]:
+    """Normalize required tool names from external MCP callers."""
+
+    return _normalized_tool_names(
+        required_tools,
+        default_tools=(),
+        aliases=COMPAT_REQUIRED_TOOL_ALIASES,
+    )
+
+
+def _normalized_tool_names(
+    tool_names: list[str] | None,
+    *,
+    default_tools: tuple[str, ...],
+    aliases: dict[str, tuple[str, ...]],
+) -> tuple[str, ...]:
+    """Expand compatibility aliases and preserve first-seen order."""
+
+    if not tool_names:
+        return default_tools
+
+    normalized: list[str] = []
+    for tool_name in tool_names:
+        normalized.extend(aliases.get(tool_name, (tool_name,)))
+    return tuple(dict.fromkeys(normalized))
 
 
 def _allowed_test_commands(

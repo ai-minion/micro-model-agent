@@ -352,6 +352,46 @@ def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path)
     assert tool_output["dry_run"] is False
 
 
+def test_run_agent_loop_normalizes_legacy_tool_names(tmp_path: Path) -> None:
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Create a tiny project file.",
+            repository_root=str(tmp_path),
+            available_tools=["shell", "apply_patch"],
+            required_tools=["apply_patch"],
+            apply_patches=True,
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.write_files",
+                        "arguments": {
+                            "files": [
+                                {
+                                    "path": "README.md",
+                                    "content": "# Tiny\n\ncreated via alias\n",
+                                }
+                            ]
+                        },
+                    }
+                ),
+                _model_response({"final_response": "created README", "ok": True}),
+            ],
+        )
+    )
+
+    assert result["ok"] is True
+    assert (
+        tmp_path / "README.md"
+    ).read_text(encoding="utf-8") == "# Tiny\n\ncreated via alias\n"
+    trace = asyncio.run(
+        read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
+    )
+    run_metadata = trace["trace"]["final_output"]["run_metadata"]
+    assert run_metadata["available_tools"] == ["repo.write_files", "repo.write_patch"]
+    assert run_metadata["required_tools"] == ["repo.write_files"]
+
+
 def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(
     tmp_path: Path,
 ) -> None:
