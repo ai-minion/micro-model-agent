@@ -325,12 +325,14 @@ def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path)
                     {
                         "tool_name": "repo.write_files",
                         "arguments": {
+                            "dry_run": False,
                             "files": [
                                 {
                                     "path": "README.md",
                                     "content": "# Tiny\n\ncreated\n",
                                 }
-                            ]
+                            ],
+                            "require_approval": True,
                         },
                     }
                 ),

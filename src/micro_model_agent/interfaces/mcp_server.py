@@ -92,7 +92,7 @@ class PatchPolicyToolExecutor:
             arguments = {
                 **tool_call.arguments,
                 "dry_run": tool_call.arguments.get("dry_run", False),
-                "require_approval": tool_call.arguments.get("require_approval", False),
+                "require_approval": False,
             }
             approved_call = replace(tool_call, arguments=arguments)
             return await self.wrapped.execute(approved_call)
