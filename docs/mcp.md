@@ -3,6 +3,30 @@
 micro-model-agent can run as an MCP stdio server and expose the local tool loop to
 Copilot or another MCP client.
 
+The server accepts a startup repository root:
+
+```bash
+python -m micro_model_agent.interfaces.mcp_server \
+  --repository-root /path/to/workspace
+```
+
+The same default can be supplied through `MICRO_MODEL_AGENT_REPOSITORY_ROOT`.
+Individual MCP tool calls can still override `repository_root`.
+
+For globally configured MCP servers, prefer creating or selecting a per-chat
+workspace:
+
+```text
+micro_agent_init_workspace
+path: "/path/to/chat-or-test-workspace"
+name: "optional-human-name"
+```
+
+The tool returns a `workspace.id`. Pass that ID as `workspace_id` to
+`micro_agent_start_trace`, `micro_agent_run_loop`, `micro_agent_stop_trace`,
+`micro_agent_review_trace`, and debug trace tools. This avoids multiple Codex
+chats sharing one global default directory.
+
 ## VS Code / Copilot Configuration
 
 Create `.vscode/mcp.json` in this repository:
@@ -55,6 +79,8 @@ By default, the MCP server keeps the outer client's tool surface intentionally
 small:
 
 - `micro_agent_run_loop`: run the Qwen-backed orchestration loop.
+- `micro_agent_init_workspace`: create or register a workspace directory and
+  return a `workspace_id` for subsequent calls.
 
 The agent loop is responsible for selecting the internal repository tools. This
 keeps Copilot or another MCP host from seeing and directly choosing unnecessary
@@ -153,6 +179,76 @@ uv run micro-agent dataset export-traces \
 
 Rejected raw traces should be used for analysis and later corrected examples,
 not as direct SFT targets.
+
+## Comparison Trace Sessions
+
+When an MCP consumer such as Codex is connected, use comparison trace sessions to
+record both the local model's shadow attempt and the consumer's actual work.
+
+1. Start a session:
+
+```text
+micro_agent_start_trace
+goal: "<repo task>"
+context: "Any extra task context visible to the consumer."
+```
+
+2. Ask the local model to attempt the same task, passing the session id:
+
+```text
+micro_agent_run_loop
+goal: "<repo task>"
+comparison_session_id: "<session id>"
+base_model: "Qwen/Qwen2.5-Coder-7B-Instruct"
+use_adapter: false
+schema_prompt: true
+capture_prompts: true
+```
+
+3. The MCP consumer does the real work using its normal tools.
+
+4. Stop the session with the consumer's actual result:
+
+```text
+micro_agent_stop_trace
+session_id: "<session id>"
+actual_summary: "What the consumer actually did."
+changed_files: ["path/to/file.py"]
+tests: ["pytest path/to/test.py"]
+```
+
+5. Review the comparison:
+
+```text
+micro_agent_review_trace
+session_id: "<session id>"
+local_model_quality: "good|mixed|bad|unknown"
+consumer_quality: "good|mixed|bad|unknown"
+comparison_notes: "Where the local model matched or diverged."
+```
+
+For MCP tools, comparison sessions are stored append-only under the MCP server's
+repository root, while each session's `repository_root` records the workspace
+that was actually evaluated. This keeps comparison evidence centralized even
+when a task runs in a temporary or registered workspace.
+
+```text
+.micro_model_agent/traces/comparison_sessions.jsonl
+```
+
+## MCP Prompts
+
+The server also exposes reusable MCP prompts for clients that surface prompt
+templates:
+
+- `compare_local_model_on_task`: full shadow-evaluation workflow.
+- `collect_real_trace`: run base Qwen with explicit schemas and capture a trace.
+- `review_comparison_trace`: review a completed comparison session.
+- `smoke_test_micro_agent`: minimal server/tool-loop smoke test.
+
+Do not rely on prompts as the only guidance path. Codex is documented to consume
+server instructions and tool descriptions, so the same workflow is summarized in
+the MCP server instructions as well.
 
 ## Promoted Adapter Smoke Test
 

@@ -17,8 +17,20 @@ from micro_model_agent.interfaces.mcp_server import (
     init_repository,
     list_builtin_tools,
     read_trace,
+    review_comparison_trace,
     run_agent_loop,
+    start_comparison_trace,
+    stop_comparison_trace,
 )
+
+DEFAULT_PUBLIC_TOOLS = {
+    "micro_agent_init_workspace",
+    "micro_agent_run_loop",
+    "micro_agent_start_trace",
+    "micro_agent_record_trace_event",
+    "micro_agent_stop_trace",
+    "micro_agent_review_trace",
+}
 
 
 def _model_response(payload: dict[str, object]) -> str:
@@ -31,7 +43,7 @@ def test_mcp_server_exposes_only_loop_when_repository_is_initialized(tmp_path: P
     server = create_mcp_server(repository_root=tmp_path)
     tools = asyncio.run(server.list_tools())
 
-    assert {tool.name for tool in tools} == {"micro_agent_run_loop"}
+    assert {tool.name for tool in tools} == DEFAULT_PUBLIC_TOOLS
 
 
 def test_mcp_server_exposes_init_until_successful_initialization(tmp_path: Path) -> None:
@@ -39,14 +51,14 @@ def test_mcp_server_exposes_init_until_successful_initialization(tmp_path: Path)
     initial_tools = asyncio.run(server.list_tools())
 
     assert {tool.name for tool in initial_tools} == {
+        *DEFAULT_PUBLIC_TOOLS,
         "micro_agent_init",
-        "micro_agent_run_loop",
     }
 
     asyncio.run(server.call_tool("micro_agent_init", {}))
     final_tools = asyncio.run(server.list_tools())
 
-    assert {tool.name for tool in final_tools} == {"micro_agent_run_loop"}
+    assert {tool.name for tool in final_tools} == DEFAULT_PUBLIC_TOOLS
     assert (tmp_path / ".micro_model_agent" / "config.json").exists()
 
 
@@ -57,7 +69,7 @@ def test_mcp_server_debug_tools_are_opt_in(tmp_path: Path) -> None:
     tools = asyncio.run(server.list_tools())
 
     assert {tool.name for tool in tools} == {
-        "micro_agent_run_loop",
+        *DEFAULT_PUBLIC_TOOLS,
         "micro_agent_builtin_tool",
         "micro_agent_read_trace",
         "micro_agent_list_builtin_tools",
@@ -71,6 +83,78 @@ def test_mcp_server_advertises_tool_list_changes() -> None:
 
     assert options.capabilities.tools is not None
     assert options.capabilities.tools.listChanged is True
+
+
+def test_mcp_server_exposes_workflow_prompts() -> None:
+    server = create_mcp_server(expose_init_tool=False)
+
+    prompts = asyncio.run(server.list_prompts())
+    prompt_names = {prompt.name for prompt in prompts}
+    rendered = asyncio.run(
+        server.get_prompt(
+            "compare_local_model_on_task",
+            {
+                "goal": "Create a README",
+                "context": "Use the empty test workspace.",
+            },
+        )
+    )
+
+    assert {
+        "compare_local_model_on_task",
+        "collect_real_trace",
+        "review_comparison_trace",
+        "smoke_test_micro_agent",
+    } <= prompt_names
+    assert "micro_agent_start_trace" in str(rendered.messages)
+    assert "Qwen2.5-Coder-7B-Instruct" in str(rendered.messages)
+
+
+def test_mcp_tools_default_to_server_repository_root(tmp_path: Path) -> None:
+    server = create_mcp_server(repository_root=tmp_path, expose_init_tool=False)
+
+    started = asyncio.run(
+        server.call_tool(
+            "micro_agent_start_trace",
+            {"goal": "Use the server default root."},
+        )
+    )
+    _, data = started
+
+    assert data["ok"] is True
+    assert data["session"]["repository_root"] == str(tmp_path)
+
+
+def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
+    registry_root = tmp_path / "registry"
+    workspace_root = tmp_path / "workspace"
+    server = create_mcp_server(repository_root=registry_root, expose_init_tool=False)
+
+    created = asyncio.run(
+        server.call_tool(
+            "micro_agent_init_workspace",
+            {
+                "path": str(workspace_root),
+                "name": "chat-workspace",
+            },
+        )
+    )
+    _, created_data = created
+    workspace_id = created_data["workspace"]["id"]
+    started = asyncio.run(
+        server.call_tool(
+            "micro_agent_start_trace",
+            {
+                "workspace_id": workspace_id,
+                "goal": "Use the registered workspace.",
+            },
+        )
+    )
+    _, started_data = started
+
+    assert created_data["ok"] is True
+    assert (workspace_root / ".micro_model_agent" / "config.json").exists()
+    assert started_data["session"]["repository_root"] == str(workspace_root.resolve())
 
 
 def test_init_repository_is_idempotent(tmp_path: Path) -> None:
@@ -249,3 +333,126 @@ def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(
         "00000000-0000-4000-8000-000000000456"
     )
     assert [step["tool_name"] for step in result["steps"] if step["tool_name"]] == ["repo.read"]
+
+
+def test_comparison_trace_records_local_model_and_consumer_result(tmp_path: Path) -> None:
+    (tmp_path / "README.md").write_text("# Demo\n\nstatus: compare\n", encoding="utf-8")
+    started = asyncio.run(
+        start_comparison_trace(
+            goal="Read README.md and summarize status.",
+            repository_root=str(tmp_path),
+            context="consumer will solve this too",
+        )
+    )
+    session_id = started["session"]["id"]
+
+    model_result = asyncio.run(
+        run_agent_loop(
+            goal="Read README.md and summarize status.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.read"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.read",
+                        "arguments": {"files": [{"path": "README.md"}]},
+                    }
+                ),
+                _model_response({"final_response": "status is compare", "ok": True}),
+            ],
+            comparison_session_id=session_id,
+        )
+    )
+    stopped = asyncio.run(
+        stop_comparison_trace(
+            session_id=session_id,
+            repository_root=str(tmp_path),
+            actual_summary="Codex read README.md and saw status compare.",
+            changed_files=[],
+            tests=[],
+        )
+    )
+    reviewed = asyncio.run(
+        review_comparison_trace(
+            session_id=session_id,
+            repository_root=str(tmp_path),
+            local_model_quality="good",
+            consumer_quality="good",
+            comparison_notes="same answer",
+        )
+    )
+
+    assert model_result["trace_id"] in stopped["session"]["local_trace_ids"]
+    assert reviewed["comparison"]["local_model"][0]["response"] == "status is compare"
+    assert reviewed["comparison"]["consumer_actual"]["summary"] == (
+        "Codex read README.md and saw status compare."
+    )
+    assert reviewed["comparison"]["review"]["comparison_notes"] == "same answer"
+
+
+def test_comparison_trace_can_use_central_store_for_workspace_task(
+    tmp_path: Path,
+) -> None:
+    registry_root = tmp_path / "registry"
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / "README.md").write_text("# Demo\n\nstatus: central\n", encoding="utf-8")
+    started = asyncio.run(
+        start_comparison_trace(
+            goal="Read README.md and summarize status.",
+            repository_root=str(workspace_root),
+            comparison_repository_root=str(registry_root),
+            context="consumer will solve this too",
+        )
+    )
+    session_id = started["session"]["id"]
+
+    model_result = asyncio.run(
+        run_agent_loop(
+            goal="Read README.md and summarize status.",
+            repository_root=str(workspace_root),
+            comparison_repository_root=str(registry_root),
+            available_tools=["repo.read"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.read",
+                        "arguments": {"files": [{"path": "README.md"}]},
+                    }
+                ),
+                _model_response({"final_response": "status is central", "ok": True}),
+            ],
+            comparison_session_id=session_id,
+        )
+    )
+    stopped = asyncio.run(
+        stop_comparison_trace(
+            session_id=session_id,
+            repository_root=str(workspace_root),
+            comparison_repository_root=str(registry_root),
+            actual_summary="Codex read README.md and saw status central.",
+        )
+    )
+    reviewed = asyncio.run(
+        review_comparison_trace(
+            session_id=session_id,
+            repository_root=str(workspace_root),
+            comparison_repository_root=str(registry_root),
+            local_model_quality="good",
+            consumer_quality="good",
+        )
+    )
+
+    assert (
+        registry_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
+    assert not (
+        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
+    assert (
+        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
+    assert model_result["trace_id"] in stopped["session"]["local_trace_ids"]
+    assert reviewed["comparison"]["local_model"][0]["response"] == "status is central"
