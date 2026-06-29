@@ -64,6 +64,7 @@ class ToolLoopAgentResult:
     trace_id: UUID
     ok: bool
     response: str
+    turns_used: int
     tool_calls_made: int
     trace: WorkflowTrace
 
@@ -108,13 +109,23 @@ class ToolLoopAgent:
             transcript.append({"role": "context", "content": task.context})
 
         tool_calls_made = 0
-        for turn_number in range(1, task.max_turns + 1):
+        turn_number = 1
+        used_extra_finalization_turn = False
+        while turn_number <= task.max_turns or (
+            not used_extra_finalization_turn
+            and self._should_allow_extra_finalization_turn(task, tool_calls_made, steps)
+        ):
+            force_final_response = turn_number > task.max_turns
+            if force_final_response:
+                used_extra_finalization_turn = True
             # Each turn asks the model for exactly one JSON object: either a
             # tool call or a final response.
             prompt = self._build_prompt(
                 task,
                 transcript,
                 tool_calls_made=tool_calls_made,
+                turn_number=turn_number,
+                force_final_response=force_final_response,
                 steps=steps,
             )
             raw_response = await self.model_provider.complete(prompt)
@@ -149,6 +160,7 @@ class ToolLoopAgent:
                             ),
                         }
                     )
+                    turn_number += 1
                     continue
                 missing_required_tools = self._missing_required_tools(task, steps)
                 if missing_required_tools:
@@ -178,6 +190,37 @@ class ToolLoopAgent:
                             ),
                         }
                     )
+                    turn_number += 1
+                    continue
+                verification_needed = self._missing_verification_after_write(task, steps)
+                if verification_needed:
+                    output = {
+                        "raw_response": decision.raw_response,
+                        "error": "final_response_before_verification",
+                    }
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
+                    steps.append(
+                        WorkflowStep(
+                            name=f"model_turn_{turn_number}",
+                            status=WorkflowStatus.FAILED,
+                            output=output,
+                        )
+                    )
+                    transcript.append({"role": "assistant", "content": decision.raw_response})
+                    transcript.append(
+                        {
+                            "role": "tool",
+                            "tool_name": "orchestration_policy",
+                            "ok": False,
+                            "error": (
+                                "A write succeeded during this repair task, but verification "
+                                "has not passed after the latest write. Run test.run before "
+                                "final_response."
+                            ),
+                        }
+                    )
+                    turn_number += 1
                     continue
                 # The final answer is only successful if the model said it was
                 # OK and no previous tool call failed.
@@ -193,9 +236,9 @@ class ToolLoopAgent:
                             else WorkflowStatus.FAILED,
                             output=self._step_output(
                                 {
-                                "raw_response": decision.raw_response,
-                                "response": decision.response,
-                                "ok": final_ok,
+                                    "raw_response": decision.raw_response,
+                                    "response": decision.response,
+                                    "ok": final_ok,
                                 },
                                 prompt=prompt,
                                 capture_prompt=task.capture_prompts,
@@ -233,9 +276,10 @@ class ToolLoopAgent:
                         "error": decision.error,
                     }
                 )
+                turn_number += 1
                 continue
 
-            if self._tool_budget_exhausted(task, tool_calls_made, steps):
+            if force_final_response or self._tool_budget_exhausted(task, tool_calls_made, steps):
                 # Once the budget is exhausted, the agent tells the model to
                 # answer using existing tool results instead of calling more tools.
                 output = {
@@ -263,6 +307,7 @@ class ToolLoopAgent:
                         ),
                     }
                 )
+                turn_number += 1
                 continue
 
             tool_call = ToolCall(
@@ -278,6 +323,36 @@ class ToolLoopAgent:
                     ok=False,
                     error=f"tool is not available: {tool_call.tool_name}",
                 )
+            elif self._is_duplicate_successful_write(tool_call, steps):
+                output = {
+                    "raw_response": decision.raw_response,
+                    "error": "duplicate_successful_write",
+                }
+                if task.capture_prompts:
+                    output["prompt"] = prompt
+                steps.append(
+                    WorkflowStep(
+                        name=f"model_turn_{turn_number}",
+                        status=WorkflowStatus.FAILED,
+                        tool_call=tool_call,
+                        output=output,
+                    )
+                )
+                transcript.append({"role": "assistant", "content": decision.raw_response})
+                transcript.append(
+                    {
+                        "role": "tool",
+                        "tool_name": "orchestration_policy",
+                        "ok": False,
+                        "error": (
+                            "repo.write_files already succeeded for these files. "
+                            "Return final_response, or choose a different verification tool "
+                            "such as test.run or git.diff if available."
+                        ),
+                    }
+                )
+                turn_number += 1
+                continue
             else:
                 tool_result = await self.tool_executor.execute(tool_call)
 
@@ -302,6 +377,7 @@ class ToolLoopAgent:
                 )
             )
             transcript.append({"role": "assistant", "content": decision.raw_response})
+            turn_number += 1
 
         return await self._finish(
             trace=trace,
@@ -319,16 +395,25 @@ class ToolLoopAgent:
         transcript: list[dict[str, Any]],
         *,
         tool_calls_made: int,
+        turn_number: int,
+        force_final_response: bool = False,
         steps: list[WorkflowStep],
     ) -> str:
         """Build the prompt that asks the model for one JSON decision."""
 
         budget_exhausted = self._tool_budget_exhausted(task, tool_calls_made, steps)
+        final_response_only = force_final_response or budget_exhausted
         missing_required_tools = self._missing_required_tools(task, steps)
         payload: dict[str, Any] = {
             "goal": task.goal,
-            "available_tools": [] if budget_exhausted else list(task.available_tools),
+            "available_tools": [] if final_response_only else list(task.available_tools),
             "context": self._prompt_context(task.context),
+            "loop_budget": self._loop_budget_payload(
+                task,
+                tool_calls_made=tool_calls_made,
+                turn_number=turn_number,
+                final_response_only=final_response_only,
+            ),
         }
         if task.required_tools:
             payload["required_tools"] = list(task.required_tools)
@@ -346,10 +431,10 @@ class ToolLoopAgent:
         if policy_results:
             payload["tool_results"] = policy_results
         tool_schemas = self._available_tool_schemas(task)
-        if tool_schemas and not budget_exhausted:
+        if tool_schemas and not final_response_only:
             payload["tool_schemas"] = tool_schemas
 
-        if budget_exhausted:
+        if final_response_only:
             # When no more tools are allowed, the system prompt removes tool
             # choices and asks for a final_response JSON object.
             system_prompt = (
@@ -368,6 +453,8 @@ class ToolLoopAgent:
                 "Choose safe typed tool calls and follow retrieved context. "
                 "Respond with exactly one JSON object and no markdown. "
                 "Call at least one available tool before final_response. "
+                "Track loop_budget carefully; if this is the last turn, prefer "
+                "final_response unless a required tool still has to be called. "
                 "Final responses must be concise and must not repeat full tool output. "
                 "For greenfield creation or scaffolding tasks, prefer repo.write_files over "
                 "repo.write_patch. If repo.search or repo.semantic_search repeatedly returns "
@@ -393,6 +480,30 @@ class ToolLoopAgent:
             if tool_name in task.tool_schemas
         }
 
+    def _loop_budget_payload(
+        self,
+        task: ToolLoopAgentTask,
+        *,
+        tool_calls_made: int,
+        turn_number: int,
+        final_response_only: bool,
+    ) -> dict[str, Any]:
+        """Expose loop limits so the model can plan instead of guessing."""
+
+        turns_remaining = max(task.max_turns - turn_number + 1, 0)
+        tool_calls_remaining: int | None = None
+        if task.max_tool_calls is not None:
+            tool_calls_remaining = max(task.max_tool_calls - tool_calls_made, 0)
+        return {
+            "turn_number": turn_number,
+            "max_turns": task.max_turns,
+            "turns_remaining_including_current": turns_remaining,
+            "tool_calls_made": tool_calls_made,
+            "max_tool_calls": task.max_tool_calls,
+            "tool_calls_remaining": tool_calls_remaining,
+            "final_response_only": final_response_only,
+        }
+
     def _prompt_context(self, context: PromptContext) -> PromptContext:
         """Normalize an empty context to a string so JSON output stays simple."""
 
@@ -414,10 +525,59 @@ class ToolLoopAgent:
             and not self._missing_required_tools(task, steps)
         )
 
+    def _should_allow_extra_finalization_turn(
+        self,
+        task: ToolLoopAgentTask,
+        tool_calls_made: int,
+        steps: list[WorkflowStep],
+    ) -> bool:
+        """Allow exactly one final-answer turn after a useful last action."""
+
+        return self._tool_budget_exhausted(task, tool_calls_made, steps) or (
+            bool(steps) and steps[-1].tool_result is not None
+        )
+
     def _has_failed_tool_step(self, steps: list[WorkflowStep]) -> bool:
         """Check whether any executed tool reported failure."""
 
         return any(step.tool_result is not None and not step.tool_result.ok for step in steps)
+
+    def _is_duplicate_successful_write(
+        self,
+        tool_call: ToolCall,
+        steps: list[WorkflowStep],
+    ) -> bool:
+        """Return true when repo.write_files repeats a prior successful file set."""
+
+        if tool_call.tool_name != "repo.write_files":
+            return False
+        requested_paths = self._write_file_paths(tool_call.arguments)
+        if not requested_paths:
+            return False
+        for step in steps:
+            if (
+                step.tool_call is None
+                or step.tool_result is None
+                or not step.tool_result.ok
+                or step.tool_call.tool_name != "repo.write_files"
+            ):
+                continue
+            if self._write_file_paths(step.tool_call.arguments) == requested_paths:
+                return True
+        return False
+
+    def _write_file_paths(self, arguments: dict[str, Any]) -> tuple[str, ...]:
+        """Extract a stable file-path tuple from repo.write_files arguments."""
+
+        files = arguments.get("files")
+        if not isinstance(files, list):
+            return ()
+        paths = []
+        for file in files:
+            if not isinstance(file, dict) or not isinstance(file.get("path"), str):
+                return ()
+            paths.append(file["path"])
+        return tuple(sorted(paths))
 
     def _orchestration_hints(
         self,
@@ -451,6 +611,29 @@ class ToolLoopAgent:
                 "use repo.write_files with explicit path/content entries instead of "
                 "hand-authoring unified diffs."
             )
+        if self._missing_verification_after_write(task, steps):
+            hints.append(
+                "This task is about a failing test/import/verification issue. A file write "
+                "has succeeded, but no test.run has passed after the latest write. Run "
+                "test.run before final_response."
+            )
+        successful_writes = [
+            step
+            for step in steps
+            if step.tool_call is not None
+            and step.tool_call.tool_name == "repo.write_files"
+            and step.tool_result is not None
+            and step.tool_result.ok
+        ]
+        if successful_writes:
+            changed_files = successful_writes[-1].tool_result.output.get("changed_files", [])
+            if isinstance(changed_files, list) and changed_files:
+                hints.append(
+                    "repo.write_files already succeeded for these files: "
+                    + ", ".join(str(path) for path in changed_files[:20])
+                    + ". Do not repeat the same write. Return final_response, "
+                    "or run a distinct verification tool if one is available."
+                )
         return hints
 
     def _looks_like_creation_task(self, task: ToolLoopAgentTask) -> bool:
@@ -494,9 +677,67 @@ class ToolLoopAgent:
         used_tools = {
             step.tool_call.tool_name
             for step in steps
-            if step.tool_call is not None and step.tool_result is not None
+            if step.tool_call is not None
+            and step.tool_result is not None
+            and step.tool_result.ok
         }
-        return tuple(tool_name for tool_name in task.required_tools if tool_name not in used_tools)
+        return tuple(
+            tool_name
+            for tool_name in task.required_tools
+            if not self._required_tool_satisfied(tool_name, used_tools)
+        )
+
+    def _required_tool_satisfied(self, required_tool: str, used_tools: set[str]) -> bool:
+        """Treat successful repository writes as equivalent required write evidence."""
+
+        if required_tool in {"repo.write_patch", "repo.write_files"}:
+            return bool({"repo.write_patch", "repo.write_files"} & used_tools)
+        return required_tool in used_tools
+
+    def _missing_verification_after_write(
+        self,
+        task: ToolLoopAgentTask,
+        steps: list[WorkflowStep],
+    ) -> bool:
+        """Require test.run after writes for explicit test/import repair tasks."""
+
+        if "test.run" not in task.available_tools or not self._looks_like_verification_task(task):
+            return False
+        latest_write_index: int | None = None
+        latest_passing_test_index: int | None = None
+        for index, step in enumerate(steps):
+            if step.tool_call is None or step.tool_result is None or not step.tool_result.ok:
+                continue
+            if step.tool_call.tool_name in {"repo.write_patch", "repo.write_files"}:
+                latest_write_index = index
+            if step.tool_call.tool_name == "test.run":
+                output_ok = step.tool_result.output.get("ok")
+                exit_code = step.tool_result.output.get("exit_code")
+                if output_ok is True or exit_code == 0:
+                    latest_passing_test_index = index
+        return latest_write_index is not None and (
+            latest_passing_test_index is None or latest_passing_test_index < latest_write_index
+        )
+
+    def _looks_like_verification_task(self, task: ToolLoopAgentTask) -> bool:
+        """Heuristic for tasks whose success depends on running verification."""
+
+        text = f"{task.goal} {task.context}".lower()
+        return any(
+            term in text
+            for term in (
+                "pytest",
+                "test failure",
+                "tests fail",
+                "test fails",
+                "failing test",
+                "failing import",
+                "import error",
+                "modulenotfounderror",
+                "runs successfully",
+                "verification",
+            )
+        )
 
     def _parse_model_response(self, raw_response: str) -> _ModelDecision:
         """Parse the model's JSON into one internal decision object."""
@@ -618,7 +859,10 @@ class ToolLoopAgent:
                     "step": step.name,
                     "tool_call_id": str(step.tool_call.id),
                     "tool_name": step.tool_call.tool_name,
-                    "arguments": step.tool_call.arguments,
+                    "arguments": self._summarize_tool_arguments(
+                        step.tool_call.tool_name,
+                        step.tool_call.arguments,
+                    ),
                     "ok": step.tool_result.ok,
                     "output": step.tool_result.output,
                     "error": step.tool_result.error,
@@ -666,6 +910,22 @@ class ToolLoopAgent:
                 },
             )
         return result
+
+    def _summarize_tool_arguments(
+        self,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Keep prior tool arguments useful without inviting content copying."""
+
+        if tool_name != "repo.write_files":
+            return arguments
+        paths = self._write_file_paths(arguments)
+        return {
+            "dry_run": arguments.get("dry_run"),
+            "file_count": len(paths),
+            "paths": list(paths),
+        }
 
     def _summarize_tool_output(self, output: dict[str, Any]) -> dict[str, Any]:
         """Summarize bulky tool output while preserving decision-relevant facts."""
@@ -742,6 +1002,7 @@ class ToolLoopAgent:
             trace_id=trace.id,
             ok=ok,
             response=response,
+            turns_used=len(steps),
             tool_calls_made=tool_calls_made,
             trace=trace,
         )

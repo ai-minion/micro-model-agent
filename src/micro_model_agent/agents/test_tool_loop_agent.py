@@ -484,6 +484,263 @@ def test_tool_loop_agent_rejects_tool_calls_after_budget(tmp_path: Path) -> None
     assert result.trace.steps[1].output["error"] == "tool_call_after_budget_exhausted"
 
 
+def test_tool_loop_agent_allows_final_response_after_last_tool_turn(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "value() returns 1.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py and tell me what value() returns.",
+                max_tool_calls=1,
+                max_turns=1,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.response == "value() returns 1."
+    assert [step.name for step in result.trace.steps] == ["tool_call_1", "final_response"]
+
+
+def test_tool_loop_agent_allows_final_response_after_max_turn_tool_call(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "value() returns 1.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py and tell me what value() returns.",
+                max_tool_calls=8,
+                max_turns=1,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.turns_used == 2
+    assert [step.name for step in result.trace.steps] == ["tool_call_1", "final_response"]
+    first_payload = _user_payload_from_prompt(model.prompts[0])
+    final_payload = _user_payload_from_prompt(model.prompts[1])
+    assert first_payload["loop_budget"] == {
+        "turn_number": 1,
+        "max_turns": 1,
+        "turns_remaining_including_current": 1,
+        "tool_calls_made": 0,
+        "max_tool_calls": 8,
+        "tool_calls_remaining": 8,
+        "final_response_only": False,
+    }
+    assert final_payload["available_tools"] == []
+    assert final_payload["loop_budget"]["turn_number"] == 2
+    assert final_payload["loop_budget"]["final_response_only"] is True
+
+
+def test_tool_loop_agent_blocks_duplicate_successful_write_files(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [
+                            {
+                                "path": "README.md",
+                                "content": "# Demo\n",
+                            }
+                        ],
+                    },
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [
+                            {
+                                "path": "README.md",
+                                "content": "# Demo\n",
+                            }
+                        ],
+                    },
+                }
+            ),
+            _model_response({"final_response": "Created README.md.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Create README.md.",
+                available_tools=("repo.write_files",),
+                required_tools=("repo.write_files",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Demo\n"
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "final_response",
+    ]
+    assert result.trace.steps[1].output["error"] == "duplicate_successful_write"
+    second_prompt = model.prompts[1]
+    second_payload = _user_payload_from_prompt(second_prompt)
+    assert second_payload["tool_history"][0]["arguments"] == {
+        "dry_run": False,
+        "file_count": 1,
+        "paths": ["README.md"],
+    }
+    assert "# Demo" not in json.dumps(second_payload["tool_history"])
+    assert "Do not repeat the same write" in second_payload["orchestration_hints"][0]
+
+
+def test_tool_loop_agent_treats_write_files_as_required_write_patch(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [{"path": "README.md", "content": "# Demo\n"}],
+                    },
+                }
+            ),
+            _model_response({"final_response": "Created README.md.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Create README.md.",
+                available_tools=("repo.write_patch", "repo.write_files"),
+                required_tools=("repo.write_patch",),
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.response == "Created README.md."
+
+
+def test_tool_loop_agent_requires_verification_after_repair_write(
+    tmp_path: Path,
+) -> None:
+    _write_text(tmp_path / "app.py", "VALUE = 1\n")
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [{"path": "app.py", "content": "VALUE = 2\n"}],
+                    },
+                }
+            ),
+            _model_response({"final_response": "Fixed the pytest failure.", "ok": True}),
+            _model_response(
+                {
+                    "tool_name": "test.run",
+                    "arguments": {"command_name": "python-check"},
+                }
+            ),
+            _model_response({"final_response": "Fixed and verified.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(
+            tmp_path,
+            allowed_test_commands={
+                "python-check": AllowedTestCommand(
+                    (sys.executable, "-c", "from app import VALUE; assert VALUE == 2")
+                )
+            },
+        ),
+        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Fix the pytest import error so tests run successfully.",
+                available_tools=("repo.write_files", "test.run"),
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.response == "Fixed and verified."
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "tool_call_2",
+        "final_response",
+    ]
+    assert result.trace.steps[1].output["error"] == "final_response_before_verification"
+    third_payload = _user_payload_from_prompt(model.prompts[2])
+    assert "no test.run has passed" in third_payload["orchestration_hints"][0]
+
+
 def test_tool_loop_agent_final_result_fails_after_failed_tool(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(

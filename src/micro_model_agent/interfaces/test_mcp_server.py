@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 from pathlib import Path
 
 from micro_model_agent.infrastructure.repository_metadata import (
@@ -307,7 +308,14 @@ def test_run_agent_loop_with_scripted_model_saves_trace(tmp_path: Path) -> None:
 
     assert result["ok"] is True
     assert result["response"] == "status is tiny"
+    assert result["turns_used"] == 2
     assert result["tool_calls_made"] == 1
+    assert result["loop_budget"] == {
+        "max_turns": 4,
+        "max_tool_calls": 1,
+        "max_new_tokens": 350,
+        "max_tool_result_prompt_chars": 2500,
+    }
     assert trace["ok"] is True
     assert trace["trace"]["final_output"]["response"] == "status is tiny"
 
@@ -390,6 +398,103 @@ def test_run_agent_loop_normalizes_legacy_tool_names(tmp_path: Path) -> None:
     run_metadata = trace["trace"]["final_output"]["run_metadata"]
     assert run_metadata["available_tools"] == ["repo.write_files", "repo.write_patch"]
     assert run_metadata["required_tools"] == ["repo.write_files"]
+
+
+def test_run_agent_loop_hides_git_diff_outside_git_repository(tmp_path: Path) -> None:
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Read README.md if it exists.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.search", "git.diff"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.search",
+                        "arguments": {"kind": "glob", "query": "README.md"},
+                    }
+                ),
+                _model_response({"final_response": "No README.md found.", "ok": True}),
+            ],
+        )
+    )
+
+    trace = asyncio.run(
+        read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
+    )
+
+    assert result["ok"] is True
+    assert trace["trace"]["final_output"]["run_metadata"]["available_tools"] == [
+        "repo.search"
+    ]
+
+
+def test_run_agent_loop_keeps_git_diff_inside_git_repository(tmp_path: Path) -> None:
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True)
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Inspect git diff.",
+            repository_root=str(tmp_path),
+            available_tools=["git.diff"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "git.diff",
+                        "arguments": {},
+                    }
+                ),
+                _model_response({"final_response": "No diff.", "ok": True}),
+            ],
+        )
+    )
+
+    trace = asyncio.run(
+        read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
+    )
+
+    assert result["ok"] is True
+    assert trace["trace"]["final_output"]["run_metadata"]["available_tools"] == [
+        "git.diff"
+    ]
+
+
+def test_run_agent_loop_adds_default_pytest_command_when_tests_allowed(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "test_smoke.py").write_text(
+        "def test_smoke():\n    assert True\n",
+        encoding="utf-8",
+    )
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Run pytest.",
+            repository_root=str(tmp_path),
+            available_tools=["test.run"],
+            allow_test_run=True,
+            capture_prompts=True,
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "test.run",
+                        "arguments": {"command_name": "pytest"},
+                    }
+                ),
+                _model_response({"final_response": "pytest passed", "ok": True}),
+            ],
+        )
+    )
+
+    trace = asyncio.run(
+        read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
+    )
+    first_prompt = trace["trace"]["steps"][0]["output"]["prompt"]
+    payload = json.loads(first_prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
+
+    assert result["ok"] is True
+    assert trace["trace"]["final_output"]["run_metadata"]["allowed_test_commands"] == ["pytest"]
+    assert payload["tool_schemas"]["test.run"]["allowed_command_names"] == ["pytest"]
 
 
 def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(

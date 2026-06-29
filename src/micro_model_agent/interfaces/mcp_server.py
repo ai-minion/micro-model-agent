@@ -64,6 +64,10 @@ DEFAULT_MCP_AVAILABLE_TOOLS: tuple[str, ...] = (
     "repo.write_files",
     "git.diff",
 )
+CANONICAL_TOOL_NAMES_TEXT = (
+    "repo.search, repo.read, repo.semantic_search, repo.write_patch, "
+    "repo.write_files, test.run, git.diff"
+)
 DEFAULT_7B_ADAPTER_PATH = (
     ".micro_model_agent/training/runs/qwen-coder-7b-tool-schema-20260613-205520/adapter"
 )
@@ -156,11 +160,17 @@ async def run_agent_loop(
     """Run the model-driven tool loop and return a JSON-serializable result."""
 
     repository = Path(repository_root)
+    allowed_test_commands = _allowed_test_commands(
+        test_command_name,
+        test_command_args,
+        use_default_pytest=allow_test_run and not test_command_name,
+    )
     # Tool availability is narrowed before the model sees it.
     allowed_tool_names = _allowed_tool_names(
         available_tools=available_tools,
+        repository_root=repository,
         apply_patches=apply_patches,
-        allow_test_run=allow_test_run or bool(test_command_name),
+        allow_test_run=bool(allowed_test_commands),
     )
     required_tool_names = _required_tool_names(required_tools)
     model_settings = _resolve_model_settings(
@@ -177,7 +187,6 @@ async def run_agent_loop(
         scripted_responses=scripted_responses,
         offline=offline,
     )
-    allowed_test_commands = _allowed_test_commands(test_command_name, test_command_args)
     # Wrap the normal executor so MCP-specific patch policy is enforced in one place.
     executor = PatchPolicyToolExecutor(
         BuiltinToolExecutor(repository, allowed_test_commands),
@@ -197,7 +206,12 @@ async def run_agent_loop(
             required_tools=required_tool_names,
             max_turns=max_turns,
             context=context,
-            tool_schemas=builtin_tool_prompt_schemas(allowed_tool_names) if schema_prompt else {},
+            tool_schemas=_tool_prompt_schemas(
+                allowed_tool_names,
+                allowed_test_commands=allowed_test_commands,
+            )
+            if schema_prompt
+            else {},
             max_tool_calls=max_tool_calls,
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
             capture_prompts=capture_prompts,
@@ -208,6 +222,7 @@ async def run_agent_loop(
                 "apply_patches": apply_patches,
                 "available_tools": list(allowed_tool_names),
                 "required_tools": list(required_tool_names),
+                "allowed_test_commands": list(allowed_test_commands),
                 "model": model_settings,
             },
         )
@@ -222,6 +237,7 @@ async def run_agent_loop(
                 "trace_id": str(result.trace_id),
                 "ok": result.ok,
                 "response": result.response,
+                "turns_used": result.turns_used,
                 "tool_calls_made": result.tool_calls_made,
                 "model": model_settings,
             },
@@ -232,7 +248,14 @@ async def run_agent_loop(
         "ok": result.ok,
         "response": result.response,
         "trace_id": str(result.trace_id),
+        "turns_used": result.turns_used,
         "tool_calls_made": result.tool_calls_made,
+        "loop_budget": {
+            "max_turns": max_turns,
+            "max_tool_calls": max_tool_calls,
+            "max_new_tokens": max_new_tokens,
+            "max_tool_result_prompt_chars": max_tool_result_prompt_chars,
+        },
         "model": model_settings,
         "steps": [
             {
@@ -558,7 +581,9 @@ def create_mcp_server(
         name="micro_agent_run_loop",
         description=(
             "Ask the local MicroModelAgent model to orchestrate repository tool calls and "
-            "return a final response. Defaults target the cached Qwen 7B PEFT adapter."
+            "return a final response. Defaults target the cached Qwen 7B PEFT adapter. "
+            f"Canonical available_tools names are: {CANONICAL_TOOL_NAMES_TEXT}. "
+            "Use these names instead of Codex tool names such as shell or apply_patch."
         ),
     )
     async def mcp_run_agent_loop(
@@ -634,7 +659,8 @@ def create_mcp_server(
             "3. Call micro_agent_run_loop with the same goal, workspace_id if used, "
             "comparison_session_id from step 2, base_model='Qwen/Qwen2.5-Coder-7B-Instruct', "
             "use_adapter=false, schema_prompt=true, capture_prompts=true, and the relevant "
-            "available_tools.\n"
+            f"available_tools. Use only MicroModelAgent tool names: {CANONICAL_TOOL_NAMES_TEXT}. "
+            "Do not pass Codex tool names such as shell or apply_patch.\n"
             "4. Complete the task yourself using normal Codex tools.\n"
             "5. Call micro_agent_stop_trace with workspace_id if used, your actual summary, "
             "changed files, tests, "
@@ -658,7 +684,9 @@ def create_mcp_server(
             "Call micro_agent_run_loop with base_model='Qwen/Qwen2.5-Coder-7B-Instruct', "
             "use_adapter=false, schema_prompt=true, capture_prompts=true, workspace_id if "
             "this chat initialized one, max_turns high enough for the task, and relevant "
-            "available_tools. Use apply_patches=true only when real edits are intended in "
+            f"available_tools from this canonical list: {CANONICAL_TOOL_NAMES_TEXT}. "
+            "Prefer repo.write_files for greenfield file creation and repo.write_patch for "
+            "precise edits. Use apply_patches=true only when real edits are intended in "
             "the configured test workspace. Record the returned trace_id for later review."
         )
 
@@ -1030,6 +1058,7 @@ def _base_model_from_adapter(adapter_path: Path) -> str:
 def _allowed_tool_names(
     *,
     available_tools: list[str] | None,
+    repository_root: Path,
     apply_patches: bool,
     allow_test_run: bool,
 ) -> tuple[str, ...]:
@@ -1047,6 +1076,8 @@ def _allowed_tool_names(
         if tool_name in {"repo.write_patch", "repo.write_files"} and not apply_patches:
             # The wrapper will force this tool into dry-run mode.
             allowed.append(tool_name)
+            continue
+        if tool_name == "git.diff" and not _is_git_repository(repository_root):
             continue
         if tool_name == "test.run" and not allow_test_run:
             continue
@@ -1084,12 +1115,40 @@ def _normalized_tool_names(
 def _allowed_test_commands(
     test_command_name: str | None,
     test_command_args: list[str] | None,
+    *,
+    use_default_pytest: bool = False,
 ) -> dict[str, AllowedTestCommand]:
     """Build the allowlist consumed by the test.run tool."""
 
+    if use_default_pytest:
+        return {"pytest": AllowedTestCommand(("python3", "-m", "pytest", "-q"))}
     if not test_command_name or not test_command_args:
         return {}
     return {test_command_name: AllowedTestCommand(tuple(test_command_args))}
+
+
+def _tool_prompt_schemas(
+    allowed_tool_names: tuple[str, ...],
+    *,
+    allowed_test_commands: dict[str, AllowedTestCommand],
+) -> dict[str, Any]:
+    """Return tool schemas enriched with runtime command allowlists."""
+
+    schemas = builtin_tool_prompt_schemas(allowed_tool_names)
+    test_schema = schemas.get("test.run")
+    if test_schema is not None:
+        test_schema["allowed_command_names"] = list(allowed_test_commands)
+        test_schema["description"] = (
+            str(test_schema["description"])
+            + " Use command_name from allowed_command_names exactly."
+        )
+    return schemas
+
+
+def _is_git_repository(repository_root: Path) -> bool:
+    """Return whether git.diff can operate in this repository root."""
+
+    return (repository_root / ".git").exists()
 
 
 def _comparison_trace_store(repository_root: Path) -> JsonlComparisonTraceStore:

@@ -121,10 +121,33 @@ Default agent tools include read/search plus dry-run patch and file-write propos
 repo.search, repo.read, repo.semantic_search, repo.write_patch, repo.write_files, git.diff
 ```
 
+Always pass MicroModelAgent tool names in `available_tools` and
+`required_tools`, not Codex tool names. For example, use `repo.write_files` or
+`repo.write_patch`, not `apply_patch`; use `test.run`, not `run_tests`. The MCP
+boundary accepts a few legacy aliases for compatibility, but prompts and traces
+should use the canonical names above.
+
 Patch application remains dry-run unless `apply_patches` is explicitly true.
 MCP model runs also default `schema_prompt` to true so the model sees the exact
 tool argument schemas. Prefer `repo.write_files` for greenfield scaffolds and
 new files; use `repo.write_patch` for precise edits to existing files.
+
+`micro_agent_run_loop` is bounded by both model turns and tool calls. The inner
+prompt includes a `loop_budget` object with the current turn, remaining turns,
+tool calls made, remaining tool calls, and whether the current turn is
+final-response-only. Callers should set `max_turns` and `max_tool_calls`
+deliberately for the task size instead of relying on a long MCP timeout. Results
+include `turns_used`, `tool_calls_made`, and the configured `loop_budget` so the
+consumer can tell whether the run ended naturally or ran into orchestration
+limits.
+
+When `allow_test_run=true` and no explicit `test_command_name` /
+`test_command_args` are supplied, MCP allowlists a default command named
+`pytest` that runs `python3 -m pytest -q`. The prompt schema for `test.run`
+includes `allowed_command_names`; the model must use one of those names exactly.
+For repair prompts that mention pytest, failing imports, or verification, the
+loop requires a passing `test.run` after the latest write before it accepts a
+final response.
 
 ## Useful First Prompt
 
@@ -148,7 +171,9 @@ instead of a trained adapter:
 Use micro_agent_run_loop with goal "<repo task>".
 Set base_model "Qwen/Qwen2.5-Coder-7B-Instruct", use_adapter false,
 capture_prompts true, apply_patches true when you want real edits, and include
-the tools needed for the task. `schema_prompt` is true by default.
+the canonical tools needed for the task, such as `repo.search`, `repo.read`,
+`repo.write_files`, `repo.write_patch`, `test.run`, or `git.diff`.
+`schema_prompt` is true by default.
 ```
 
 This stores workflow traces under:
