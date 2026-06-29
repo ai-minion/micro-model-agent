@@ -320,6 +320,39 @@ def test_run_agent_loop_with_scripted_model_saves_trace(tmp_path: Path) -> None:
     assert trace["trace"]["final_output"]["response"] == "status is tiny"
 
 
+def test_run_agent_loop_applies_extended_profile_budget(tmp_path: Path) -> None:
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Create README.md.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.write_files"],
+            run_profile="extended",
+            apply_patches=True,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.write_files",
+                        "arguments": {
+                            "files": [{"path": "README.md", "content": "# Demo\n"}],
+                        },
+                    }
+                ),
+                _model_response({"final_response": "created README", "ok": True}),
+            ],
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["loop_budget"] == {
+        "max_turns": 16,
+        "max_tool_calls": 32,
+        "max_new_tokens": 4096,
+        "max_tool_result_prompt_chars": 16000,
+        "model_timeout_seconds": 240.0,
+        "run_profile": "extended",
+    }
+
+
 def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path) -> None:
     result = asyncio.run(
         run_agent_loop(

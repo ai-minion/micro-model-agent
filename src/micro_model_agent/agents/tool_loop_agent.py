@@ -7,6 +7,7 @@ tools, JSON parsing, and trace capture.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
@@ -55,6 +56,7 @@ class ToolLoopAgentTask:
     required_tools: tuple[str, ...] = ()
     capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
+    model_timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +103,7 @@ class ToolLoopAgent:
             raise ValueError("max_turns must be at least 1")
 
         trace = WorkflowTrace(goal=task.goal, status=WorkflowStatus.RUNNING)
+        await self.trace_store.save(trace)
         # transcript is the compact prompt history fed back to the model; steps
         # is the richer audit trail saved for users.
         steps: list[WorkflowStep] = []
@@ -111,284 +114,307 @@ class ToolLoopAgent:
         tool_calls_made = 0
         turn_number = 1
         used_extra_finalization_turn = False
-        while turn_number <= task.max_turns or (
-            not used_extra_finalization_turn
-            and self._should_allow_extra_finalization_turn(task, tool_calls_made, steps)
-        ):
-            force_final_response = turn_number > task.max_turns
-            if force_final_response:
-                used_extra_finalization_turn = True
-            # Each turn asks the model for exactly one JSON object: either a
-            # tool call or a final response.
-            prompt = self._build_prompt(
-                task,
-                transcript,
-                tool_calls_made=tool_calls_made,
-                turn_number=turn_number,
-                force_final_response=force_final_response,
-                steps=steps,
-            )
-            raw_response = await self.model_provider.complete(prompt)
-            decision = self._parse_model_response(raw_response)
-
-            if decision.kind == "final_response":
-                # Some tasks require evidence from tools before an answer is
-                # allowed, so early final responses are fed back as policy errors.
-                if task.require_tool_call and tool_calls_made == 0:
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": "final_response_before_tool_call",
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
+        try:
+            while turn_number <= task.max_turns or (
+                not used_extra_finalization_turn
+                and self._should_allow_extra_finalization_turn(task, tool_calls_made, steps)
+            ):
+                force_final_response = turn_number > task.max_turns
+                if force_final_response:
+                    used_extra_finalization_turn = True
+                prompt = self._build_prompt(
+                    task,
+                    transcript,
+                    tool_calls_made=tool_calls_made,
+                    turn_number=turn_number,
+                    force_final_response=force_final_response,
+                    steps=steps,
+                )
+                try:
+                    raw_response = await self._complete_model(task, prompt)
+                except TimeoutError:
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
                             status=WorkflowStatus.FAILED,
-                            output=output,
-                        )
-                    )
-                    transcript.append({"role": "assistant", "content": decision.raw_response})
-                    transcript.append(
-                        {
-                            "role": "tool",
-                            "tool_name": "orchestration_policy",
-                            "ok": False,
-                            "error": (
-                                "At least one tool call is required before final_response. "
-                                "Choose an available tool and provide valid arguments."
-                            ),
-                        }
-                    )
-                    turn_number += 1
-                    continue
-                missing_required_tools = self._missing_required_tools(task, steps)
-                if missing_required_tools:
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": "final_response_before_required_tools",
-                        "missing_required_tools": list(missing_required_tools),
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
-                    steps.append(
-                        WorkflowStep(
-                            name=f"model_turn_{turn_number}",
-                            status=WorkflowStatus.FAILED,
-                            output=output,
-                        )
-                    )
-                    transcript.append({"role": "assistant", "content": decision.raw_response})
-                    transcript.append(
-                        {
-                            "role": "tool",
-                            "tool_name": "orchestration_policy",
-                            "ok": False,
-                            "error": (
-                                "Before final_response, call these required tools: "
-                                + ", ".join(missing_required_tools)
-                            ),
-                        }
-                    )
-                    turn_number += 1
-                    continue
-                verification_needed = self._missing_verification_after_write(task, steps)
-                if verification_needed:
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": "final_response_before_verification",
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
-                    steps.append(
-                        WorkflowStep(
-                            name=f"model_turn_{turn_number}",
-                            status=WorkflowStatus.FAILED,
-                            output=output,
-                        )
-                    )
-                    transcript.append({"role": "assistant", "content": decision.raw_response})
-                    transcript.append(
-                        {
-                            "role": "tool",
-                            "tool_name": "orchestration_policy",
-                            "ok": False,
-                            "error": (
-                                "A write succeeded during this repair task, but verification "
-                                "has not passed after the latest write. Run test.run before "
-                                "final_response."
-                            ),
-                        }
-                    )
-                    turn_number += 1
-                    continue
-                # The final answer is only successful if the model said it was
-                # OK and no previous tool call failed.
-                final_ok = decision.ok and not self._has_failed_tool_step(steps)
-                return await self._finish(
-                    trace=trace,
-                    steps=[
-                        *steps,
-                        WorkflowStep(
-                            name="final_response",
-                            status=WorkflowStatus.SUCCEEDED
-                            if final_ok
-                            else WorkflowStatus.FAILED,
                             output=self._step_output(
                                 {
-                                    "raw_response": decision.raw_response,
-                                    "response": decision.response,
-                                    "ok": final_ok,
+                                    "error": "model_completion_timeout",
+                                    "timeout_seconds": task.model_timeout_seconds,
                                 },
                                 prompt=prompt,
                                 capture_prompt=task.capture_prompts,
                             ),
-                        ),
-                    ],
-                    run_metadata=task.run_metadata,
-                    ok=final_ok,
-                    response=decision.response,
-                    tool_calls_made=tool_calls_made,
-                )
-
-            if decision.kind == "parse_error":
-                # Bad JSON does not immediately end the workflow. The parser
-                # error is shown to the model so it has a chance to recover.
-                output = {
-                    "raw_response": decision.raw_response,
-                    "error": decision.error,
-                }
-                if task.capture_prompts:
-                    output["prompt"] = prompt
-                steps.append(
-                    WorkflowStep(
-                        name=f"model_turn_{turn_number}",
-                        status=WorkflowStatus.FAILED,
-                        output=output,
+                        )
                     )
-                )
-                transcript.append({"role": "assistant", "content": decision.raw_response})
-                transcript.append(
-                    {
-                        "role": "tool",
-                        "tool_name": "model_response_parser",
-                        "ok": False,
+                    await self._save_progress(trace, steps)
+                    return await self._finish(
+                        trace=trace,
+                        steps=steps,
+                        run_metadata=task.run_metadata,
+                        ok=False,
+                        response="model completion timed out",
+                        tool_calls_made=tool_calls_made,
+                        error="model_completion_timeout",
+                    )
+                decision = self._parse_model_response(raw_response)
+
+                if decision.kind == "final_response":
+                    if task.require_tool_call and tool_calls_made == 0:
+                        output: dict[str, Any] = {
+                            "raw_response": decision.raw_response,
+                            "error": "final_response_before_tool_call",
+                        }
+                        if task.capture_prompts:
+                            output["prompt"] = prompt
+                        steps.append(
+                            WorkflowStep(
+                                name=f"model_turn_{turn_number}",
+                                status=WorkflowStatus.FAILED,
+                                output=output,
+                            )
+                        )
+                        await self._save_progress(trace, steps)
+                        transcript.append({"role": "assistant", "content": decision.raw_response})
+                        transcript.append(
+                            {
+                                "role": "tool",
+                                "tool_name": "orchestration_policy",
+                                "ok": False,
+                                "error": (
+                                    "At least one tool call is required before final_response. "
+                                    "Choose an available tool and provide valid arguments."
+                                ),
+                            }
+                        )
+                        turn_number += 1
+                        continue
+                    missing_required_tools = self._missing_required_tools(task, steps)
+                    if missing_required_tools:
+                        output = {
+                            "raw_response": decision.raw_response,
+                            "error": "final_response_before_required_tools",
+                            "missing_required_tools": list(missing_required_tools),
+                        }
+                        if task.capture_prompts:
+                            output["prompt"] = prompt
+                        steps.append(
+                            WorkflowStep(
+                                name=f"model_turn_{turn_number}",
+                                status=WorkflowStatus.FAILED,
+                                output=output,
+                            )
+                        )
+                        await self._save_progress(trace, steps)
+                        transcript.append({"role": "assistant", "content": decision.raw_response})
+                        transcript.append(
+                            {
+                                "role": "tool",
+                                "tool_name": "orchestration_policy",
+                                "ok": False,
+                                "error": (
+                                    "Before final_response, call these required tools: "
+                                    + ", ".join(missing_required_tools)
+                                ),
+                            }
+                        )
+                        turn_number += 1
+                        continue
+                    verification_needed = self._missing_verification_after_write(task, steps)
+                    if verification_needed:
+                        output = {
+                            "raw_response": decision.raw_response,
+                            "error": "final_response_before_verification",
+                        }
+                        if task.capture_prompts:
+                            output["prompt"] = prompt
+                        steps.append(
+                            WorkflowStep(
+                                name=f"model_turn_{turn_number}",
+                                status=WorkflowStatus.FAILED,
+                                output=output,
+                            )
+                        )
+                        await self._save_progress(trace, steps)
+                        transcript.append({"role": "assistant", "content": decision.raw_response})
+                        transcript.append(
+                            {
+                                "role": "tool",
+                                "tool_name": "orchestration_policy",
+                                "ok": False,
+                                "error": (
+                                    "A write succeeded during this repair task, but verification "
+                                    "has not passed after the latest write. Run test.run before "
+                                    "final_response."
+                                ),
+                            }
+                        )
+                        turn_number += 1
+                        continue
+                    final_ok = decision.ok and not self._has_failed_tool_step(steps)
+                    return await self._finish(
+                        trace=trace,
+                        steps=[
+                            *steps,
+                            WorkflowStep(
+                                name="final_response",
+                                status=WorkflowStatus.SUCCEEDED
+                                if final_ok
+                                else WorkflowStatus.FAILED,
+                                output=self._step_output(
+                                    {
+                                        "raw_response": decision.raw_response,
+                                        "response": decision.response,
+                                        "ok": final_ok,
+                                    },
+                                    prompt=prompt,
+                                    capture_prompt=task.capture_prompts,
+                                ),
+                            ),
+                        ],
+                        run_metadata=task.run_metadata,
+                        ok=final_ok,
+                        response=decision.response,
+                        tool_calls_made=tool_calls_made,
+                    )
+
+                if decision.kind == "parse_error":
+                    output = {
+                        "raw_response": decision.raw_response,
                         "error": decision.error,
                     }
-                )
-                turn_number += 1
-                continue
-
-            if force_final_response or self._tool_budget_exhausted(task, tool_calls_made, steps):
-                # Once the budget is exhausted, the agent tells the model to
-                # answer using existing tool results instead of calling more tools.
-                output = {
-                    "raw_response": decision.raw_response,
-                    "error": "tool_call_after_budget_exhausted",
-                }
-                if task.capture_prompts:
-                    output["prompt"] = prompt
-                steps.append(
-                    WorkflowStep(
-                        name=f"model_turn_{turn_number}",
-                        status=WorkflowStatus.FAILED,
-                        output=output,
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
+                    steps.append(
+                        WorkflowStep(
+                            name=f"model_turn_{turn_number}",
+                            status=WorkflowStatus.FAILED,
+                            output=output,
+                        )
                     )
-                )
-                transcript.append({"role": "assistant", "content": decision.raw_response})
-                transcript.append(
-                    {
-                        "role": "tool",
-                        "tool_name": "orchestration_policy",
-                        "ok": False,
-                        "error": (
-                            "No more tool calls are allowed. Use the existing tool_results "
-                            "and return final_response."
-                        ),
-                    }
-                )
-                turn_number += 1
-                continue
-
-            tool_call = ToolCall(
-                tool_name=decision.tool_name or "",
-                arguments=decision.arguments,
-            )
-            # The model can ask for any string, but the executor only runs tools
-            # that were explicitly made available for this task.
-            if tool_call.tool_name not in task.available_tools:
-                tool_result = ToolResult(
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.tool_name,
-                    ok=False,
-                    error=f"tool is not available: {tool_call.tool_name}",
-                )
-            elif self._is_duplicate_successful_write(tool_call, steps):
-                output = {
-                    "raw_response": decision.raw_response,
-                    "error": "duplicate_successful_write",
-                }
-                if task.capture_prompts:
-                    output["prompt"] = prompt
-                steps.append(
-                    WorkflowStep(
-                        name=f"model_turn_{turn_number}",
-                        status=WorkflowStatus.FAILED,
-                        tool_call=tool_call,
-                        output=output,
-                    )
-                )
-                transcript.append({"role": "assistant", "content": decision.raw_response})
-                transcript.append(
-                    {
-                        "role": "tool",
-                        "tool_name": "orchestration_policy",
-                        "ok": False,
-                        "error": (
-                            "repo.write_files already succeeded for these files. "
-                            "Return final_response, or choose a different verification tool "
-                            "such as test.run or git.diff if available."
-                        ),
-                    }
-                )
-                turn_number += 1
-                continue
-            else:
-                tool_result = await self.tool_executor.execute(tool_call)
-
-            tool_calls_made += 1
-            # Store both the tool result and the raw model response that led to it.
-            steps.append(
-                WorkflowStep(
-                    name=f"tool_call_{tool_calls_made}",
-                    status=WorkflowStatus.SUCCEEDED
-                    if tool_result.ok
-                    else WorkflowStatus.FAILED,
-                    tool_call=tool_call,
-                    tool_result=tool_result,
-                    output=self._step_output(
+                    await self._save_progress(trace, steps)
+                    transcript.append({"role": "assistant", "content": decision.raw_response})
+                    transcript.append(
                         {
-                            "raw_response": decision.raw_response,
-                            "reason": decision.reason,
-                        },
-                        prompt=prompt,
-                        capture_prompt=task.capture_prompts,
-                    ),
+                            "role": "tool",
+                            "tool_name": "model_response_parser",
+                            "ok": False,
+                            "error": decision.error,
+                        }
+                    )
+                    turn_number += 1
+                    continue
+
+                if force_final_response or self._tool_budget_exhausted(
+                    task,
+                    tool_calls_made,
+                    steps,
+                ):
+                    output = {
+                        "raw_response": decision.raw_response,
+                        "error": "tool_call_after_budget_exhausted",
+                    }
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
+                    steps.append(
+                        WorkflowStep(
+                            name=f"model_turn_{turn_number}",
+                            status=WorkflowStatus.FAILED,
+                            output=output,
+                        )
+                    )
+                    await self._save_progress(trace, steps)
+                    transcript.append({"role": "assistant", "content": decision.raw_response})
+                    transcript.append(
+                        {
+                            "role": "tool",
+                            "tool_name": "orchestration_policy",
+                            "ok": False,
+                            "error": (
+                                "No more tool calls are allowed. Use the existing tool_results "
+                                "and return final_response."
+                            ),
+                        }
+                    )
+                    turn_number += 1
+                    continue
+
+                tool_call = ToolCall(
+                    tool_name=decision.tool_name or "",
+                    arguments=decision.arguments,
                 )
+                if tool_call.tool_name not in task.available_tools:
+                    tool_result = ToolResult(
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_call.tool_name,
+                        ok=False,
+                        error=f"tool is not available: {tool_call.tool_name}",
+                    )
+                elif self._is_duplicate_successful_write(tool_call, steps):
+                    output = {
+                        "raw_response": decision.raw_response,
+                        "error": "duplicate_successful_write",
+                    }
+                    if task.capture_prompts:
+                        output["prompt"] = prompt
+                    steps.append(
+                        WorkflowStep(
+                            name=f"model_turn_{turn_number}",
+                            status=WorkflowStatus.FAILED,
+                            tool_call=tool_call,
+                            output=output,
+                        )
+                    )
+                    await self._save_progress(trace, steps)
+                    transcript.append({"role": "assistant", "content": decision.raw_response})
+                    turn_number += 1
+                    continue
+                else:
+                    tool_result = await self.tool_executor.execute(tool_call)
+
+                tool_calls_made += 1
+                steps.append(
+                    WorkflowStep(
+                        name=f"tool_call_{tool_calls_made}",
+                        status=WorkflowStatus.SUCCEEDED
+                        if tool_result.ok
+                        else WorkflowStatus.FAILED,
+                        tool_call=tool_call,
+                        tool_result=tool_result,
+                        output=self._step_output(
+                            {
+                                "raw_response": decision.raw_response,
+                                "reason": decision.reason,
+                            },
+                            prompt=prompt,
+                            capture_prompt=task.capture_prompts,
+                        ),
+                    )
+                )
+                await self._save_progress(trace, steps)
+                transcript.append({"role": "assistant", "content": decision.raw_response})
+                turn_number += 1
+
+            return await self._finish(
+                trace=trace,
+                steps=steps,
+                run_metadata=task.run_metadata,
+                ok=False,
+                response="model did not produce a final response before max_turns",
+                tool_calls_made=tool_calls_made,
+                error="max_turns_exceeded",
             )
-            transcript.append({"role": "assistant", "content": decision.raw_response})
-            turn_number += 1
-
-        return await self._finish(
-            trace=trace,
-            steps=steps,
-            run_metadata=task.run_metadata,
-            ok=False,
-            response="model did not produce a final response before max_turns",
-            tool_calls_made=tool_calls_made,
-            error="max_turns_exceeded",
-        )
-
+        except asyncio.CancelledError:
+            return await self._finish(
+                trace=trace,
+                steps=steps,
+                run_metadata=task.run_metadata,
+                ok=False,
+                response="model run was cancelled before completion",
+                tool_calls_made=tool_calls_made,
+                error="cancelled",
+                status=WorkflowStatus.CANCELLED,
+            )
     def _build_prompt(
         self,
         task: ToolLoopAgentTask,
@@ -453,8 +479,14 @@ class ToolLoopAgent:
                 "Choose safe typed tool calls and follow retrieved context. "
                 "Respond with exactly one JSON object and no markdown. "
                 "Call at least one available tool before final_response. "
+                "This loop has a small fixed turn budget; each turn must either make "
+                "new progress or finish. "
                 "Track loop_budget carefully; if this is the last turn, prefer "
                 "final_response unless a required tool still has to be called. "
+                "Do not reread the same file or repeat the same write unless the previous "
+                "result was missing or failed. "
+                "After a useful write succeeds, either run one distinct verification tool "
+                "or return final_response. "
                 "Final responses must be concise and must not repeat full tool output. "
                 "For greenfield creation or scaffolding tasks, prefer repo.write_files over "
                 "repo.write_patch. If repo.search or repo.semantic_search repeatedly returns "
@@ -533,8 +565,20 @@ class ToolLoopAgent:
     ) -> bool:
         """Allow exactly one final-answer turn after a useful last action."""
 
-        return self._tool_budget_exhausted(task, tool_calls_made, steps) or (
-            bool(steps) and steps[-1].tool_result is not None
+        return (
+            self._tool_budget_exhausted(task, tool_calls_made, steps)
+            or (bool(steps) and steps[-1].tool_result is not None)
+            or self._is_duplicate_write_block_step(steps[-1] if steps else None)
+        )
+
+    def _is_duplicate_write_block_step(self, step: WorkflowStep | None) -> bool:
+        """Return whether a step blocked a repeated write and should now finalize."""
+
+        return (
+            step is not None
+            and step.tool_call is not None
+            and step.tool_call.tool_name == "repo.write_files"
+            and step.output.get("error") == "duplicate_successful_write"
         )
 
     def _has_failed_tool_step(self, steps: list[WorkflowStep]) -> bool:
@@ -626,14 +670,10 @@ class ToolLoopAgent:
             and step.tool_result.ok
         ]
         if successful_writes:
-            changed_files = successful_writes[-1].tool_result.output.get("changed_files", [])
-            if isinstance(changed_files, list) and changed_files:
-                hints.append(
-                    "repo.write_files already succeeded for these files: "
-                    + ", ".join(str(path) for path in changed_files[:20])
-                    + ". Do not repeat the same write. Return final_response, "
-                    "or run a distinct verification tool if one is available."
-                )
+            hints.append(
+                "A repo.write_files call already succeeded. Do not repeat the same write. "
+                "Return final_response, or run a distinct verification tool if one is available."
+            )
         return hints
 
     def _looks_like_creation_task(self, task: ToolLoopAgentTask) -> bool:
@@ -872,6 +912,7 @@ class ToolLoopAgent:
         if not history:
             return []
 
+        history = self._compact_path_tool_history(history)
         history_json = json.dumps(history, sort_keys=True)
         if max_prompt_chars < 1 or len(history_json) <= max_prompt_chars:
             return history
@@ -910,6 +951,124 @@ class ToolLoopAgent:
                 },
             )
         return result
+
+    def _compact_path_tool_history(
+        self,
+        history: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Keep only the latest read/write context for each repository path."""
+
+        compacted_reversed: list[dict[str, Any]] = []
+        seen_paths: set[str] = set()
+        for entry in reversed(history):
+            paths = self._history_entry_paths(entry)
+            if not paths:
+                compacted_reversed.append(entry)
+                continue
+
+            unseen_paths = [path for path in paths if path not in seen_paths]
+            if not unseen_paths:
+                continue
+
+            compacted_reversed.append(self._history_entry_with_paths(entry, unseen_paths))
+            seen_paths.update(unseen_paths)
+        return list(reversed(compacted_reversed))
+
+    def _history_entry_paths(self, entry: dict[str, Any]) -> list[str]:
+        """Return repository paths represented by one prompt history entry."""
+
+        tool_name = entry.get("tool_name")
+        arguments = entry.get("arguments")
+        if not isinstance(arguments, dict):
+            return []
+        if tool_name == "repo.write_files":
+            paths = arguments.get("paths")
+            if isinstance(paths, list) and all(isinstance(path, str) for path in paths):
+                return list(paths)
+        if tool_name == "repo.read":
+            files = arguments.get("files")
+            if isinstance(files, list):
+                return [
+                    file["path"]
+                    for file in files
+                    if isinstance(file, dict) and isinstance(file.get("path"), str)
+                ]
+        return []
+
+    def _history_entry_with_paths(
+        self,
+        entry: dict[str, Any],
+        paths: list[str],
+    ) -> dict[str, Any]:
+        """Return a history entry narrowed to the requested path subset."""
+
+        tool_name = entry.get("tool_name")
+        allowed_paths = set(paths)
+        narrowed = dict(entry)
+        arguments = entry.get("arguments")
+        if isinstance(arguments, dict):
+            narrowed["arguments"] = self._history_arguments_with_paths(
+                tool_name,
+                arguments,
+                allowed_paths,
+            )
+        output = entry.get("output")
+        if isinstance(output, dict):
+            narrowed["output"] = self._history_output_with_paths(output, allowed_paths)
+        return narrowed
+
+    def _history_arguments_with_paths(
+        self,
+        tool_name: object,
+        arguments: dict[str, Any],
+        allowed_paths: set[str],
+    ) -> dict[str, Any]:
+        narrowed = dict(arguments)
+        if tool_name == "repo.write_files":
+            narrowed["paths"] = [
+                path
+                for path in arguments.get("paths", [])
+                if isinstance(path, str) and path in allowed_paths
+            ]
+            narrowed["file_count"] = len(narrowed["paths"])
+        elif tool_name == "repo.read":
+            files = arguments.get("files")
+            if isinstance(files, list):
+                narrowed["files"] = [
+                    file
+                    for file in files
+                    if isinstance(file, dict) and file.get("path") in allowed_paths
+                ]
+        return narrowed
+
+    def _history_output_with_paths(
+        self,
+        output: dict[str, Any],
+        allowed_paths: set[str],
+    ) -> dict[str, Any]:
+        narrowed = dict(output)
+        files = output.get("files")
+        if isinstance(files, list):
+            narrowed["files"] = [
+                file
+                for file in files
+                if isinstance(file, dict) and file.get("path") in allowed_paths
+            ]
+            if "file_count" in narrowed:
+                narrowed["file_count"] = len(narrowed["files"])
+        paths = output.get("paths")
+        if isinstance(paths, list):
+            narrowed["paths"] = [
+                path for path in paths if isinstance(path, str) and path in allowed_paths
+            ]
+        changed_files = output.get("changed_files")
+        if isinstance(changed_files, list):
+            narrowed["changed_files"] = [
+                path
+                for path in changed_files
+                if isinstance(path, str) and path in allowed_paths
+            ]
+        return narrowed
 
     def _summarize_tool_arguments(
         self,
@@ -977,6 +1136,7 @@ class ToolLoopAgent:
         response: str,
         tool_calls_made: int,
         error: str | None = None,
+        status: WorkflowStatus | None = None,
     ) -> ToolLoopAgentResult:
         """Save the final trace and return the caller-facing result."""
 
@@ -992,7 +1152,7 @@ class ToolLoopAgent:
 
         trace = replace(
             trace,
-            status=WorkflowStatus.SUCCEEDED if ok else WorkflowStatus.FAILED,
+            status=status or (WorkflowStatus.SUCCEEDED if ok else WorkflowStatus.FAILED),
             steps=steps,
             final_output=final_output,
             updated_at=datetime.now(UTC),
@@ -1005,6 +1165,30 @@ class ToolLoopAgent:
             turns_used=len(steps),
             tool_calls_made=tool_calls_made,
             trace=trace,
+        )
+
+    async def _complete_model(self, task: ToolLoopAgentTask, prompt: str) -> str:
+        """Complete one model turn, optionally bounded by a per-turn timeout."""
+
+        completion = self.model_provider.complete(prompt)
+        if task.model_timeout_seconds is None:
+            return await completion
+        return await asyncio.wait_for(completion, timeout=task.model_timeout_seconds)
+
+    async def _save_progress(
+        self,
+        trace: WorkflowTrace,
+        steps: list[WorkflowStep],
+    ) -> None:
+        """Persist the latest running trace state after each observable step."""
+
+        await self.trace_store.save(
+            replace(
+                trace,
+                status=WorkflowStatus.RUNNING,
+                steps=list(steps),
+                updated_at=datetime.now(UTC),
+            )
         )
 
     def _step_output(

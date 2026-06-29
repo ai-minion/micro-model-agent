@@ -97,6 +97,7 @@ MCP_REPOSITORY_ROOT_ENV = "MICRO_MODEL_AGENT_REPOSITORY_ROOT"
 MCP_INIT_TOOL_NAME = "micro_agent_init"
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 type McpTransport = Literal["stdio", "sse", "streamable-http"]
+type RunProfile = Literal["quick", "standard", "extended"]
 
 _MODEL_CACHE: dict[tuple[str, str | None, int], TransformersPeftModelProvider] = {}
 
@@ -146,6 +147,8 @@ async def run_agent_loop(
     max_tool_calls: int | None = 1,
     max_new_tokens: int = 350,
     max_tool_result_prompt_chars: int = 2500,
+    model_timeout_seconds: float | None = None,
+    run_profile: RunProfile | None = None,
     schema_prompt: bool = True,
     capture_prompts: bool = False,
     apply_patches: bool = False,
@@ -158,6 +161,19 @@ async def run_agent_loop(
     offline: bool = True,
 ) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
+
+    profile_settings = _run_profile_settings(run_profile)
+    max_turns = profile_settings.get("max_turns", max_turns)
+    max_tool_calls = profile_settings.get("max_tool_calls", max_tool_calls)
+    max_new_tokens = profile_settings.get("max_new_tokens", max_new_tokens)
+    max_tool_result_prompt_chars = profile_settings.get(
+        "max_tool_result_prompt_chars",
+        max_tool_result_prompt_chars,
+    )
+    model_timeout_seconds = profile_settings.get(
+        "model_timeout_seconds",
+        model_timeout_seconds,
+    )
 
     repository = Path(repository_root)
     allowed_test_commands = _allowed_test_commands(
@@ -214,6 +230,7 @@ async def run_agent_loop(
             else {},
             max_tool_calls=max_tool_calls,
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+            model_timeout_seconds=model_timeout_seconds,
             capture_prompts=capture_prompts,
             run_metadata={
                 "interface": "mcp",
@@ -224,6 +241,8 @@ async def run_agent_loop(
                 "required_tools": list(required_tool_names),
                 "allowed_test_commands": list(allowed_test_commands),
                 "model": model_settings,
+                "model_timeout_seconds": model_timeout_seconds,
+                "run_profile": run_profile,
             },
         )
     )
@@ -242,6 +261,16 @@ async def run_agent_loop(
                 "model": model_settings,
             },
         )
+    loop_budget: dict[str, int | float | str | None] = {
+        "max_turns": max_turns,
+        "max_tool_calls": max_tool_calls,
+        "max_new_tokens": max_new_tokens,
+        "max_tool_result_prompt_chars": max_tool_result_prompt_chars,
+    }
+    if model_timeout_seconds is not None:
+        loop_budget["model_timeout_seconds"] = model_timeout_seconds
+    if run_profile is not None:
+        loop_budget["run_profile"] = run_profile
     # Return a compact summary rather than the full trace. The full trace can be
     # loaded by debug tooling when exposed.
     return {
@@ -250,12 +279,7 @@ async def run_agent_loop(
         "trace_id": str(result.trace_id),
         "turns_used": result.turns_used,
         "tool_calls_made": result.tool_calls_made,
-        "loop_budget": {
-            "max_turns": max_turns,
-            "max_tool_calls": max_tool_calls,
-            "max_new_tokens": max_new_tokens,
-            "max_tool_result_prompt_chars": max_tool_result_prompt_chars,
-        },
+        "loop_budget": loop_budget,
         "model": model_settings,
         "steps": [
             {
@@ -546,9 +570,12 @@ def create_mcp_server(
             "workflow: call micro_agent_init_workspace when a chat needs its own directory, "
             "then call micro_agent_start_trace, call micro_agent_run_loop with workspace_id, "
             "comparison_session_id, base_model='Qwen/Qwen2.5-Coder-7B-Instruct', "
-            "use_adapter=false, schema_prompt=true, capture_prompts=true, do the real work "
-            "yourself, call micro_agent_stop_trace, and finish with micro_agent_review_trace. "
-            "Patch writes are dry-run unless apply_patches is explicitly true."
+            "use_adapter=false, schema_prompt=true, capture_prompts=true, and a run_profile "
+            "that matches the task size. One run loop has a limited turn budget; split large "
+            "tasks into scaffold, repair, and test passes rather than asking one loop to do "
+            "everything. Do the real work yourself, call micro_agent_stop_trace, and finish "
+            "with micro_agent_review_trace. Patch writes are dry-run unless apply_patches is "
+            "explicitly true."
         ),
     )
     _enable_tool_list_changed_capability(server)
@@ -582,6 +609,9 @@ def create_mcp_server(
         description=(
             "Ask the local MicroModelAgent model to orchestrate repository tool calls and "
             "return a final response. Defaults target the cached Qwen 7B PEFT adapter. "
+            "Each run has a limited turn/tool budget; use run_profile='quick', 'standard', "
+            "or 'extended' to choose the size, and split broad tasks into multiple focused "
+            "loops instead of asking one loop to build, repair, test, and document everything. "
             f"Canonical available_tools names are: {CANONICAL_TOOL_NAMES_TEXT}. "
             "Use these names instead of Codex tool names such as shell or apply_patch."
         ),
@@ -600,6 +630,8 @@ def create_mcp_server(
         max_tool_calls: int | None = 1,
         max_new_tokens: int = 350,
         max_tool_result_prompt_chars: int = 2500,
+        model_timeout_seconds: float | None = None,
+        run_profile: RunProfile | None = None,
         schema_prompt: bool = True,
         capture_prompts: bool = False,
         apply_patches: bool = False,
@@ -628,6 +660,8 @@ def create_mcp_server(
             max_tool_calls=max_tool_calls,
             max_new_tokens=max_new_tokens,
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+            model_timeout_seconds=model_timeout_seconds,
+            run_profile=run_profile,
             schema_prompt=schema_prompt,
             capture_prompts=capture_prompts,
             apply_patches=apply_patches,
@@ -1143,6 +1177,38 @@ def _tool_prompt_schemas(
             + " Use command_name from allowed_command_names exactly."
         )
     return schemas
+
+
+def _run_profile_settings(profile: RunProfile | None) -> dict[str, Any]:
+    """Return loop-budget defaults for common local-model task sizes."""
+
+    if profile is None:
+        return {}
+    if profile == "quick":
+        return {
+            "max_turns": 4,
+            "max_tool_calls": 4,
+            "max_new_tokens": 1024,
+            "max_tool_result_prompt_chars": 4000,
+            "model_timeout_seconds": 60.0,
+        }
+    if profile == "standard":
+        return {
+            "max_turns": 8,
+            "max_tool_calls": 12,
+            "max_new_tokens": 2048,
+            "max_tool_result_prompt_chars": 8000,
+            "model_timeout_seconds": 120.0,
+        }
+    if profile == "extended":
+        return {
+            "max_turns": 16,
+            "max_tool_calls": 32,
+            "max_new_tokens": 4096,
+            "max_tool_result_prompt_chars": 16000,
+            "model_timeout_seconds": 240.0,
+        }
+    raise ValueError(f"unknown run_profile: {profile}")
 
 
 def _is_git_repository(repository_root: Path) -> bool:
