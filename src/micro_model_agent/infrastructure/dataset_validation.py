@@ -180,6 +180,15 @@ class LocalDatasetValidator:
         return dict(sorted(counts.items()))
 
 
+class SftJsonlDatasetExporter:
+    """Filesystem adapter for supervised fine-tuning JSONL exports."""
+
+    def export_dataset_examples(self, path: Path, examples: list[DatasetExample]) -> None:
+        """Export examples in SFT JSONL format."""
+
+        export_sft_jsonl(path, examples)
+
+
 def export_sft_jsonl(path: Path, examples: list[DatasetExample]) -> None:
     """Export examples in a simple supervised fine-tuning chat JSONL shape."""
 

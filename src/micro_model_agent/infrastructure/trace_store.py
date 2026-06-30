@@ -245,3 +245,15 @@ class JsonlTraceStore:
             if not trace_id and isinstance(raw_io.get("id"), str):
                 trace_id = raw_io["id"]
         return record
+
+
+class LocalWorkflowTraceReader:
+    """Filesystem adapter for listing stored workflow traces."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.store = JsonlTraceStore(path)
+
+    async def list_workflow_traces(self) -> list[WorkflowTrace]:
+        """List stored workflow traces from a JSONL trace store."""
+
+        return await self.store.list()

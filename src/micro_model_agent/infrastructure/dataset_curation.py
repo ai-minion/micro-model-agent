@@ -16,6 +16,56 @@ from micro_model_agent.domain.datasets import (
 DeduplicateBy = Literal["id", "source"]
 
 
+class LocalDatasetMerger:
+    """Adapter for local dataset merge/deduplication policy."""
+
+    def merge_datasets(
+        self,
+        datasets: list[list[DatasetExample]],
+        *,
+        deduplicate_by: str,
+    ) -> tuple[list[DatasetExample], int]:
+        """Merge datasets with the requested dedupe key."""
+
+        if deduplicate_by not in {"id", "source"}:
+            raise ValueError(f"Unsupported dedupe key: {deduplicate_by}")
+        return merge_datasets(
+            datasets,
+            deduplicate_by=deduplicate_by,
+        )
+
+
+class LocalDatasetRelabeler:
+    """Adapter for local dataset relabeling policy."""
+
+    def relabel_examples(
+        self,
+        examples: list[DatasetExample],
+        *,
+        trace_id: str | None = None,
+        source: str | None = None,
+        input_outcome: OutcomeLabel | None = None,
+        input_quality: QualityLabel | None = None,
+        outcome: OutcomeLabel | None = None,
+        quality: QualityLabel | None = None,
+        failure_modes: tuple[FailureMode, ...] | None = None,
+        reviewer_notes: str | None = None,
+    ) -> tuple[list[DatasetExample], int]:
+        """Return examples with matching records relabeled."""
+
+        return relabel_examples(
+            examples,
+            trace_id=trace_id,
+            source=source,
+            input_outcome=input_outcome,
+            input_quality=input_quality,
+            outcome=outcome,
+            quality=quality,
+            failure_modes=failure_modes,
+            reviewer_notes=reviewer_notes,
+        )
+
+
 def relabel_examples(
     examples: list[DatasetExample],
     *,

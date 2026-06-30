@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
 from dataclasses import replace
-from typing import Any
+from typing import Any, cast
 
 from micro_model_agent.application.workflows import TraceDatasetBuilder
 from micro_model_agent.domain.contracts import WorkflowStatus, WorkflowTrace
@@ -104,6 +105,49 @@ class TraceDatasetExporter:
         if label_mode == "evaluation":
             return _label_from_trace_evaluation(trace)
         raise ValueError(f"unsupported trace export label mode: {label_mode}")
+
+
+class LocalTraceDatasetExporter:
+    """Adapter exposing trace export through the application port shape."""
+
+    def __init__(self, exporter: TraceDatasetExporter | None = None) -> None:
+        self.exporter = exporter or TraceDatasetExporter()
+
+    def export_trace_dataset_examples(
+        self,
+        traces: list[WorkflowTrace],
+        *,
+        kind: DatasetExampleKind = DatasetExampleKind.REPAIR,
+        label_mode: str = "review",
+        reviews_by_trace_id: Mapping[str, object],
+        outcome: OutcomeLabel | None = None,
+        quality: QualityLabel | None = None,
+        workflow_status: WorkflowStatus | None = None,
+        require_tool_call: bool = False,
+        max_examples: int | None = None,
+    ) -> list[DatasetExample]:
+        """Export trace-derived dataset examples."""
+
+        return self.exporter.export(
+            traces,
+            kind=kind,
+            label_mode=label_mode,
+            reviews_by_trace_id=cast(dict[str, TraceReview], dict(reviews_by_trace_id)),
+            outcome=outcome,
+            quality=quality,
+            workflow_status=workflow_status,
+            require_tool_call=require_tool_call,
+            max_examples=max_examples,
+        )
+
+
+class LocalTraceDatasetExportValidator:
+    """Adapter exposing trace export validation through an application port."""
+
+    def validate_trace_dataset_examples(self, examples: list[DatasetExample]) -> list[str]:
+        """Return trace export validation errors."""
+
+        return validate_trace_export_examples(examples)
 
 
 def validate_trace_export_examples(examples: list[DatasetExample]) -> list[str]:

@@ -46,6 +46,12 @@ Implemented services:
 
 - `RunAgentWorkflow`
 - `RunToolLoopWorkflow`
+- `RunDatasetSynthesisWorkflow`
+- `RunDatasetValidationWorkflow`
+- `RunDatasetExportWorkflow`
+- `RunDatasetMergeWorkflow`
+- `RunDatasetRelabelWorkflow`
+- `RunTraceDatasetExportWorkflow`
 - `RunPromotionGateWorkflow`
 - `RunPromotionRecordWorkflow`
 - `RunPromotionListWorkflow`
@@ -64,6 +70,17 @@ The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
 `agents.ToolLoopAgent` implements the application `ToolLoopRunner` port, while
 safe tool execution is exposed through the `ToolExecutor` application port and
 implemented by `BuiltinToolExecutor`.
+
+Dataset synthesis, validation, export, merge, and relabel use cases are
+represented by `RunDatasetSynthesisWorkflow`, `RunDatasetValidationWorkflow`,
+`RunDatasetExportWorkflow`, `RunDatasetMergeWorkflow`, and
+`RunDatasetRelabelWorkflow`. Trace-derived dataset export is represented by
+`RunTraceDatasetExportWorkflow`. Interfaces supply CLI options and output
+formatting, infrastructure owns template-based generation, JSONL dataset
+loading/writing, trace/review JSONL loading, trace-example export, concrete
+validation rules, merge/deduplication and relabel policies, and SFT JSONL
+writing, and the application coordinates the generator, reader, writer,
+validator, merger, relabeler, trace exporter, and exporter ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,

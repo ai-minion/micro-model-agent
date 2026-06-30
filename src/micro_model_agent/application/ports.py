@@ -7,6 +7,7 @@ workflow code independent from the concrete storage, model, and tool classes.
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -19,9 +20,17 @@ from micro_model_agent.domain.contracts import (
     SemanticSearchResult,
     ToolCall,
     ToolResult,
+    WorkflowStatus,
     WorkflowTrace,
 )
-from micro_model_agent.domain.datasets import DatasetExample, DatasetSplit
+from micro_model_agent.domain.datasets import (
+    DatasetExample,
+    DatasetExampleKind,
+    DatasetSplit,
+    FailureMode,
+    OutcomeLabel,
+    QualityLabel,
+)
 from micro_model_agent.domain.training import ModelArtifact, TrainingConfig, TrainingRun
 
 
@@ -135,6 +144,46 @@ class TraceStore(Protocol):
         """Load a workflow trace by id."""
 
 
+class WorkflowTraceReader(Protocol):
+    """Loads stored workflow traces for application workflows."""
+
+    async def list_workflow_traces(self) -> list[WorkflowTrace]:
+        """List stored workflow traces."""
+
+
+class TraceReviewReader(Protocol):
+    """Loads stored human trace reviews."""
+
+    async def latest_trace_reviews_by_trace_id(self) -> Mapping[str, object]:
+        """Return the newest review record for each trace id."""
+
+
+class TraceDatasetExampleExporter(Protocol):
+    """Converts workflow traces into dataset examples."""
+
+    def export_trace_dataset_examples(
+        self,
+        traces: list[WorkflowTrace],
+        *,
+        kind: DatasetExampleKind,
+        label_mode: str,
+        reviews_by_trace_id: Mapping[str, object],
+        outcome: OutcomeLabel | None = None,
+        quality: QualityLabel | None = None,
+        workflow_status: WorkflowStatus | None = None,
+        require_tool_call: bool = False,
+        max_examples: int | None = None,
+    ) -> list[DatasetExample]:
+        """Export trace-derived dataset examples."""
+
+
+class TraceDatasetExportValidator(Protocol):
+    """Validates trace-derived dataset examples."""
+
+    def validate_trace_dataset_examples(self, examples: list[DatasetExample]) -> list[str]:
+        """Return trace export validation errors."""
+
+
 class CodingWorkflowRunner(Protocol):
     """Application port for an implementation that can run a coding workflow."""
 
@@ -154,10 +203,71 @@ class DatasetExampleStore(Protocol):
         """List persisted dataset examples, optionally filtered by kind."""
 
 
+class DatasetExampleReader(Protocol):
+    """Loads dataset examples from a concrete source."""
+
+    def load_dataset_examples(self, path: Path) -> list[DatasetExample]:
+        """Load dataset examples from a path."""
+
+
+class DatasetExampleWriter(Protocol):
+    """Persists dataset examples to a concrete destination."""
+
+    async def save_dataset_examples(self, path: Path, examples: list[DatasetExample]) -> None:
+        """Persist dataset examples to a path."""
+
+
+class DatasetMerger(Protocol):
+    """Combines dataset examples with a deduplication policy."""
+
+    def merge_datasets(
+        self,
+        datasets: list[list[DatasetExample]],
+        *,
+        deduplicate_by: str,
+    ) -> tuple[list[DatasetExample], int]:
+        """Merge datasets and return merged examples plus skipped duplicate count."""
+
+
+class DatasetRelabeler(Protocol):
+    """Applies label updates to matching dataset examples."""
+
+    def relabel_examples(
+        self,
+        examples: list[DatasetExample],
+        *,
+        trace_id: str | None = None,
+        source: str | None = None,
+        input_outcome: OutcomeLabel | None = None,
+        input_quality: QualityLabel | None = None,
+        outcome: OutcomeLabel | None = None,
+        quality: QualityLabel | None = None,
+        failure_modes: tuple[FailureMode, ...] | None = None,
+        reviewer_notes: str | None = None,
+    ) -> tuple[list[DatasetExample], int]:
+        """Return relabeled examples and the number changed."""
+
+
+class DatasetExporter(Protocol):
+    """Exports dataset examples to a concrete format."""
+
+    def export_dataset_examples(self, path: Path, examples: list[DatasetExample]) -> None:
+        """Export dataset examples to a path."""
+
+
 class SyntheticDataGenerator(Protocol):
     """Source of generated dataset examples."""
 
-    async def generate(self, count: int) -> list[DatasetExample]:
+    async def generate(
+        self,
+        count: int,
+        *,
+        seed: int | None = None,
+        balance_categories: bool = True,
+        vary_scenarios: bool = True,
+        include_categories: tuple[str, ...] = (),
+        exclude_categories: tuple[str, ...] = (),
+    ) -> list[DatasetExample]:
         """Generate synthetic examples from local templates and schemas."""
 
 

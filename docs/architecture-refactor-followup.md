@@ -58,6 +58,30 @@ command-module split, and the first CLI-orchestration move:
 - `LocalOllamaAdapterPackager` adapts Ollama Modelfile/manifest generation and
   optional `ollama create` execution to the promotion packaging application
   port.
+- `application/datasets.py` owns `RunDatasetSynthesisWorkflow`,
+  `RunDatasetValidationWorkflow`, `RunDatasetExportWorkflow`,
+  `RunDatasetMergeWorkflow`, `RunDatasetRelabelWorkflow`, and
+  `RunTraceDatasetExportWorkflow`; `dataset synthesize`, `dataset validate`,
+  `dataset export`, `dataset merge`, `dataset relabel`, and `dataset
+  export-traces` now delegate template-based generation, JSONL loading/writing,
+  validation, merging/deduplication, relabeling, trace/review loading,
+  trace-derived export, and SFT JSONL export through application ports while
+  keeping CLI output formatting in the adapter.
+- `LocalDatasetExampleReader` adapts existing JSONL dataset loading helpers to
+  the dataset validation application port.
+- `LocalDatasetExampleWriter` adapts existing JSONL dataset writing helpers to
+  the dataset merge application port.
+- `LocalDatasetMerger` adapts existing dataset merge/deduplication helpers to
+  the dataset merge application port.
+- `LocalDatasetRelabeler` adapts existing dataset relabeling helpers to the
+  dataset relabel application port.
+- `SftJsonlDatasetExporter` adapts existing SFT JSONL export helpers to the
+  dataset export application port.
+- `LocalWorkflowTraceReader`, `LocalTraceReviewReader`,
+  `LocalTraceDatasetExporter`, and `LocalTraceDatasetExportValidator` adapt
+  existing trace JSONL loading, review loading, trace export, and trace export
+  validation helpers to the trace dataset export application ports.
+- `SyntheticTemplateGenerator` implements the dataset synthesis generator port.
 
 Last known verification:
 
@@ -69,7 +93,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-222 passed
+237 passed
 ```
 
 ## Compatibility Invariants
@@ -108,7 +132,7 @@ inside CLI command handlers.
 Suggested implementation:
 
 1. Pick another narrow command path that currently performs orchestration in CLI
-   code, such as `dataset validate`, `train synthetic`, or `eval compare`.
+   code, such as `dataset review-trace`, `train synthetic`, or `eval compare`.
    The `promote` group is complete.
 2. Introduce an application request/result service that depends on existing
    ports or small new ports.

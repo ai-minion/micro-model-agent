@@ -4,10 +4,24 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import typer
 
+from micro_model_agent.application.datasets import (
+    RunDatasetExportRequest,
+    RunDatasetExportWorkflow,
+    RunDatasetMergeRequest,
+    RunDatasetMergeWorkflow,
+    RunDatasetRelabelRequest,
+    RunDatasetRelabelWorkflow,
+    RunDatasetSynthesisRequest,
+    RunDatasetSynthesisWorkflow,
+    RunDatasetValidationRequest,
+    RunDatasetValidationWorkflow,
+    RunTraceDatasetExportRequest,
+    RunTraceDatasetExportWorkflow,
+)
 from micro_model_agent.domain.contracts import WorkflowStatus
 from micro_model_agent.domain.datasets import (
     DatasetExampleKind,
@@ -17,28 +31,28 @@ from micro_model_agent.domain.datasets import (
     QualityLabel,
 )
 from micro_model_agent.infrastructure.dataset_curation import (
-    DeduplicateBy,
-    merge_datasets,
-    relabel_examples,
+    LocalDatasetMerger,
+    LocalDatasetRelabeler,
 )
 from micro_model_agent.infrastructure.dataset_store import (
-    JsonlDatasetExampleStore,
-    load_dataset_examples,
+    LocalDatasetExampleReader,
+    LocalDatasetExampleWriter,
 )
 from micro_model_agent.infrastructure.dataset_validation import (
     LocalDatasetValidator,
-    export_sft_jsonl,
+    SftJsonlDatasetExporter,
 )
 from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
 from micro_model_agent.infrastructure.trace_export import (
-    TraceDatasetExporter,
-    validate_trace_export_examples,
+    LocalTraceDatasetExporter,
+    LocalTraceDatasetExportValidator,
 )
 from micro_model_agent.infrastructure.trace_review import (
     JsonlTraceReviewStore,
+    LocalTraceReviewReader,
     TraceReview,
 )
-from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
+from micro_model_agent.infrastructure.trace_store import LocalWorkflowTraceReader
 from micro_model_agent.interfaces.cli.common import (
     DEFAULT_TRACE_DIR,
     _fail,
@@ -98,26 +112,35 @@ def synthesize(
 ) -> None:
     """Generate synthetic tool-use and workflow examples."""
 
-    generator = SyntheticTemplateGenerator(template_dir)
-    store = JsonlDatasetExampleStore(output)
-    examples = _run(
-        generator.generate(
-            count,
-            seed=seed,
-            balance_categories=balance_categories,
-            vary_scenarios=vary_scenarios,
-            include_categories=tuple(include_category or ()),
-            exclude_categories=tuple(exclude_category or ()),
-        )
+    workflow = RunDatasetSynthesisWorkflow(
+        generator=SyntheticTemplateGenerator(template_dir),
+        validator=LocalDatasetValidator(),
+        example_writer=LocalDatasetExampleWriter(),
     )
-    validation = _run(LocalDatasetValidator().validate(examples))
+    try:
+        result = _run(
+            workflow.run(
+                RunDatasetSynthesisRequest(
+                    count=count,
+                    output_path=output,
+                    seed=seed,
+                    balance_categories=balance_categories,
+                    vary_scenarios=vary_scenarios,
+                    include_categories=tuple(include_category or ()),
+                    exclude_categories=tuple(exclude_category or ()),
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    validation = result.evaluation
     if not validation.passed:
         typer.echo(validation.summary, err=True)
         for error in validation.details.get("errors", [])[:10]:
             typer.echo(f"- {error}", err=True)
         raise typer.Exit(1)
-    _run(store.save_many(examples))
-    typer.echo(f"Wrote {len(examples)} synthetic examples to {output}")
+    typer.echo(f"Wrote {result.example_count} synthetic examples to {output}")
     typer.echo(
         "Categories: " + _format_count_distribution(validation.details.get("category_counts"))
     )
@@ -134,8 +157,16 @@ def validate(
 ) -> None:
     """Validate dataset records before training."""
 
-    examples = load_dataset_examples(path)
-    result = _run(LocalDatasetValidator().validate(examples))
+    workflow = RunDatasetValidationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+    )
+    try:
+        validation = _run(workflow.run(RunDatasetValidationRequest(path=path)))
+    except ValueError as exc:
+        _fail(str(exc))
+
+    result = validation.evaluation
     typer.echo(result.summary)
     typer.echo(
         "Categories: " + _format_count_distribution(result.details.get("category_counts"))
@@ -162,17 +193,29 @@ def export_dataset(
 ) -> None:
     """Export dataset records for a training backend."""
 
-    if output_format != "sft-jsonl":
-        _fail(f"Unsupported dataset export format: {output_format}")
+    workflow = RunDatasetExportWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+        exporter=SftJsonlDatasetExporter(),
+    )
+    try:
+        result = _run(
+            workflow.run(
+                RunDatasetExportRequest(
+                    path=path,
+                    output_path=output,
+                    output_format=output_format,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
 
-    examples = load_dataset_examples(path)
-    result = _run(LocalDatasetValidator().validate(examples))
-    if not result.passed:
-        typer.echo(result.summary, err=True)
+    if not result.evaluation.passed:
+        typer.echo(result.evaluation.summary, err=True)
         raise typer.Exit(1)
 
-    export_sft_jsonl(output, examples)
-    typer.echo(f"Exported {len(examples)} examples to {output}")
+    typer.echo(f"Exported {result.example_count} examples to {output}")
 
 
 def export_traces(
@@ -227,47 +270,45 @@ def export_traces(
 ) -> None:
     """Export stored workflow traces as redacted dataset examples."""
 
-    store = JsonlTraceStore(trace_path)
-    traces = _run(store.list())
-    reviews_by_trace_id = _run(JsonlTraceReviewStore(review_path).latest_by_trace_id())
-    exporter = TraceDatasetExporter()
+    workflow = RunTraceDatasetExportWorkflow(
+        trace_reader=LocalWorkflowTraceReader(trace_path),
+        review_reader=LocalTraceReviewReader(review_path),
+        trace_exporter=LocalTraceDatasetExporter(),
+        trace_export_validator=LocalTraceDatasetExportValidator(),
+        example_writer=LocalDatasetExampleWriter(),
+    )
     try:
-        examples = exporter.export(
-            traces,
-            kind=kind,
-            label_mode=label_mode,
-            reviews_by_trace_id=reviews_by_trace_id,
-            outcome=outcome,
-            quality=quality,
-            workflow_status=workflow_status,
-            require_tool_call=require_tool_call,
-            max_examples=max_examples,
+        result = _run(
+            workflow.run(
+                RunTraceDatasetExportRequest(
+                    output_path=output,
+                    label_mode=label_mode,
+                    kind=kind,
+                    outcome=outcome,
+                    quality=quality,
+                    workflow_status=workflow_status,
+                    require_tool_call=require_tool_call,
+                    max_examples=max_examples,
+                )
+            )
         )
     except ValueError as exc:
         _fail(str(exc))
 
-    errors = validate_trace_export_examples(examples)
-    if errors:
-        typer.echo(f"trace export found {len(errors)} error(s)", err=True)
-        for error in errors[:10]:
+    if result.validation_errors:
+        typer.echo(
+            f"trace export found {len(result.validation_errors)} error(s)",
+            err=True,
+        )
+        for error in result.validation_errors[:10]:
             typer.echo(f"- {error}", err=True)
         raise typer.Exit(1)
 
-    _run(JsonlDatasetExampleStore(output).save_many(examples))
-    redacted_count = sum(1 for example in examples if example.metadata.get("redacted"))
-    typer.echo(f"Exported {len(examples)} trace-derived examples to {output}")
-    typer.echo(f"Traces read: {len(traces)}")
-    typer.echo(f"Reviews read: {len(reviews_by_trace_id)}")
-    typer.echo(f"Redacted examples: {redacted_count}")
-    typer.echo(
-        "Outcomes: "
-        + _format_count_distribution(
-            {
-                outcome.value: sum(1 for example in examples if example.label.outcome is outcome)
-                for outcome in OutcomeLabel
-            }
-        )
-    )
+    typer.echo(f"Exported {result.example_count} trace-derived examples to {output}")
+    typer.echo(f"Traces read: {result.traces_read}")
+    typer.echo(f"Reviews read: {result.reviews_read}")
+    typer.echo(f"Redacted examples: {result.redacted_count}")
+    typer.echo("Outcomes: " + _format_count_distribution(result.outcome_counts))
 
 
 def review_trace(
@@ -381,24 +422,34 @@ def relabel_dataset(
 ) -> None:
     """Relabel reviewed dataset examples and write a curated JSONL file."""
 
-    if not any([outcome, quality, failure_mode, reviewer_notes is not None]):
-        _fail("At least one label update is required")
-
-    examples = load_dataset_examples(path)
-    relabeled, changed = relabel_examples(
-        examples,
-        trace_id=trace_id,
-        source=source,
-        input_outcome=input_outcome,
-        input_quality=input_quality,
-        outcome=outcome,
-        quality=quality,
-        failure_modes=tuple(failure_mode) if failure_mode is not None else None,
-        reviewer_notes=reviewer_notes,
+    workflow = RunDatasetRelabelWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        relabeler=LocalDatasetRelabeler(),
+        example_writer=LocalDatasetExampleWriter(),
+        validator=LocalDatasetValidator(),
     )
-    _run(JsonlDatasetExampleStore(output).save_many(relabeled))
-    validation = _run(LocalDatasetValidator().validate(relabeled))
-    typer.echo(f"Relabeled {changed} of {len(examples)} examples to {output}")
+    try:
+        result = _run(
+            workflow.run(
+                RunDatasetRelabelRequest(
+                    path=path,
+                    output_path=output,
+                    trace_id=trace_id,
+                    source=source,
+                    input_outcome=input_outcome,
+                    input_quality=input_quality,
+                    outcome=outcome,
+                    quality=quality,
+                    failure_modes=tuple(failure_mode) if failure_mode is not None else None,
+                    reviewer_notes=reviewer_notes,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    validation = result.evaluation
+    typer.echo(f"Relabeled {result.changed_count} of {result.original_count} examples to {output}")
     typer.echo(validation.summary)
     typer.echo(
         "Categories: " + _format_count_distribution(validation.details.get("category_counts"))
@@ -430,24 +481,35 @@ def merge_dataset(
 ) -> None:
     """Merge dataset JSONL files with simple deduplication."""
 
-    if deduplicate_by not in {"source", "id"}:
-        _fail(f"Unsupported dedupe key: {deduplicate_by}")
-
-    datasets = [load_dataset_examples(path) for path in input_path]
-    merged, skipped = merge_datasets(
-        datasets,
-        deduplicate_by=cast(DeduplicateBy, deduplicate_by),
+    workflow = RunDatasetMergeWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        merger=LocalDatasetMerger(),
+        validator=LocalDatasetValidator(),
+        example_writer=LocalDatasetExampleWriter(),
     )
-    validation = _run(LocalDatasetValidator().validate(merged))
-    if validate_training_ready and not validation.passed:
+    try:
+        result = _run(
+            workflow.run(
+                RunDatasetMergeRequest(
+                    input_paths=tuple(input_path),
+                    output_path=output,
+                    deduplicate_by=deduplicate_by,
+                    validate_training_ready=validate_training_ready,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    validation = result.evaluation
+    if not result.saved:
         typer.echo(validation.summary, err=True)
         for error in validation.details.get("errors", [])[:10]:
             typer.echo(f"- {error}", err=True)
         raise typer.Exit(1)
 
-    _run(JsonlDatasetExampleStore(output).save_many(merged))
-    typer.echo(f"Merged {len(merged)} examples to {output}")
-    typer.echo(f"Skipped duplicates: {skipped}")
+    typer.echo(f"Merged {result.merged_count} examples to {output}")
+    typer.echo(f"Skipped duplicates: {result.skipped_duplicates}")
     typer.echo(validation.summary)
     typer.echo(
         "Categories: " + _format_count_distribution(validation.details.get("category_counts"))

@@ -106,3 +106,15 @@ class JsonlTraceReviewStore:
         for review in await self.list():
             reviews_by_trace_id[review.trace_id] = review
         return reviews_by_trace_id
+
+
+class LocalTraceReviewReader:
+    """Filesystem adapter for loading latest trace reviews."""
+
+    def __init__(self, path: str | Path) -> None:
+        self.store = JsonlTraceReviewStore(path)
+
+    async def latest_trace_reviews_by_trace_id(self) -> dict[str, TraceReview]:
+        """Return the newest review for each trace id."""
+
+        return await self.store.latest_by_trace_id()

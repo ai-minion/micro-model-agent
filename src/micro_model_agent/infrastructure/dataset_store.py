@@ -102,6 +102,28 @@ def write_dataset_examples(path: Path, examples: Iterable[DatasetExample]) -> No
             file.write("\n")
 
 
+class LocalDatasetExampleReader:
+    """Filesystem adapter for loading dataset examples from JSONL files."""
+
+    def load_dataset_examples(self, path: Path) -> list[DatasetExample]:
+        """Load dataset examples from a JSONL path."""
+
+        return load_dataset_examples(path)
+
+
+class LocalDatasetExampleWriter:
+    """Filesystem adapter for writing dataset examples to JSONL files."""
+
+    async def save_dataset_examples(
+        self,
+        path: Path,
+        examples: list[DatasetExample],
+    ) -> None:
+        """Persist dataset examples to a JSONL path."""
+
+        write_dataset_examples(path, examples)
+
+
 class JsonlDatasetExampleStore:
     """Local JSONL implementation of the dataset example store port."""
 
