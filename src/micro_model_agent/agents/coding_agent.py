@@ -6,12 +6,17 @@ patch, preview/apply that patch, optionally run tests, and save a trace.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID
 
-from micro_model_agent.application.ports import ModelProvider, ToolExecutor, TraceStore
+from micro_model_agent.application.ports import (
+    CodingAgentResult,
+    CodingAgentTask,
+    ModelProvider,
+    ToolExecutor,
+    TraceStore,
+)
 from micro_model_agent.domain.contracts import (
     ToolCall,
     ToolResult,
@@ -19,33 +24,6 @@ from micro_model_agent.domain.contracts import (
     WorkflowStep,
     WorkflowTrace,
 )
-
-
-@dataclass(frozen=True, slots=True)
-class CodingAgentTask:
-    """Input for the reference coding-agent workflow."""
-
-    goal: str
-    # dry_run means "validate the patch but do not write it to disk".
-    dry_run: bool = True
-    require_approval: bool = True
-    expected_changed_files: list[str] = field(default_factory=list)
-    verification_command_name: str | None = None
-    semantic_intent: str = "code"
-    semantic_limit: int = 5
-
-
-@dataclass(frozen=True, slots=True)
-class CodingAgentResult:
-    """Structured result returned by the coding-agent workflow."""
-
-    trace_id: UUID
-    ok: bool
-    summary: str
-    patch_applied: bool
-    verification_passed: bool | None
-    changed_files: list[str]
-    trace: WorkflowTrace
 
 
 class CodingAgent:

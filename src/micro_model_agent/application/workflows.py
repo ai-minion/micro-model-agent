@@ -6,8 +6,13 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from micro_model_agent.agents.coding_agent import CodingAgent, CodingAgentResult, CodingAgentTask
-from micro_model_agent.application.ports import DatasetExampleStore, WorkflowEvaluator
+from micro_model_agent.application.ports import (
+    CodingAgentResult,
+    CodingAgentTask,
+    CodingWorkflowRunner,
+    DatasetExampleStore,
+    WorkflowEvaluator,
+)
 from micro_model_agent.domain.contracts import EvaluationResult, WorkflowTrace
 from micro_model_agent.domain.datasets import (
     DatasetExample,
@@ -133,7 +138,7 @@ class RunAgentWorkflow:
 
     def __init__(
         self,
-        agent: CodingAgent,
+        agent: CodingWorkflowRunner,
         evaluator: WorkflowEvaluator | None = None,
         dataset_store: DatasetExampleStore | None = None,
         dataset_builder: TraceDatasetBuilder | None = None,

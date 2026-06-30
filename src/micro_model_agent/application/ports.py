@@ -7,7 +7,9 @@ workflow code independent from the concrete storage, model, and tool classes.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol
+from uuid import UUID
 
 from micro_model_agent.domain.contracts import (
     EvaluationResult,
@@ -19,6 +21,33 @@ from micro_model_agent.domain.contracts import (
 )
 from micro_model_agent.domain.datasets import DatasetExample, DatasetSplit
 from micro_model_agent.domain.training import ModelArtifact, TrainingConfig, TrainingRun
+
+
+@dataclass(frozen=True, slots=True)
+class CodingAgentTask:
+    """Input for a coding workflow runner."""
+
+    goal: str
+    # dry_run means "validate the patch but do not write it to disk".
+    dry_run: bool = True
+    require_approval: bool = True
+    expected_changed_files: list[str] = field(default_factory=list)
+    verification_command_name: str | None = None
+    semantic_intent: str = "code"
+    semantic_limit: int = 5
+
+
+@dataclass(frozen=True, slots=True)
+class CodingAgentResult:
+    """Structured result returned by a coding workflow runner."""
+
+    trace_id: UUID
+    ok: bool
+    summary: str
+    patch_applied: bool
+    verification_passed: bool | None
+    changed_files: list[str]
+    trace: WorkflowTrace
 
 
 class ModelProvider(Protocol):
@@ -57,6 +86,15 @@ class TraceStore(Protocol):
 
     async def get(self, trace_id: str) -> WorkflowTrace | None:
         """Load a workflow trace by id."""
+
+
+class CodingWorkflowRunner(Protocol):
+    """Application port for an implementation that can run a coding workflow."""
+
+    trace_store: TraceStore
+
+    async def run(self, task: CodingAgentTask) -> CodingAgentResult:
+        """Run a coding workflow task."""
 
 
 class DatasetExampleStore(Protocol):
