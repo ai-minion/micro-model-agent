@@ -12,9 +12,14 @@ import json
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
-from uuid import UUID
 
 from micro_model_agent.application.ports import ModelProvider, ToolExecutor, TraceStore
+from micro_model_agent.application.tool_loop import (
+    DEFAULT_TOOL_NAMES,
+    PromptContext,
+    ToolLoopAgentResult,
+    ToolLoopAgentTask,
+)
 from micro_model_agent.domain.contracts import (
     ToolCall,
     ToolResult,
@@ -23,52 +28,15 @@ from micro_model_agent.domain.contracts import (
     WorkflowTrace,
 )
 
-DEFAULT_TOOL_NAMES: tuple[str, ...] = (
-    "repo.search",
-    "repo.read",
-    "repo.semantic_search",
-    "repo.write_patch",
-    "repo.write_files",
-    "test.run",
-    "git.diff",
-)
+__all__ = [
+    "DEFAULT_TOOL_NAMES",
+    "ToolLoopAgent",
+    "ToolLoopAgentResult",
+    "ToolLoopAgentTask",
+]
 
 # Python 3.12 type aliases keep the model response categories readable below.
 type DecisionKind = Literal["tool_call", "final_response", "parse_error"]
-type PromptContext = dict[str, Any] | str
-
-
-@dataclass(frozen=True, slots=True)
-class ToolLoopAgentTask:
-    """Input for a model-driven tool-call loop."""
-
-    goal: str
-    available_tools: tuple[str, ...] = DEFAULT_TOOL_NAMES
-    # max_turns prevents an unproductive model/tool conversation from running forever.
-    max_turns: int = 8
-    context: PromptContext = field(default_factory=dict)
-    tool_schemas: dict[str, Any] = field(default_factory=dict)
-    require_tool_call: bool = True
-    max_tool_result_prompt_chars: int = 12_000
-    # max_tool_calls can force the model to stop gathering data and answer from
-    # the tool results it already has.
-    max_tool_calls: int | None = None
-    required_tools: tuple[str, ...] = ()
-    capture_prompts: bool = False
-    run_metadata: dict[str, Any] = field(default_factory=dict)
-    model_timeout_seconds: float | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ToolLoopAgentResult:
-    """Structured result returned by the tool-loop agent."""
-
-    trace_id: UUID
-    ok: bool
-    response: str
-    turns_used: int
-    tool_calls_made: int
-    trace: WorkflowTrace
 
 
 @dataclass(frozen=True, slots=True)
@@ -633,11 +601,9 @@ class ToolLoopAgent:
         tool_name = step.tool_call.tool_name
         if last_success_by_tool.get(tool_name, -1) > step_index:
             return True
-        if tool_name == "test.run" and (
+        return tool_name == "test.run" and (
             latest_successful_write is not None and latest_successful_write > step_index
-        ):
-            return True
-        return False
+        )
 
     def _is_duplicate_successful_write(
         self,

@@ -45,12 +45,20 @@ infrastructure ports.
 Implemented services:
 
 - `RunAgentWorkflow`
+- `RunToolLoopWorkflow`
 - `TraceDatasetBuilder`
 - `DefaultWorkflowEvaluator`
 
-The model-driven loop currently lives in `agents.ToolLoopAgent`, while safe tool
-execution is exposed through the `ToolExecutor` application port and implemented
-by `BuiltinToolExecutor`.
+Application-owned ports include `CodingWorkflowRunner`, `ModelProvider`,
+`ToolExecutor`, `TraceStore`, and dataset/training/evaluation storage and runner
+contracts. The reference `CodingAgent` implements `CodingWorkflowRunner`; the
+application layer depends on that port rather than importing the concrete agent.
+
+The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
+`RunToolLoopRequest`, and `RunToolLoopResult`. The reference
+`agents.ToolLoopAgent` implements the application `ToolLoopRunner` port, while
+safe tool execution is exposed through the `ToolExecutor` application port and
+implemented by `BuiltinToolExecutor`.
 
 ### Infrastructure
 
@@ -86,7 +94,8 @@ User-facing entrypoints:
 ### Agents
 
 Reference agents built from workflows and tools. The first implementation is
-`CodingAgent`.
+`CodingAgent`; `ToolLoopAgent` is the reference model-driven implementation of
+the application tool-loop runner port.
 
 ## Dependency Direction
 
@@ -135,3 +144,6 @@ and approval workflows.
 
 The implementation roadmap, milestones, tool plan, testing strategy, and MVP
 acceptance criteria live in [project-plan.md](project-plan.md).
+
+The current architecture refactor handoff and migration slices live in
+[architecture-refactor-plan.md](architecture-refactor-plan.md).

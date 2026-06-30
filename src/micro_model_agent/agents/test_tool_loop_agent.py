@@ -992,7 +992,8 @@ def test_tool_loop_agent_requires_verification_after_repair_write(
                     (
                         sys.executable,
                         "-c",
-                        "from pathlib import Path; assert Path('app.py').read_text() == 'VALUE = 2\\n'",
+                        "from pathlib import Path; "
+                        "assert Path('app.py').read_text() == 'VALUE = 2\\n'",
                     )
                 )
             },
@@ -1095,7 +1096,8 @@ def test_tool_loop_agent_final_result_succeeds_after_repaired_failed_test(
                     (
                         sys.executable,
                         "-c",
-                        "from pathlib import Path; assert Path('app.py').read_text() == 'VALUE = 2\\n'",
+                        "from pathlib import Path; "
+                        "assert Path('app.py').read_text() == 'VALUE = 2\\n'",
                     )
                 )
             },
