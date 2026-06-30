@@ -50,6 +50,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
   - Metadata-only synthetic artifact evaluation was extracted from
     `training_artifacts.py` into `infrastructure/artifact_evaluation.py`, with a
     compatibility re-export left in place.
+  - Training and artifact JSON record helpers were extracted from
+    `training_artifacts.py` into `infrastructure/training_records.py`, with
+    compatibility re-exports left in place.
 
 ## Larger Remaining Slices
 
