@@ -6,8 +6,8 @@ Use it instead of carrying the full assessment in
 
 ## Current State
 
-Completed through the CLI package conversion, common-helper extraction, and
-command-module split:
+Completed through the CLI package conversion, common-helper extraction,
+command-module split, and the first CLI-orchestration move:
 
 - Architecture boundary tests exist for `domain` and `application`.
 - CLI and MCP public surface characterization tests exist.
@@ -44,6 +44,20 @@ command-module split:
 - `interfaces/cli/commands/train.py` owns the `train synthetic` command.
 - `interfaces/cli/commands/eval.py` owns the `eval` command group.
 - `interfaces/cli/commands/promote.py` owns the `promote` command group.
+- `application/promotion.py` owns `RunPromotionGateWorkflow`,
+  `RunPromotionRecordWorkflow`, `RunPromotionListWorkflow`,
+  `RunPromotionSelectWorkflow`, and `RunPromotionPackageOllamaWorkflow`; the
+  full `promote` CLI group now delegates artifact loading, evaluation report
+  loading, policy checks, promotion report writing, registry recording/listing,
+  registry lookup, repository config selection, and Ollama package requests
+  through application ports.
+- `LocalPromotionGateStore` adapts the existing training-artifact JSON helpers
+  to the promotion application ports.
+- `LocalRepositoryModelConfigurationStore` adapts repository config updates to
+  the promotion selection application port.
+- `LocalOllamaAdapterPackager` adapts Ollama Modelfile/manifest generation and
+  optional `ollama create` execution to the promotion packaging application
+  port.
 
 Last known verification:
 
@@ -55,7 +69,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-209 passed
+222 passed
 ```
 
 ## Compatibility Invariants
@@ -85,7 +99,7 @@ Keep these stable unless a separate migration is explicitly requested:
   - `smoke_test_micro_agent`
 - Trace JSON shapes and evaluation semantics.
 
-## Next Slice: Move CLI Orchestration Inward
+## Next Slice: Continue Moving CLI Orchestration Inward
 
 Goal: add application services for dataset, training, evaluation, and promotion
 workflows that currently coordinate multiple infrastructure adapters directly
@@ -93,8 +107,9 @@ inside CLI command handlers.
 
 Suggested implementation:
 
-1. Start with one narrow command path that currently performs orchestration in
-   CLI code, such as promotion gating or dataset validation.
+1. Pick another narrow command path that currently performs orchestration in CLI
+   code, such as `dataset validate`, `train synthetic`, or `eval compare`.
+   The `promote` group is complete.
 2. Introduce an application request/result service that depends on existing
    ports or small new ports.
 3. Keep file formats, concrete providers, and external process integration in

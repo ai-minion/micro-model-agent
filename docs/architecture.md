@@ -46,6 +46,11 @@ Implemented services:
 
 - `RunAgentWorkflow`
 - `RunToolLoopWorkflow`
+- `RunPromotionGateWorkflow`
+- `RunPromotionRecordWorkflow`
+- `RunPromotionListWorkflow`
+- `RunPromotionSelectWorkflow`
+- `RunPromotionPackageOllamaWorkflow`
 - `TraceDatasetBuilder`
 - `DefaultWorkflowEvaluator`
 
@@ -59,6 +64,15 @@ The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
 `agents.ToolLoopAgent` implements the application `ToolLoopRunner` port, while
 safe tool execution is exposed through the `ToolExecutor` application port and
 implemented by `BuiltinToolExecutor`.
+
+Promotion gate, registry-record, registry-list, model-selection, and Ollama
+packaging use cases are represented by `RunPromotionGateWorkflow`,
+`RunPromotionRecordWorkflow`, `RunPromotionListWorkflow`,
+`RunPromotionSelectWorkflow`, and `RunPromotionPackageOllamaWorkflow`.
+Interfaces supply CLI options and output formatting, infrastructure owns JSON
+artifact/report, registry, repository configuration, and Ollama package storage,
+and the application coordinates promotion policy, registry orchestration,
+repository-local model selection, and packaging requests.
 
 ### Infrastructure
 
