@@ -40,9 +40,11 @@ from micro_model_agent.infrastructure.synthetic_evaluation import (
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.infrastructure.trace_evaluation import TraceBehaviorEvaluationSuite
 from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+    WorkspaceStagedEvaluationSuite,
+)
+from micro_model_agent.infrastructure.workspace_staged_review import (
     LocalWorkspaceStagedReviewBuilder,
     LocalWorkspaceStagedReviewQueueWriter,
-    WorkspaceStagedEvaluationSuite,
 )
 from micro_model_agent.interfaces.cli.common import (
     _fail,

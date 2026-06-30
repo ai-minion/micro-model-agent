@@ -65,6 +65,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     `synthetic_evaluation.py` into `infrastructure/trace_evaluation.py`, and
     shared JSON response parsing was extracted into
     `infrastructure/evaluation_response_parsing.py`.
+  - Staged workspace review queue building/writing was extracted from
+    `workspace_staged_evaluation.py` into
+    `infrastructure/workspace_staged_review.py`, with compatibility re-exports
+    left in place.
 
 ## Larger Remaining Slices
 
