@@ -26,17 +26,15 @@ verification details.
   - `eval compare`
   - `eval synthetic`
   - `eval traces`
+  - `eval workspace-staged`
+  - `eval review-workspace-staged`
 
 ## Remaining CLI Orchestration
 
-Move these command paths into application workflows in small, behavior-preserving
-slices. Keep concrete file formats, model providers, local process execution,
+All tracked CLI orchestration slices have been moved behind application
+workflows. Keep concrete file formats, model providers, local process execution,
 and external integrations in infrastructure. Keep Typer option parsing, output
-formatting, and exit behavior in CLI adapters.
-
-- Remaining eval command orchestration, as needed:
-  - `eval workspace-staged`
-  - `eval review-workspace-staged`
+formatting, interactive prompts, and exit behavior in CLI adapters.
 
 ## Larger Remaining Slices
 

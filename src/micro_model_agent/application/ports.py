@@ -370,6 +370,31 @@ class EvaluationResultWriter(Protocol):
         """Persist one evaluation report and return its path."""
 
 
+class WorkspaceStagedReviewBuilder(Protocol):
+    """Builds staged workspace review records from examples and reports."""
+
+    def build_workspace_staged_review_records(
+        self,
+        *,
+        examples: list[DatasetExample],
+        reports: list[tuple[Path, EvaluationResult]],
+        simple_failure_threshold: float = 0.4,
+        auto_accept_threshold: float = 0.95,
+    ) -> list[dict[str, Any]]:
+        """Build JSON-ready staged workspace review records."""
+
+
+class WorkspaceStagedReviewQueueWriter(Protocol):
+    """Persists staged workspace review queue records."""
+
+    def write_workspace_staged_review_records(
+        self,
+        path: Path,
+        records: list[dict[str, Any]],
+    ) -> None:
+        """Write staged workspace review records."""
+
+
 class ModelPromotionPolicy(Protocol):
     """Decides whether an evaluated artifact can be promoted."""
 

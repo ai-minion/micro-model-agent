@@ -92,15 +92,19 @@ command-module split, and the first CLI-orchestration move:
 - `LocalDatasetFileHasher` and `LocalDatasetToolProfileSummarizer` adapt
   existing dataset metadata helpers to the synthetic training application ports.
 - `application/evaluation.py` owns `RunSyntheticEvaluationWorkflow`,
-  `RunTraceEvaluationWorkflow`, and `RunEvaluationComparisonWorkflow`; `eval
-  synthetic` now delegates dataset loading, behavior/artifact evaluation, report
+  `RunTraceEvaluationWorkflow`, `RunWorkspaceStagedEvaluationWorkflow`,
+  `RunWorkspaceStagedReviewWorkflow`, and `RunEvaluationComparisonWorkflow`;
+  `eval synthetic` now delegates dataset loading, behavior/artifact evaluation,
+  report metadata construction, and evaluation report writing through
+  application ports while keeping environment loading, model selection, CLI
+  output formatting, and exit behavior in the adapter. `eval traces` and `eval
+  workspace-staged` now delegate dataset loading, behavior evaluation, report
   metadata construction, and evaluation report writing through application
-  ports while keeping environment loading, model selection, CLI output
-  formatting, and exit behavior in the adapter. `eval traces` now delegates
-  dataset loading, trace behavior evaluation, report metadata construction, and
-  evaluation report writing through application ports. `eval compare` now
-  delegates persisted report loading, score/metric comparison, and comparison
-  report writing through application ports while keeping metric threshold option
+  ports. `eval review-workspace-staged` now delegates dataset/report loading,
+  review queue construction, and JSONL writing through application ports while
+  keeping interactive prompts in the adapter. `eval compare` now delegates
+  persisted report loading, score/metric comparison, and comparison report
+  writing through application ports while keeping metric threshold option
   parsing, CLI output formatting, and exit behavior in the adapter.
 - `LocalEvaluationResultReader` and `LocalEvaluationResultWriter` adapt existing
   evaluation report loading/writing to evaluation application ports.
@@ -108,6 +112,9 @@ command-module split, and the first CLI-orchestration move:
   to the evaluation comparison application port. The old
   `infrastructure.evaluation_comparison` comparison imports remain available as
   compatibility re-exports.
+- `LocalWorkspaceStagedReviewBuilder` and
+  `LocalWorkspaceStagedReviewQueueWriter` adapt staged workspace review record
+  construction and JSONL queue writing to evaluation application ports.
 
 Last known verification:
 
@@ -119,7 +126,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-249 passed
+253 passed
 ```
 
 ## Compatibility Invariants
@@ -149,23 +156,21 @@ Keep these stable unless a separate migration is explicitly requested:
   - `smoke_test_micro_agent`
 - Trace JSON shapes and evaluation semantics.
 
-## Next Slice: Continue Moving CLI Orchestration Inward
+## Next Slice: Larger Structural Cleanup
 
-Goal: add application services for dataset, training, evaluation, and promotion
-workflows that currently coordinate multiple infrastructure adapters directly
-inside CLI command handlers.
+Goal: keep the completed CLI/application boundaries intact while reducing the
+size and coupling of the remaining large modules.
 
 Suggested implementation:
 
-1. Pick another narrow command path that currently performs orchestration in CLI
-   code, such as `eval workspace-staged`, `eval review-workspace-staged`, or
-   another eval command.
-   The `promote` group is complete.
-2. Introduce an application request/result service that depends on existing
-   ports or small new ports.
-3. Keep file formats, concrete providers, and external process integration in
-   infrastructure.
-4. Leave the CLI responsible for Typer options, printing, and exit behavior.
+1. Pick one large infrastructure module, such as `training_artifacts.py`,
+   `synthetic_evaluation.py`, or `workspace_staged_evaluation.py`.
+2. Split cohesive helpers into smaller infrastructure modules while preserving
+   existing public import paths with compatibility re-exports where needed.
+3. Extract pure evaluation rubrics where scoring can be tested without model
+   providers or filesystem setup.
+4. Keep CLI adapters responsible for Typer options, printing, interactive
+   prompts, and exit behavior.
 
 Acceptance:
 

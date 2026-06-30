@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -15,16 +14,17 @@ from micro_model_agent.application.evaluation import (
     RunSyntheticEvaluationWorkflow,
     RunTraceEvaluationRequest,
     RunTraceEvaluationWorkflow,
+    RunWorkspaceStagedEvaluationRequest,
+    RunWorkspaceStagedEvaluationWorkflow,
+    RunWorkspaceStagedReviewRequest,
+    RunWorkspaceStagedReviewWorkflow,
+    RunWorkspaceStagedReviewWriteRequest,
 )
-from micro_model_agent.domain.contracts import EvaluationResult
-from micro_model_agent.domain.datasets import DatasetExample
 from micro_model_agent.infrastructure.dataset_metadata import (
     LocalDatasetToolProfileSummarizer,
-    summarize_tool_profiles,
 )
 from micro_model_agent.infrastructure.dataset_store import (
     LocalDatasetExampleReader,
-    load_dataset_examples,
 )
 from micro_model_agent.infrastructure.evaluation_comparison import (
     LocalEvaluationComparisonReportWriter,
@@ -38,12 +38,11 @@ from micro_model_agent.infrastructure.training_artifacts import (
     LocalEvaluationResultReader,
     LocalEvaluationResultWriter,
     SyntheticEvaluationSuite,
-    load_evaluation_result,
-    write_evaluation_result,
 )
 from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+    LocalWorkspaceStagedReviewBuilder,
+    LocalWorkspaceStagedReviewQueueWriter,
     WorkspaceStagedEvaluationSuite,
-    build_workspace_staged_review_records,
 )
 from micro_model_agent.interfaces.cli.common import (
     _fail,
@@ -87,41 +86,6 @@ def _format_behavioral_eval_failures(details: dict[str, Any]) -> list[str]:
             error_text = f": {errors[0]}"
         lines.append(f"- {category}/{example_id} scored {score:.2f}{error_text}")
     return lines
-
-
-def _with_evaluation_metadata(
-    result: EvaluationResult,
-    *,
-    run_id: str,
-    dataset: Path,
-    examples: list[DatasetExample],
-    provider_kind: str,
-    model: str | None = None,
-    base_model: str | None = None,
-    adapter_path: Path | None = None,
-) -> EvaluationResult:
-    """Add report-level metadata without changing evaluator scoring."""
-
-    return EvaluationResult(
-        passed=result.passed,
-        summary=result.summary,
-        score=result.score,
-        details={
-            **result.details,
-            "evaluation_metadata": {
-                "run_id": run_id,
-                "dataset_path": str(dataset),
-                "provider": provider_kind,
-                "model": model,
-                "base_model": base_model,
-                "adapter_path": str(adapter_path) if adapter_path else None,
-                "tool_profile": summarize_tool_profiles(
-                    examples,
-                    default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
-                ),
-            },
-        },
-    )
 
 
 def eval_synthetic(
@@ -433,32 +397,41 @@ def eval_workspace_staged(
         ollama_base_url=ollama_base_url,
     )
 
-    if model_selection.provider is None:
-        _fail("workspace-staged eval requires a runnable model, adapter, or scripted response")
     if rubric_version not in {"legacy", "v2", "auto"}:
         _fail(f"Unsupported workspace-staged rubric version: {rubric_version}")
 
-    examples = load_dataset_examples(dataset)
-    if max_examples is not None:
-        examples = examples[:max_examples]
-    result = _run(
-        WorkspaceStagedEvaluationSuite(
+    workflow = RunWorkspaceStagedEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=WorkspaceStagedEvaluationSuite(
             pass_threshold=pass_threshold,
             rubric_version=rubric_version,
-        ).evaluate_model(model_selection.provider, examples)
+        ),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
     )
-    result = _with_evaluation_metadata(
-        result,
-        run_id=run_id,
-        dataset=dataset,
-        examples=examples,
-        provider_kind=model_selection.provider_kind,
-        model=model_selection.model,
-        base_model=model_selection.base_model,
-        adapter_path=model_selection.adapter_path,
-    )
-    report_path = write_evaluation_result(run_dir, result, output)
-    typer.echo(f"{result.summary}; report written to {report_path}")
+    try:
+        workflow_result = _run(
+            workflow.run(
+                RunWorkspaceStagedEvaluationRequest(
+                    run_id=run_id,
+                    run_dir=run_dir,
+                    dataset_path=dataset,
+                    provider_kind=model_selection.provider_kind,
+                    model_provider=model_selection.provider,
+                    model=model_selection.model,
+                    base_model=model_selection.base_model,
+                    adapter_path=model_selection.adapter_path,
+                    max_examples=max_examples,
+                    output_path=output,
+                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    result = workflow_result.evaluation
+    typer.echo(f"{result.summary}; report written to {workflow_result.report_path}")
     if not result.passed:
         raise typer.Exit(1)
 
@@ -498,18 +471,26 @@ def review_workspace_staged(
 ) -> None:
     """Build or complete a staged workspace review queue from eval reports."""
 
-    report_paths = list(report or [])
-    if not report_paths:
-        _fail("at least one --report is required")
-
-    examples = load_dataset_examples(dataset)
-    reports = [(path, load_evaluation_result(path)) for path in report_paths]
-    records = build_workspace_staged_review_records(
-        examples=examples,
-        reports=reports,
-        simple_failure_threshold=simple_failure_threshold,
-        auto_accept_threshold=auto_accept_threshold,
+    workflow = RunWorkspaceStagedReviewWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        evaluation_reader=LocalEvaluationResultReader(),
+        review_builder=LocalWorkspaceStagedReviewBuilder(),
+        review_writer=LocalWorkspaceStagedReviewQueueWriter(),
     )
+    try:
+        build_result = workflow.build(
+            RunWorkspaceStagedReviewRequest(
+                dataset_path=dataset,
+                report_paths=tuple(report or ()),
+                output_path=output,
+                simple_failure_threshold=simple_failure_threshold,
+                auto_accept_threshold=auto_accept_threshold,
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    records = build_result.records
 
     if interactive:
         for index, record in enumerate(records, start=1):
@@ -536,18 +517,17 @@ def review_workspace_staged(
                 "notes": notes or None,
             }
 
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with output.open("w", encoding="utf-8") as file:
-        for record in records:
-            file.write(json.dumps(record, sort_keys=True))
-            file.write("\n")
-
-    counts: dict[str, int] = {}
-    for record in records:
-        decision = str(record["auto_triage"]["decision"])
-        counts[decision] = counts.get(decision, 0) + 1
-    typer.echo(f"Wrote {len(records)} staged workspace review record(s) to {output}")
-    typer.echo("Auto triage: " + _format_count_distribution(counts))
+    write_result = workflow.write(
+        RunWorkspaceStagedReviewWriteRequest(
+            output_path=output,
+            records=records,
+        )
+    )
+    typer.echo(
+        f"Wrote {write_result.record_count} staged workspace review record(s) "
+        f"to {write_result.output_path}"
+    )
+    typer.echo("Auto triage: " + _format_count_distribution(write_result.auto_triage_counts))
 
 
 def eval_compare(

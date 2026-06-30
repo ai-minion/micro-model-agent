@@ -56,6 +56,8 @@ Implemented services:
 - `RunSyntheticTrainingWorkflow`
 - `RunSyntheticEvaluationWorkflow`
 - `RunTraceEvaluationWorkflow`
+- `RunWorkspaceStagedEvaluationWorkflow`
+- `RunWorkspaceStagedReviewWorkflow`
 - `RunEvaluationComparisonWorkflow`
 - `RunPromotionGateWorkflow`
 - `RunPromotionRecordWorkflow`
@@ -98,13 +100,17 @@ runner execution, and artifact recording through ports.
 
 Synthetic behavior and metadata-only artifact evaluation are represented by
 `RunSyntheticEvaluationWorkflow`; trace-derived behavior evaluation is
-represented by `RunTraceEvaluationWorkflow`. Evaluation report comparison is
-represented by `RunEvaluationComparisonWorkflow`. Interfaces supply CLI model
-selection, threshold parsing, output formatting, and exit behavior.
-Infrastructure owns persisted report loading, JSON report writing, concrete
-behavior/artifact evaluators, model providers, and dataset metadata helpers,
-while the application coordinates dataset loading, evaluation execution, report
-metadata, score/metric comparison, and report persistence through ports.
+represented by `RunTraceEvaluationWorkflow`; staged workspace behavior
+evaluation and review queue generation are represented by
+`RunWorkspaceStagedEvaluationWorkflow` and `RunWorkspaceStagedReviewWorkflow`.
+Evaluation report comparison is represented by `RunEvaluationComparisonWorkflow`.
+Interfaces supply CLI model selection, interactive review prompts, threshold
+parsing, output formatting, and exit behavior. Infrastructure owns persisted
+report loading, JSON/JSONL report writing, concrete behavior/artifact
+evaluators, model providers, staged review record construction, and dataset
+metadata helpers, while the application coordinates dataset loading, evaluation
+execution, report metadata, score/metric comparison, review queue
+build/write orchestration, and report persistence through ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,

@@ -15,6 +15,8 @@ from micro_model_agent.application.ports import (
     EvaluationSuite,
     ModelBehaviorEvaluationSuite,
     ModelProvider,
+    WorkspaceStagedReviewBuilder,
+    WorkspaceStagedReviewQueueWriter,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample
@@ -150,6 +152,68 @@ class RunTraceEvaluationResult:
 
     report_path: Path
     evaluation: EvaluationResult
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedEvaluationRequest:
+    """Request for staged workspace behavior evaluation."""
+
+    run_id: str
+    run_dir: Path
+    dataset_path: Path
+    provider_kind: str
+    model_provider: ModelProvider | None
+    model: str | None = None
+    base_model: str | None = None
+    adapter_path: Path | None = None
+    max_examples: int | None = None
+    output_path: Path | None = None
+    default_available_tools: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedEvaluationResult:
+    """Result returned after staged workspace behavior evaluation."""
+
+    report_path: Path
+    evaluation: EvaluationResult
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedReviewRequest:
+    """Request for building a staged workspace review queue."""
+
+    dataset_path: Path
+    report_paths: tuple[Path, ...]
+    output_path: Path
+    simple_failure_threshold: float = 0.4
+    auto_accept_threshold: float = 0.95
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedReviewBuildResult:
+    """Result returned after building staged workspace review records."""
+
+    output_path: Path
+    records: list[dict[str, Any]]
+    auto_triage_counts: dict[str, int]
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedReviewWriteRequest:
+    """Request for writing staged workspace review records."""
+
+    output_path: Path
+    records: list[dict[str, Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class RunWorkspaceStagedReviewWriteResult:
+    """Result returned after writing staged workspace review records."""
+
+    output_path: Path
+    record_count: int
+    auto_triage_counts: dict[str, int]
 
 
 class RunEvaluationComparisonWorkflow:
@@ -334,6 +398,136 @@ class RunTraceEvaluationWorkflow:
         )
 
 
+class RunWorkspaceStagedEvaluationWorkflow:
+    """Evaluate staged workspace examples against a runnable model provider."""
+
+    def __init__(
+        self,
+        *,
+        example_reader: DatasetExampleReader,
+        behavior_suite: ModelBehaviorEvaluationSuite,
+        tool_profile_summarizer: DatasetToolProfileSummarizer,
+        evaluation_writer: EvaluationResultWriter,
+    ) -> None:
+        self.example_reader = example_reader
+        self.behavior_suite = behavior_suite
+        self.tool_profile_summarizer = tool_profile_summarizer
+        self.evaluation_writer = evaluation_writer
+
+    async def run(
+        self,
+        request: RunWorkspaceStagedEvaluationRequest,
+    ) -> RunWorkspaceStagedEvaluationResult:
+        """Run staged workspace behavior evaluation."""
+
+        if request.model_provider is None:
+            raise ValueError(
+                "workspace-staged eval requires a runnable model, adapter, or scripted response"
+            )
+
+        examples = self.example_reader.load_dataset_examples(request.dataset_path)
+        if request.max_examples is not None:
+            examples = examples[: request.max_examples]
+        evaluation = await self.behavior_suite.evaluate_model(
+            request.model_provider,
+            examples,
+        )
+        evaluation = _with_evaluation_metadata(
+            evaluation,
+            run_id=request.run_id,
+            dataset_path=request.dataset_path,
+            examples=examples,
+            provider_kind=request.provider_kind,
+            model=request.model,
+            base_model=request.base_model,
+            adapter_path=request.adapter_path,
+            tool_profile_summarizer=self.tool_profile_summarizer,
+            default_available_tools=request.default_available_tools,
+        )
+        report_path = self.evaluation_writer.write_evaluation_result(
+            request.run_dir,
+            evaluation,
+            request.output_path,
+        )
+        return RunWorkspaceStagedEvaluationResult(
+            report_path=report_path,
+            evaluation=evaluation,
+        )
+
+
+class RunWorkspaceStagedReviewWorkflow:
+    """Build and write staged workspace review queue records."""
+
+    def __init__(
+        self,
+        *,
+        example_reader: DatasetExampleReader,
+        evaluation_reader: EvaluationResultReader,
+        review_builder: WorkspaceStagedReviewBuilder,
+        review_writer: WorkspaceStagedReviewQueueWriter,
+    ) -> None:
+        self.example_reader = example_reader
+        self.evaluation_reader = evaluation_reader
+        self.review_builder = review_builder
+        self.review_writer = review_writer
+
+    def build(
+        self,
+        request: RunWorkspaceStagedReviewRequest,
+    ) -> RunWorkspaceStagedReviewBuildResult:
+        """Build staged workspace review records without writing them."""
+
+        if not request.report_paths:
+            raise ValueError("at least one --report is required")
+
+        examples = self.example_reader.load_dataset_examples(request.dataset_path)
+        reports = [
+            (path, self.evaluation_reader.load_evaluation_result(path))
+            for path in request.report_paths
+        ]
+        records = self.review_builder.build_workspace_staged_review_records(
+            examples=examples,
+            reports=reports,
+            simple_failure_threshold=request.simple_failure_threshold,
+            auto_accept_threshold=request.auto_accept_threshold,
+        )
+        return RunWorkspaceStagedReviewBuildResult(
+            output_path=request.output_path,
+            records=records,
+            auto_triage_counts=_auto_triage_counts(records),
+        )
+
+    def write(
+        self,
+        request: RunWorkspaceStagedReviewWriteRequest,
+    ) -> RunWorkspaceStagedReviewWriteResult:
+        """Write staged workspace review records."""
+
+        self.review_writer.write_workspace_staged_review_records(
+            request.output_path,
+            request.records,
+        )
+        return RunWorkspaceStagedReviewWriteResult(
+            output_path=request.output_path,
+            record_count=len(request.records),
+            auto_triage_counts=_auto_triage_counts(request.records),
+        )
+
+    def run(
+        self,
+        request: RunWorkspaceStagedReviewRequest,
+    ) -> RunWorkspaceStagedReviewWriteResult:
+        """Build and write staged workspace review records."""
+
+        build_result = self.build(request)
+        return self.write(
+            RunWorkspaceStagedReviewWriteRequest(
+                output_path=build_result.output_path,
+                records=build_result.records,
+            )
+        )
+
+
 def compare_evaluation_results(
     baseline: EvaluationResult,
     adapter: EvaluationResult,
@@ -484,3 +678,14 @@ def _with_evaluation_metadata(
             },
         },
     )
+
+
+def _auto_triage_counts(records: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for record in records:
+        auto_triage = record.get("auto_triage")
+        if not isinstance(auto_triage, dict):
+            continue
+        decision = str(auto_triage.get("decision"))
+        counts[decision] = counts.get(decision, 0) + 1
+    return counts

@@ -14,6 +14,11 @@ from micro_model_agent.application.evaluation import (
     RunSyntheticEvaluationWorkflow,
     RunTraceEvaluationRequest,
     RunTraceEvaluationWorkflow,
+    RunWorkspaceStagedEvaluationRequest,
+    RunWorkspaceStagedEvaluationWorkflow,
+    RunWorkspaceStagedReviewRequest,
+    RunWorkspaceStagedReviewWorkflow,
+    RunWorkspaceStagedReviewWriteRequest,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import (
@@ -136,6 +141,44 @@ class FakeEvaluationResultWriter:
     ) -> Path:
         self.written = (run_dir, result, output_path)
         return output_path or run_dir / "evaluation.json"
+
+
+class FakeWorkspaceStagedReviewBuilder:
+    """In-memory review record builder for application tests."""
+
+    def __init__(self, records: list[dict[str, object]]) -> None:
+        self.records = records
+        self.request: dict[str, object] | None = None
+
+    def build_workspace_staged_review_records(
+        self,
+        *,
+        examples: list[DatasetExample],
+        reports: list[tuple[Path, EvaluationResult]],
+        simple_failure_threshold: float = 0.4,
+        auto_accept_threshold: float = 0.95,
+    ) -> list[dict[str, object]]:
+        self.request = {
+            "examples": examples,
+            "reports": reports,
+            "simple_failure_threshold": simple_failure_threshold,
+            "auto_accept_threshold": auto_accept_threshold,
+        }
+        return self.records
+
+
+class FakeWorkspaceStagedReviewQueueWriter:
+    """In-memory review queue writer for application tests."""
+
+    def __init__(self) -> None:
+        self.written: tuple[Path, list[dict[str, object]]] | None = None
+
+    def write_workspace_staged_review_records(
+        self,
+        path: Path,
+        records: list[dict[str, object]],
+    ) -> None:
+        self.written = (path, records)
 
 
 def test_evaluation_comparison_workflow_loads_compares_and_writes_report() -> None:
@@ -468,6 +511,169 @@ def test_trace_evaluation_workflow_requires_provider() -> None:
                     provider_kind="none",
                     model_provider=None,
                 )
+            )
+        )
+
+
+def test_workspace_staged_evaluation_workflow_evaluates_provider_and_writes_metadata() -> None:
+    examples = [_example(source="workspace:one"), _example(source="workspace:two")]
+    reader = FakeDatasetReader(examples)
+    provider = FakeModelProvider()
+    behavior_suite = FakeBehaviorEvaluationSuite(
+        EvaluationResult(
+            passed=True,
+            summary="staged workspace eval scored 1.00 over 1 example(s)",
+            score=1.0,
+            details={"example_count": 1},
+        )
+    )
+    summarizer = FakeToolProfileSummarizer()
+    writer = FakeEvaluationResultWriter()
+    workflow = RunWorkspaceStagedEvaluationWorkflow(
+        example_reader=reader,
+        behavior_suite=behavior_suite,
+        tool_profile_summarizer=summarizer,
+        evaluation_writer=writer,
+    )
+
+    result = asyncio.run(
+        workflow.run(
+            RunWorkspaceStagedEvaluationRequest(
+                run_id="latest",
+                run_dir=Path("runs/latest"),
+                dataset_path=Path("held-out-workspace.jsonl"),
+                provider_kind="scripted",
+                model_provider=provider,
+                model="scripted-model",
+                base_model="base-model",
+                adapter_path=Path("adapter"),
+                max_examples=1,
+                output_path=Path("workspace-evaluation.json"),
+                default_available_tools=("repo.read", "repo.write_patch"),
+            )
+        )
+    )
+
+    assert reader.loaded_paths == [Path("held-out-workspace.jsonl")]
+    assert behavior_suite.provider is provider
+    assert behavior_suite.examples == [examples[0]]
+    assert summarizer.examples == [examples[0]]
+    assert result.report_path == Path("workspace-evaluation.json")
+    assert result.evaluation.details["evaluation_metadata"] == {
+        "run_id": "latest",
+        "dataset_path": "held-out-workspace.jsonl",
+        "provider": "scripted",
+        "model": "scripted-model",
+        "base_model": "base-model",
+        "adapter_path": "adapter",
+        "tool_profile": {
+            "example_count": 1,
+            "available_tools": ["repo.read", "repo.write_patch"],
+        },
+    }
+    assert writer.written == (
+        Path("runs/latest"),
+        result.evaluation,
+        Path("workspace-evaluation.json"),
+    )
+
+
+def test_workspace_staged_evaluation_workflow_requires_provider() -> None:
+    workflow = RunWorkspaceStagedEvaluationWorkflow(
+        example_reader=FakeDatasetReader([]),
+        behavior_suite=FakeBehaviorEvaluationSuite(
+            EvaluationResult(passed=False, summary="unused", score=0.0)
+        ),
+        tool_profile_summarizer=FakeToolProfileSummarizer(),
+        evaluation_writer=FakeEvaluationResultWriter(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="workspace-staged eval requires a runnable model, adapter, or scripted response",
+    ):
+        asyncio.run(
+            workflow.run(
+                RunWorkspaceStagedEvaluationRequest(
+                    run_id="latest",
+                    run_dir=Path("runs/latest"),
+                    dataset_path=Path("held-out-workspace.jsonl"),
+                    provider_kind="none",
+                    model_provider=None,
+                )
+            )
+        )
+
+
+def test_workspace_staged_review_workflow_builds_and_writes_records() -> None:
+    examples = [_example()]
+    report_path = Path("workspace-evaluation.json")
+    report = EvaluationResult(
+        passed=False,
+        summary="staged workspace eval scored 0.50 over 1 example(s)",
+        score=0.5,
+        details={},
+    )
+    reader = FakeDatasetReader(examples)
+    evaluation_reader = FakeEvaluationResultReader({report_path: report})
+    records = [
+        {
+            "example_id": "example-1",
+            "auto_triage": {"decision": "needs_human_review"},
+        }
+    ]
+    builder = FakeWorkspaceStagedReviewBuilder(records)
+    writer = FakeWorkspaceStagedReviewQueueWriter()
+    workflow = RunWorkspaceStagedReviewWorkflow(
+        example_reader=reader,
+        evaluation_reader=evaluation_reader,
+        review_builder=builder,
+        review_writer=writer,
+    )
+
+    build_result = workflow.build(
+        RunWorkspaceStagedReviewRequest(
+            dataset_path=Path("workspace.jsonl"),
+            report_paths=(report_path,),
+            output_path=Path("review_queue.jsonl"),
+            simple_failure_threshold=0.3,
+            auto_accept_threshold=0.9,
+        )
+    )
+    write_result = workflow.write(
+        RunWorkspaceStagedReviewWriteRequest(
+            output_path=build_result.output_path,
+            records=build_result.records,
+        )
+    )
+
+    assert reader.loaded_paths == [Path("workspace.jsonl")]
+    assert evaluation_reader.loaded_paths == [report_path]
+    assert builder.request is not None
+    assert builder.request["examples"] == examples
+    assert builder.request["reports"] == [(report_path, report)]
+    assert builder.request["simple_failure_threshold"] == 0.3
+    assert builder.request["auto_accept_threshold"] == 0.9
+    assert build_result.auto_triage_counts == {"needs_human_review": 1}
+    assert writer.written == (Path("review_queue.jsonl"), records)
+    assert write_result.record_count == 1
+    assert write_result.auto_triage_counts == {"needs_human_review": 1}
+
+
+def test_workspace_staged_review_workflow_requires_report_paths() -> None:
+    workflow = RunWorkspaceStagedReviewWorkflow(
+        example_reader=FakeDatasetReader([]),
+        evaluation_reader=FakeEvaluationResultReader({}),
+        review_builder=FakeWorkspaceStagedReviewBuilder([]),
+        review_writer=FakeWorkspaceStagedReviewQueueWriter(),
+    )
+
+    with pytest.raises(ValueError, match="at least one --report is required"):
+        workflow.build(
+            RunWorkspaceStagedReviewRequest(
+                dataset_path=Path("workspace.jsonl"),
+                report_paths=(),
+                output_path=Path("review_queue.jsonl"),
             )
         )
 

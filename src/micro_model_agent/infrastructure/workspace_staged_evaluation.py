@@ -768,6 +768,44 @@ def build_workspace_staged_review_records(
     return records
 
 
+class LocalWorkspaceStagedReviewBuilder:
+    """Adapter for building staged workspace review records."""
+
+    def build_workspace_staged_review_records(
+        self,
+        *,
+        examples: list[DatasetExample],
+        reports: list[tuple[Path, EvaluationResult]],
+        simple_failure_threshold: float = 0.4,
+        auto_accept_threshold: float = 0.95,
+    ) -> list[dict[str, Any]]:
+        """Build JSON-ready staged workspace review records."""
+
+        return build_workspace_staged_review_records(
+            examples=examples,
+            reports=reports,
+            simple_failure_threshold=simple_failure_threshold,
+            auto_accept_threshold=auto_accept_threshold,
+        )
+
+
+class LocalWorkspaceStagedReviewQueueWriter:
+    """Filesystem adapter for staged workspace review queues."""
+
+    def write_workspace_staged_review_records(
+        self,
+        path: Path,
+        records: list[dict[str, Any]],
+    ) -> None:
+        """Write staged workspace review records as JSONL."""
+
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", encoding="utf-8") as file:
+            for record in records:
+                file.write(json.dumps(record, sort_keys=True))
+                file.write("\n")
+
+
 def _examples_by_id(report: EvaluationResult) -> dict[str, dict[str, Any]]:
     examples = report.details.get("examples")
     if not isinstance(examples, list):
