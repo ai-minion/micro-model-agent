@@ -251,7 +251,7 @@ class ToolLoopAgent:
                         )
                         turn_number += 1
                         continue
-                    final_ok = decision.ok and not self._has_failed_tool_step(steps)
+                    final_ok = decision.ok and not self._has_unresolved_failed_tool_step(steps)
                     return await self._finish(
                         trace=trace,
                         steps=[
@@ -581,10 +581,63 @@ class ToolLoopAgent:
             and step.output.get("error") == "duplicate_successful_write"
         )
 
-    def _has_failed_tool_step(self, steps: list[WorkflowStep]) -> bool:
-        """Check whether any executed tool reported failure."""
+    def _has_unresolved_failed_tool_step(self, steps: list[WorkflowStep]) -> bool:
+        """Check whether a tool failure still represents the final task state."""
 
-        return any(step.tool_result is not None and not step.tool_result.ok for step in steps)
+        last_success_by_tool = {
+            step.tool_call.tool_name: index
+            for index, step in enumerate(steps)
+            if step.tool_call is not None
+            and step.tool_result is not None
+            and step.tool_result.ok
+        }
+        latest_successful_write = max(
+            (
+                index
+                for index, step in enumerate(steps)
+                if step.tool_call is not None
+                and step.tool_call.tool_name in {"repo.write_patch", "repo.write_files"}
+                and step.tool_result is not None
+                and step.tool_result.ok
+            ),
+            default=None,
+        )
+        for index, step in enumerate(steps):
+            if (
+                step.tool_call is None
+                or step.tool_result is None
+                or step.tool_result.ok
+                or self._is_repaired_tool_failure(
+                    step,
+                    step_index=index,
+                    last_success_by_tool=last_success_by_tool,
+                    latest_successful_write=latest_successful_write,
+                )
+            ):
+                continue
+            return True
+        return False
+
+    def _is_repaired_tool_failure(
+        self,
+        step: WorkflowStep,
+        *,
+        step_index: int,
+        last_success_by_tool: dict[str, int],
+        latest_successful_write: int | None,
+    ) -> bool:
+        """Return true when a later action supersedes a failed tool attempt."""
+
+        if step.tool_call is None:
+            return False
+        tool_name = step.tool_call.tool_name
+        if last_success_by_tool.get(tool_name, -1) > step_index:
+            return True
+        if tool_name == "test.run" and (
+            latest_successful_write is not None and latest_successful_write > step_index
+        ):
+            return True
+        return False
 
     def _is_duplicate_successful_write(
         self,
@@ -654,6 +707,22 @@ class ToolLoopAgent:
                 "A repo.write_patch call failed validation. For new files and scaffolds, "
                 "use repo.write_files with explicit path/content entries instead of "
                 "hand-authoring unified diffs."
+            )
+        failed_write_files = [
+            step
+            for step in steps
+            if step.tool_call is not None
+            and step.tool_call.tool_name == "repo.write_files"
+            and step.tool_result is not None
+            and not step.tool_result.ok
+            and step.tool_result.error == "tool argument validation failed"
+        ]
+        if failed_write_files and "repo.write_files" in task.available_tools:
+            hints.append(
+                'A repo.write_files call failed validation. Use arguments shaped exactly like '
+                '{"files":[{"path":"README.md","content":"# Title\\n"}],'
+                '"dry_run":false,"require_approval":false}; do not use a paths map, '
+                "filename keys, or top-level content."
             )
         if self._missing_verification_after_write(task, steps):
             hints.append(

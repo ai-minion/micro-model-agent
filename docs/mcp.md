@@ -141,6 +141,14 @@ include `turns_used`, `tool_calls_made`, and the configured `loop_budget` so the
 consumer can tell whether the run ended naturally or ran into orchestration
 limits.
 
+Run profiles provide larger preset budgets:
+
+| Profile | Turns | Tool calls | Max new tokens | Tool-result prompt chars |
+| --- | ---: | ---: | ---: | ---: |
+| `quick` | 12 | 8 | 2048 | 8000 |
+| `standard` | 24 | 24 | 8192 | 16000 |
+| `extended` | 48 | unlimited | 32768 | 32000 |
+
 When `allow_test_run=true` and no explicit `test_command_name` /
 `test_command_args` are supplied, MCP allowlists a default command named
 `pytest` that runs `python3 -m pytest -q`. The prompt schema for `test.run`
@@ -179,7 +187,10 @@ the canonical tools needed for the task, such as `repo.search`, `repo.read`,
 This stores workflow traces under:
 
 ```text
-.micro_model_agent/traces/workflows.jsonl
+.traces/workflows.jsonl
+.traces/<trace-id>/trace.json
+.traces/<trace-id>/raw_io/<request-step-id>/request
+.traces/<trace-id>/raw_io/<request-step-id>/response
 ```
 
 Review labels are stored separately from the raw trace log:
@@ -259,7 +270,7 @@ that was actually evaluated. This keeps comparison evidence centralized even
 when a task runs in a temporary or registered workspace.
 
 ```text
-.micro_model_agent/traces/comparison_sessions.jsonl
+.traces/comparison_sessions.jsonl
 ```
 
 ## MCP Prompts

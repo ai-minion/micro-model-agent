@@ -114,7 +114,7 @@ def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Pa
             ),
         ]
     )
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     executor = BuiltinToolExecutor(
         tmp_path,
         allowed_test_commands={
@@ -180,7 +180,7 @@ def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> 
             _model_response({"final_response": "value() returns 1.", "ok": True}),
         ]
     )
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
@@ -220,7 +220,7 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
             _model_response({"final_response": "value() returns 1.", "ok": True}),
         ]
     )
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
@@ -271,7 +271,7 @@ def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -317,7 +317,7 @@ def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     asyncio.run(
@@ -362,7 +362,7 @@ def test_tool_loop_agent_hints_to_write_files_after_empty_creation_searches(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     asyncio.run(
@@ -401,7 +401,7 @@ def test_tool_loop_agent_hints_to_write_files_after_patch_validation_failure(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -417,6 +417,59 @@ def test_tool_loop_agent_hints_to_write_files_after_patch_validation_failure(
     assert result.ok is False
     assert "orchestration_hints" in second_prompt
     assert "use repo.write_files" in second_prompt["orchestration_hints"][0]
+
+
+def test_tool_loop_agent_hints_to_write_files_after_write_files_validation_failure(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "paths": {"README.md": "# Demo\n"},
+                        "dry_run": False,
+                        "require_approval": False,
+                    },
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "files": [{"path": "README.md", "content": "# Demo\n"}],
+                        "dry_run": False,
+                        "require_approval": False,
+                    },
+                }
+            ),
+            _model_response({"final_response": "Created README.md.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Create README.md.",
+                available_tools=("repo.write_files",),
+                required_tools=("repo.write_files",),
+            )
+        )
+    )
+    second_payload = _user_payload_from_prompt(model.prompts[1])
+
+    assert result.ok is True
+    assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Demo\n"
+    assert "orchestration_hints" in second_payload
+    assert "files" in second_payload["orchestration_hints"][0]
+    assert "path" in second_payload["orchestration_hints"][0]
+    assert "content" in second_payload["orchestration_hints"][0]
 
 
 def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path: Path) -> None:
@@ -439,7 +492,7 @@ def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -478,7 +531,7 @@ def test_tool_loop_agent_rejects_tool_calls_after_budget(tmp_path: Path) -> None
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -516,7 +569,7 @@ def test_tool_loop_agent_allows_final_response_after_last_tool_turn(tmp_path: Pa
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -552,7 +605,7 @@ def test_tool_loop_agent_allows_final_response_after_max_turn_tool_call(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -597,7 +650,7 @@ def test_tool_loop_agent_saves_running_trace_after_each_step(tmp_path: Path) -> 
             _model_response({"final_response": "value() returns 1.", "ok": True}),
         ]
     )
-    trace_path = tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    trace_path = tmp_path / ".traces" / "workflows.jsonl"
     trace_store = JsonlTraceStore(trace_path)
     agent = ToolLoopAgent(
         model_provider=model,
@@ -630,7 +683,7 @@ def test_tool_loop_agent_saves_running_trace_after_each_step(tmp_path: Path) -> 
 
 def test_tool_loop_agent_times_out_model_turn_and_saves_trace(tmp_path: Path) -> None:
     _init_repo(tmp_path)
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     agent = ToolLoopAgent(
         model_provider=SlowModelProvider(),
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
@@ -657,7 +710,7 @@ def test_tool_loop_agent_times_out_model_turn_and_saves_trace(tmp_path: Path) ->
 
 def test_tool_loop_agent_saves_cancelled_trace(tmp_path: Path) -> None:
     _init_repo(tmp_path)
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     agent = ToolLoopAgent(
         model_provider=SlowModelProvider(),
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
@@ -721,7 +774,7 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -795,7 +848,7 @@ def test_tool_loop_agent_keeps_latest_read_write_history_per_path(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     asyncio.run(
@@ -843,7 +896,7 @@ def test_tool_loop_agent_allows_final_response_after_duplicate_write_at_max_turn
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -887,7 +940,7 @@ def test_tool_loop_agent_treats_write_files_as_required_write_patch(
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -936,11 +989,15 @@ def test_tool_loop_agent_requires_verification_after_repair_write(
             tmp_path,
             allowed_test_commands={
                 "python-check": AllowedTestCommand(
-                    (sys.executable, "-c", "from app import VALUE; assert VALUE == 2")
+                    (
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; assert Path('app.py').read_text() == 'VALUE = 2\\n'",
+                    )
                 )
             },
         ),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -981,7 +1038,7 @@ def test_tool_loop_agent_final_result_fails_after_failed_tool(tmp_path: Path) ->
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(
@@ -996,6 +1053,68 @@ def test_tool_loop_agent_final_result_fails_after_failed_tool(tmp_path: Path) ->
     assert result.ok is False
     assert result.trace.status.value == "failed"
     assert result.trace.steps[-1].output["ok"] is False
+
+
+def test_tool_loop_agent_final_result_succeeds_after_repaired_failed_test(
+    tmp_path: Path,
+) -> None:
+    _write_text(tmp_path / "app.py", "VALUE = 1\n")
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "test.run",
+                    "arguments": {"command_name": "python-check"},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [{"path": "app.py", "content": "VALUE = 2\n"}],
+                    },
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "test.run",
+                    "arguments": {"command_name": "python-check"},
+                }
+            ),
+            _model_response({"final_response": "Fixed and verified.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(
+            tmp_path,
+            allowed_test_commands={
+                "python-check": AllowedTestCommand(
+                    (
+                        sys.executable,
+                        "-c",
+                        "from pathlib import Path; assert Path('app.py').read_text() == 'VALUE = 2\\n'",
+                    )
+                )
+            },
+        ),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Fix the failing test.",
+                available_tools=("test.run", "repo.write_files"),
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.trace.status is WorkflowStatus.SUCCEEDED
+    assert result.response == "Fixed and verified."
 
 
 def test_tool_loop_agent_requires_specific_tools_before_final_response(tmp_path: Path) -> None:
@@ -1021,7 +1140,7 @@ def test_tool_loop_agent_requires_specific_tools_before_final_response(tmp_path:
     agent = ToolLoopAgent(
         model_provider=model,
         tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
-        trace_store=JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
     result = asyncio.run(

@@ -38,7 +38,7 @@ def test_load_dotenv_sets_values_without_overriding_existing_env(
                 "# local secrets",
                 "HF_TOKEN='from-file'",
                 "MICRO_MODEL_AGENT_DEFAULT_MODEL=from-file",
-                "export MICRO_MODEL_AGENT_TRACE_DIR=.micro_model_agent/traces",
+                "export MICRO_MODEL_AGENT_TRACE_DIR=.traces",
             ]
         ),
         encoding="utf-8",
@@ -51,7 +51,7 @@ def test_load_dotenv_sets_values_without_overriding_existing_env(
 
     assert os.environ["HF_TOKEN"] == "from-file"
     assert os.environ["MICRO_MODEL_AGENT_DEFAULT_MODEL"] == "already-set"
-    assert os.environ["MICRO_MODEL_AGENT_TRACE_DIR"] == ".micro_model_agent/traces"
+    assert os.environ["MICRO_MODEL_AGENT_TRACE_DIR"] == ".traces"
 
 
 def test_cli_init_creates_idempotent_repository_metadata(tmp_path: Path) -> None:
@@ -988,7 +988,7 @@ def test_cli_loop_runs_scripted_tool_call_and_final_response(tmp_path: Path) -> 
     assert result.exit_code == 0, result.output
     assert "app.py value() returns 1." in result.output
     assert "Tool calls: 1" in result.output
-    assert (tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl").exists()
+    assert (tmp_path / ".traces" / "workflows.jsonl").exists()
 
 
 def test_cli_dataset_export_traces_writes_review_examples(tmp_path: Path) -> None:
@@ -1014,7 +1014,7 @@ def test_cli_dataset_export_traces_writes_review_examples(tmp_path: Path) -> Non
         ),
         encoding="utf-8",
     )
-    trace_path = tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    trace_path = tmp_path / ".traces" / "workflows.jsonl"
     dataset_path = tmp_path / ".micro_model_agent" / "datasets" / "trace_examples.jsonl"
 
     loop = runner.invoke(

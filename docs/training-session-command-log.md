@@ -239,7 +239,7 @@ gate report records the evidence for the next iteration.
 
 ```bash
 uv run micro-agent dataset export-traces \
-  --trace-path .micro_model_agent/traces/workflows.jsonl \
+  --trace-path .traces/workflows.jsonl \
   --output .micro_model_agent/datasets/real_trace_tool_success_v2_review.jsonl \
   --kind evaluation \
   --workflow-status succeeded \
@@ -404,7 +404,7 @@ patch checking, trace capture, and final dataset export are real.
 
 ```bash
 uv run micro-agent dataset export-traces \
-  --trace-path .micro_model_agent/traces/workflows.jsonl \
+  --trace-path .traces/workflows.jsonl \
   --output .micro_model_agent/datasets/real_trace_broadened_review.jsonl \
   --kind evaluation \
   --workflow-status succeeded \

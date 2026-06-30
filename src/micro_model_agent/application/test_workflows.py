@@ -44,7 +44,7 @@ def test_run_agent_workflow_evaluates_trace_and_stores_labeled_example(tmp_path:
 -print('hello')
 +print('hello world')
 """
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     dataset_store = JsonlDatasetExampleStore(
         tmp_path / ".micro_model_agent" / "datasets" / "trace.jsonl"
     )

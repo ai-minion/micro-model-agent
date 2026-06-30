@@ -60,8 +60,8 @@ def test_local_index_skips_ignored_large_and_binary_files(tmp_path: Path) -> Non
     (tmp_path / "src" / "small.py").write_text("print('index me')\n", encoding="utf-8")
     (tmp_path / ".git").mkdir()
     (tmp_path / ".git" / "config").write_text("secret", encoding="utf-8")
-    (tmp_path / ".micro_model_agent" / "traces").mkdir(parents=True)
-    (tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl").write_text(
+    (tmp_path / ".traces").mkdir(parents=True)
+    (tmp_path / ".traces" / "workflows.jsonl").write_text(
         "private trace",
         encoding="utf-8",
     )

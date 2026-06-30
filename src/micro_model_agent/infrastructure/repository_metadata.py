@@ -1,7 +1,7 @@
 """MicroModelAgent repository metadata initialization.
 
 This module creates the hidden ``.micro_model_agent`` directory that stores
-local traces, datasets, training runs, and configuration for one repository.
+datasets, training runs, and configuration for one repository.
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ CONFIG_SCHEMA_VERSION = 1
 DEFAULT_METADATA_DIRECTORIES: tuple[str, ...] = (
     "datasets",
     "evaluations",
-    "traces",
     "training",
     "training/artifacts",
     "training/runs",

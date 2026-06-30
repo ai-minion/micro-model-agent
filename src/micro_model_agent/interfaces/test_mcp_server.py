@@ -344,13 +344,32 @@ def test_run_agent_loop_applies_extended_profile_budget(tmp_path: Path) -> None:
 
     assert result["ok"] is True
     assert result["loop_budget"] == {
-        "max_turns": 16,
-        "max_tool_calls": 32,
-        "max_new_tokens": 4096,
-        "max_tool_result_prompt_chars": 16000,
-        "model_timeout_seconds": 240.0,
+        "max_turns": 48,
+        "max_tool_calls": None,
+        "max_new_tokens": 32768,
+        "max_tool_result_prompt_chars": 32000,
+        "model_timeout_seconds": 600.0,
         "run_profile": "extended",
     }
+
+
+def test_run_profile_settings_increase_by_tier() -> None:
+    from micro_model_agent.interfaces.mcp_server import _run_profile_settings
+
+    quick = _run_profile_settings("quick")
+    standard = _run_profile_settings("standard")
+    extended = _run_profile_settings("extended")
+
+    assert quick["max_tool_calls"] == 8
+    assert quick["max_new_tokens"] == 2048
+    assert standard["max_tool_calls"] == 24
+    assert standard["max_new_tokens"] == 8192
+    assert extended["max_tool_calls"] is None
+    assert extended["max_new_tokens"] == 32768
+    assert quick["max_turns"] == 12
+    assert standard["max_turns"] == 24
+    assert extended["max_turns"] == 48
+    assert quick["max_turns"] < standard["max_turns"] < extended["max_turns"]
 
 
 def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path) -> None:
@@ -673,13 +692,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
             actual_summary="Codex read README.md and saw status central.",
         )
     )
-    central_workflow_trace = (
-        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    )
-    central_workflow_trace.parent.mkdir(parents=True, exist_ok=True)
-    (
-        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    ).rename(central_workflow_trace)
+    central_workflow_trace = registry_root / ".traces" / "workflows.jsonl"
     reviewed = asyncio.run(
         review_comparison_trace(
             session_id=session_id,
@@ -691,14 +704,68 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     )
 
     assert (
-        registry_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+        registry_root / ".traces" / "comparison_sessions.jsonl"
     ).exists()
     assert not (
-        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+        workspace_root / ".traces" / "comparison_sessions.jsonl"
     ).exists()
     assert central_workflow_trace.exists()
-    assert not (
-        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    ).exists()
+    assert not (workspace_root / ".traces" / "workflows.jsonl").exists()
     assert model_result["trace_id"] in stopped["session"]["local_trace_ids"]
     assert reviewed["comparison"]["local_model"][0]["response"] == "status is central"
+
+
+def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) -> None:
+    registry_root = tmp_path / "registry"
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    (workspace_root / "README.md").write_text("# Demo\n\nstatus: central\n", encoding="utf-8")
+    server = create_mcp_server(
+        repository_root=registry_root,
+        expose_init_tool=False,
+        expose_debug_tools=True,
+    )
+    created = asyncio.run(
+        server.call_tool(
+            "micro_agent_init_workspace",
+            {
+                "path": str(workspace_root),
+                "name": "workspace",
+            },
+        )
+    )
+    _, created_data = created
+    workspace_id = created_data["workspace"]["id"]
+    ran_data = asyncio.run(
+        run_agent_loop(
+            goal="Read README.md and summarize status.",
+            repository_root=str(workspace_root),
+            comparison_repository_root=str(registry_root),
+            available_tools=["repo.read"],
+            max_tool_calls=1,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.read",
+                        "arguments": {"files": [{"path": "README.md"}]},
+                    }
+                ),
+                _model_response({"final_response": "status is central", "ok": True}),
+            ],
+        )
+    )
+    read = asyncio.run(
+        server.call_tool(
+            "micro_agent_read_trace",
+            {
+                "workspace_id": workspace_id,
+                "trace_id": ran_data["trace_id"],
+            },
+        )
+    )
+    _, read_data = read
+
+    assert read_data["ok"] is True
+    assert read_data["trace"]["final_output"]["response"] == "status is central"
+    assert (registry_root / ".traces" / "workflows.jsonl").exists()
+    assert not (workspace_root / ".traces" / "workflows.jsonl").exists()

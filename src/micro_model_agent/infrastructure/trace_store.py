@@ -127,19 +127,33 @@ def _tool_result_from_record(record: dict[str, Any]) -> ToolResult:
 
 
 class JsonlTraceStore:
-    """Append-only JSONL workflow trace store."""
+    """Append-only JSONL workflow trace store with per-trace artifacts."""
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self.root = self.path.parent
 
     async def save(self, trace: WorkflowTrace) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.root.mkdir(parents=True, exist_ok=True)
+        record = self._externalized_record(trace)
+        trace_dir = self._trace_dir(str(trace.id))
+        trace_dir.mkdir(parents=True, exist_ok=True)
+        (trace_dir / "trace.json").write_text(
+            json.dumps(record, sort_keys=True, indent=2),
+            encoding="utf-8",
+        )
         # Append instead of overwriting so trace history is preserved.
         with self.path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(workflow_trace_to_record(trace), sort_keys=True))
+            file.write(json.dumps(record, sort_keys=True))
             file.write("\n")
 
     async def get(self, trace_id: str) -> WorkflowTrace | None:
+        trace_file = self._trace_dir(trace_id) / "trace.json"
+        if trace_file.exists():
+            return workflow_trace_from_record(
+                self._hydrated_record(json.loads(trace_file.read_text(encoding="utf-8")))
+            )
+
         if not self.path.exists():
             return None
 
@@ -150,7 +164,7 @@ class JsonlTraceStore:
                 continue
             record = json.loads(line)
             if record.get("id") == trace_id:
-                found = workflow_trace_from_record(record)
+                found = workflow_trace_from_record(self._hydrated_record(record))
         return found
 
     async def list(self) -> list[WorkflowTrace]:
@@ -168,5 +182,66 @@ class JsonlTraceStore:
             trace_id = str(record["id"])
             if trace_id not in traces_by_id:
                 order.append(trace_id)
-            traces_by_id[trace_id] = workflow_trace_from_record(record)
+            traces_by_id[trace_id] = workflow_trace_from_record(self._hydrated_record(record))
         return [traces_by_id[trace_id] for trace_id in order]
+
+    def _trace_dir(self, trace_id: str) -> Path:
+        """Return the artifact directory for one trace."""
+
+        return self.root / trace_id
+
+    def _externalized_record(self, trace: WorkflowTrace) -> dict[str, Any]:
+        """Move bulky raw model I/O from the trace record into sidecar files."""
+
+        record = workflow_trace_to_record(trace)
+        trace_id = str(trace.id)
+        for step in record.get("steps", []):
+            if not isinstance(step, dict):
+                continue
+            output = step.get("output")
+            if not isinstance(output, dict):
+                continue
+            request = output.pop("prompt", None)
+            response = output.pop("raw_response", None)
+            if request is None and response is None:
+                continue
+
+            request_id = str(step["id"])
+            raw_dir = self._trace_dir(trace_id) / "raw_io" / request_id
+            raw_dir.mkdir(parents=True, exist_ok=True)
+            raw_io: dict[str, Any] = {"id": request_id}
+            if isinstance(request, str):
+                (raw_dir / "request").write_text(request, encoding="utf-8")
+                raw_io["request_path"] = f"{trace_id}/raw_io/{request_id}/request"
+            if isinstance(response, str):
+                (raw_dir / "response").write_text(response, encoding="utf-8")
+                raw_io["response_path"] = f"{trace_id}/raw_io/{request_id}/response"
+            output["raw_io"] = raw_io
+        return record
+
+    def _hydrated_record(self, record: dict[str, Any]) -> dict[str, Any]:
+        """Load raw model I/O sidecars back into a trace record for callers."""
+
+        trace_id = str(record.get("id", ""))
+        for step in record.get("steps", []):
+            if not isinstance(step, dict):
+                continue
+            output = step.get("output")
+            if not isinstance(output, dict):
+                continue
+            raw_io = output.get("raw_io")
+            if not isinstance(raw_io, dict):
+                continue
+            request_path = raw_io.get("request_path")
+            response_path = raw_io.get("response_path")
+            if isinstance(request_path, str):
+                request_file = self.root / request_path
+                if request_file.exists():
+                    output["prompt"] = request_file.read_text(encoding="utf-8")
+            if isinstance(response_path, str):
+                response_file = self.root / response_path
+                if response_file.exists():
+                    output["raw_response"] = response_file.read_text(encoding="utf-8")
+            if not trace_id and isinstance(raw_io.get("id"), str):
+                trace_id = raw_io["id"]
+        return record

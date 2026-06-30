@@ -95,6 +95,7 @@ MCP_DEBUG_TOOLS_ENV = "MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS"
 MCP_EXPOSE_INIT_ENV = "MICRO_MODEL_AGENT_MCP_EXPOSE_INIT"
 MCP_REPOSITORY_ROOT_ENV = "MICRO_MODEL_AGENT_REPOSITORY_ROOT"
 MCP_INIT_TOOL_NAME = "micro_agent_init"
+TRACE_DIR_NAME = ".traces"
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 type McpTransport = Literal["stdio", "sse", "streamable-http"]
 type RunProfile = Literal["quick", "standard", "extended"]
@@ -208,7 +209,8 @@ async def run_agent_loop(
         BuiltinToolExecutor(repository, allowed_test_commands),
         apply_patches=apply_patches,
     )
-    trace_store = JsonlTraceStore(repository / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_root = Path(comparison_repository_root or repository)
+    trace_store = _workflow_trace_store(trace_root)
     agent = ToolLoopAgent(
         model_provider=model_provider,
         tool_executor=executor,
@@ -328,9 +330,7 @@ async def call_builtin_tool(
 async def read_trace(*, trace_id: str, repository_root: str = ".") -> dict[str, Any]:
     """Load a workflow trace captured by the local trace store."""
 
-    trace_store = JsonlTraceStore(
-        Path(repository_root) / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    )
+    trace_store = _workflow_trace_store(Path(repository_root))
     trace = await trace_store.get(trace_id)
     if trace is None:
         return {"ok": False, "error": f"trace not found: {trace_id}"}
@@ -428,16 +428,15 @@ async def review_comparison_trace(
     if session is None:
         return {"ok": False, "error": f"comparison trace not found: {session_id}"}
     local_traces = []
-    trace_roots = [Path(session.repository_root)]
     comparison_root = Path(comparison_repository_root or repository)
-    if comparison_root not in trace_roots:
-        trace_roots.append(comparison_root)
+    trace_roots = [comparison_root]
+    session_root = Path(session.repository_root)
+    if session_root not in trace_roots:
+        trace_roots.append(session_root)
     for trace_id in session.local_trace_ids:
         trace = None
         for trace_root in trace_roots:
-            trace_store = JsonlTraceStore(
-                trace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-            )
+            trace_store = _workflow_trace_store(trace_root)
             trace = await trace_store.get(trace_id)
             if trace is not None:
                 break
@@ -935,14 +934,10 @@ def create_mcp_server(
             repository_root: str = default_repository_root,
             workspace_id: str | None = None,
         ) -> dict[str, Any]:
-            resolved_repository_root = await _resolve_workspace_root(
-                registry_root=Path(default_repository_root),
-                repository_root=repository_root,
-                workspace_id=workspace_id,
-            )
+            _ = workspace_id
             return await read_trace(
                 trace_id=trace_id,
-                repository_root=str(resolved_repository_root),
+                repository_root=repository_root,
             )
 
         @server.tool(
@@ -1186,27 +1181,27 @@ def _run_profile_settings(profile: RunProfile | None) -> dict[str, Any]:
         return {}
     if profile == "quick":
         return {
-            "max_turns": 4,
-            "max_tool_calls": 4,
-            "max_new_tokens": 1024,
-            "max_tool_result_prompt_chars": 4000,
+            "max_turns": 12,
+            "max_tool_calls": 8,
+            "max_new_tokens": 2048,
+            "max_tool_result_prompt_chars": 8000,
             "model_timeout_seconds": 60.0,
         }
     if profile == "standard":
         return {
-            "max_turns": 8,
-            "max_tool_calls": 12,
-            "max_new_tokens": 2048,
-            "max_tool_result_prompt_chars": 8000,
-            "model_timeout_seconds": 120.0,
+            "max_turns": 24,
+            "max_tool_calls": 24,
+            "max_new_tokens": 8192,
+            "max_tool_result_prompt_chars": 16000,
+            "model_timeout_seconds": 180.0,
         }
     if profile == "extended":
         return {
-            "max_turns": 16,
-            "max_tool_calls": 32,
-            "max_new_tokens": 4096,
-            "max_tool_result_prompt_chars": 16000,
-            "model_timeout_seconds": 240.0,
+            "max_turns": 48,
+            "max_tool_calls": None,
+            "max_new_tokens": 32768,
+            "max_tool_result_prompt_chars": 32000,
+            "model_timeout_seconds": 600.0,
         }
     raise ValueError(f"unknown run_profile: {profile}")
 
@@ -1220,9 +1215,19 @@ def _is_git_repository(repository_root: Path) -> bool:
 def _comparison_trace_store(repository_root: Path) -> JsonlComparisonTraceStore:
     """Return the comparison trace store for one repository."""
 
-    return JsonlComparisonTraceStore(
-        repository_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
-    )
+    return JsonlComparisonTraceStore(_trace_dir(repository_root) / "comparison_sessions.jsonl")
+
+
+def _workflow_trace_store(repository_root: Path) -> JsonlTraceStore:
+    """Return the workflow trace store for one repository."""
+
+    return JsonlTraceStore(_trace_dir(repository_root) / "workflows.jsonl")
+
+
+def _trace_dir(repository_root: Path) -> Path:
+    """Return the centralized trace/log directory for one repository."""
+
+    return repository_root / TRACE_DIR_NAME
 
 
 def _workspace_registry(registry_root: Path) -> JsonlWorkspaceRegistry:

@@ -92,6 +92,7 @@ dataset_app = typer.Typer(help="Dataset generation, validation, and export comma
 train_app = typer.Typer(help="Local training commands.")
 eval_app = typer.Typer(help="Evaluation commands.")
 promote_app = typer.Typer(help="Promotion gate commands.")
+DEFAULT_TRACE_DIR = Path(".traces")
 
 # Sub-apps create command groups such as `micro-agent dataset validate`.
 app.add_typer(dataset_app, name="dataset")
@@ -402,9 +403,7 @@ def task(
     elif verification_command:
         _fail("--test-command is required when --verification-command is set")
 
-    trace_store = JsonlTraceStore(
-        repository_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    )
+    trace_store = JsonlTraceStore(repository_root / DEFAULT_TRACE_DIR / "workflows.jsonl")
     # StaticModelProvider lets this command exercise the workflow using a patch
     # supplied on the command line instead of calling a real model.
     executor = BuiltinToolExecutor(repository_root, allowed_commands)
@@ -614,9 +613,7 @@ def loop(
     elif verification_command:
         _fail("--test-command is required when --verification-command is set")
 
-    trace_store = JsonlTraceStore(
-        repository_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    )
+    trace_store = JsonlTraceStore(repository_root / DEFAULT_TRACE_DIR / "workflows.jsonl")
     executor = BuiltinToolExecutor(repository_root, allowed_commands)
     agent = ToolLoopAgent(
         model_provider=model_provider,
@@ -809,11 +806,11 @@ def export_dataset(
 @dataset_app.command("export-traces")
 def export_traces(
     trace_path: Path = typer.Option(
-        Path(".micro_model_agent/traces/workflows.jsonl"),
+        DEFAULT_TRACE_DIR / "workflows.jsonl",
         help="Stored workflow trace JSONL path.",
     ),
     review_path: Path = typer.Option(
-        Path(".micro_model_agent/traces/reviews.jsonl"),
+        DEFAULT_TRACE_DIR / "reviews.jsonl",
         help="Stored human trace review JSONL path for --label-mode reviewed.",
     ),
     output: Path = typer.Option(
@@ -928,7 +925,7 @@ def review_trace(
         help="Optional file containing a corrected dataset target JSON object.",
     ),
     output: Path = typer.Option(
-        Path(".micro_model_agent/traces/reviews.jsonl"),
+        DEFAULT_TRACE_DIR / "reviews.jsonl",
         "--output",
         help="Append-only human trace review JSONL path.",
     ),

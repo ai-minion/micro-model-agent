@@ -204,8 +204,8 @@ micro-agent dataset export-traces [OPTIONS]
 
 | Option | Default | Description |
 | --- | --- | --- |
-| `--trace-path PATH` | `.micro_model_agent/traces/workflows.jsonl` | Stored workflow trace JSONL path. |
-| `--review-path PATH` | `.micro_model_agent/traces/reviews.jsonl` | Human trace review JSONL path used by `--label-mode reviewed`. |
+| `--trace-path PATH` | `.traces/workflows.jsonl` | Stored workflow trace JSONL path. |
+| `--review-path PATH` | `.traces/reviews.jsonl` | Human trace review JSONL path used by `--label-mode reviewed`. |
 | `--output PATH` | `.micro_model_agent/datasets/trace_examples.jsonl` | Output JSONL path for trace-derived examples. |
 | `--label-mode TEXT` | `review` | Label mode: `review`, `reviewed`, or `evaluation`. `reviewed` exports only traces with a human review record. |
 | `--kind VALUE` | `repair` | Dataset example kind to export. |
@@ -227,7 +227,7 @@ do not enter SFT data by accident.
 micro-agent dataset review-trace [OPTIONS]
 ```
 
-Records a human review decision in `.micro_model_agent/traces/reviews.jsonl`
+Records a human review decision in `.traces/reviews.jsonl`
 without modifying the raw workflow trace.
 
 | Option | Default | Description |
@@ -239,7 +239,7 @@ without modifying the raw workflow trace.
 | `--reviewer-notes TEXT` | None | Human review notes for this trace. |
 | `--corrected-target-json TEXT` | None | Optional corrected dataset target JSON object for this trace. |
 | `--corrected-target-file PATH` | None | Optional file containing a corrected dataset target JSON object. |
-| `--output PATH` | `.micro_model_agent/traces/reviews.jsonl` | Append-only human trace review JSONL path. |
+| `--output PATH` | `.traces/reviews.jsonl` | Append-only human trace review JSONL path. |
 
 ## `micro-agent dataset relabel`
 

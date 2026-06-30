@@ -44,7 +44,7 @@ def _patch() -> str:
 
 def test_coding_agent_applies_patch_runs_verification_and_saves_trace(tmp_path: Path) -> None:
     _init_repo(tmp_path)
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     executor = BuiltinToolExecutor(
         tmp_path,
         allowed_test_commands={
@@ -91,7 +91,7 @@ def test_coding_agent_applies_patch_runs_verification_and_saves_trace(tmp_path: 
 
 def test_coding_agent_dry_run_does_not_apply_patch(tmp_path: Path) -> None:
     _init_repo(tmp_path)
-    trace_store = JsonlTraceStore(tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl")
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
     executor = BuiltinToolExecutor(tmp_path, allowed_test_commands={})
     agent = CodingAgent(
         model_provider=StaticModelProvider(_patch()),

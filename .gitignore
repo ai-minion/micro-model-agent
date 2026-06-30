@@ -13,6 +13,7 @@ dist/
 build/
 .coverage
 htmlcov/
+.traces/
 .micro_model_agent/
 .idea/
 .vscode/

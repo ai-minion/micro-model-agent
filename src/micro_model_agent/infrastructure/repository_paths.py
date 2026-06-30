@@ -24,6 +24,7 @@ DEFAULT_EXCLUDED_PARTS = frozenset(
         ".mypy_cache",
         ".pytest_cache",
         ".ruff_cache",
+        ".traces",
         ".venv",
         ".venv-wsl",
         "__pycache__",
