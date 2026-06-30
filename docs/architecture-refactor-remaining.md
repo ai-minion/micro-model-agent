@@ -43,6 +43,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
   - `docs/architecture.md` reflects the completed CLI/application workflow
     moves.
   - `CONTRIBUTING.md` documents contributor-facing boundary guidance.
+- Split large infrastructure modules:
+  - Evaluation report loading/writing was extracted from `training_artifacts.py`
+    into `infrastructure/evaluation_reports.py`, with compatibility re-exports
+    left in place.
 
 ## Larger Remaining Slices
 

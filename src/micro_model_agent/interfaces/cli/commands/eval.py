@@ -29,14 +29,16 @@ from micro_model_agent.infrastructure.dataset_store import (
 from micro_model_agent.infrastructure.evaluation_comparison import (
     LocalEvaluationComparisonReportWriter,
 )
+from micro_model_agent.infrastructure.evaluation_reports import (
+    LocalEvaluationResultReader,
+    LocalEvaluationResultWriter,
+)
 from micro_model_agent.infrastructure.synthetic_evaluation import (
     SyntheticBehaviorEvaluationSuite,
     TraceBehaviorEvaluationSuite,
 )
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.infrastructure.training_artifacts import (
-    LocalEvaluationResultReader,
-    LocalEvaluationResultWriter,
     SyntheticEvaluationSuite,
 )
 from micro_model_agent.infrastructure.workspace_staged_evaluation import (
