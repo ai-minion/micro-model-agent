@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 from micro_model_agent.domain.training import (
     ModelArtifact,
     ModelArtifactKind,
+    TrainingConfig,
     TrainingRun,
 )
 
@@ -67,3 +68,10 @@ def load_artifact_from_training_run(run_dir: Path) -> ModelArtifact:
     if not artifact_path.exists():
         raise FileNotFoundError(f"artifact metadata not found: {artifact_path}")
     return model_artifact_from_record(json.loads(artifact_path.read_text(encoding="utf-8")))
+
+
+def training_dataset_version(config: TrainingConfig) -> str | None:
+    """Use the source dataset hash as the training run dataset version."""
+
+    value = config.parameters.get("source_dataset_sha256")
+    return value if isinstance(value, str) and value else None

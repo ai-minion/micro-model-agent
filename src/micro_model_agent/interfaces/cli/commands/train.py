@@ -19,10 +19,10 @@ from micro_model_agent.infrastructure.dataset_validation import (
     LocalDatasetValidator,
     SftJsonlDatasetExporter,
 )
+from micro_model_agent.infrastructure.local_finetuning import LocalFineTuningRunner
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
     JsonTrainingArtifactStore,
-    LocalFineTuningRunner,
 )
 from micro_model_agent.interfaces.cli.common import _load_dotenv, _run
 

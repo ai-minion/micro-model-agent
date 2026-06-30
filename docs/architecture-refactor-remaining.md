@@ -57,6 +57,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     were extracted from `training_artifacts.py` into
     `infrastructure/promotion_gate.py`, with compatibility re-exports left in
     place.
+  - Local fine-tuning backends, runner logic, and training helper functions were
+    extracted from `training_artifacts.py` into
+    `infrastructure/local_finetuning.py`, with compatibility re-exports left in
+    place.
 
 ## Larger Remaining Slices
 
