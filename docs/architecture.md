@@ -208,3 +208,6 @@ acceptance criteria live in [project-plan.md](project-plan.md).
 
 The current architecture refactor handoff and migration slices live in
 [architecture-refactor-plan.md](architecture-refactor-plan.md).
+
+Contributor-facing boundary guidance lives in
+[../CONTRIBUTING.md](../CONTRIBUTING.md).

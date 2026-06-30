@@ -36,6 +36,14 @@ workflows. Keep concrete file formats, model providers, local process execution,
 and external integrations in infrastructure. Keep Typer option parsing, output
 formatting, interactive prompts, and exit behavior in CLI adapters.
 
+## Completed Larger Cleanup
+
+- Enforce boundaries and contributor guidance:
+  - Architecture boundary tests are strict for `domain` and `application`.
+  - `docs/architecture.md` reflects the completed CLI/application workflow
+    moves.
+  - `CONTRIBUTING.md` documents contributor-facing boundary guidance.
+
 ## Larger Remaining Slices
 
 1. Split large infrastructure modules.
@@ -53,11 +61,6 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
    - Extract history compaction.
    - Extract decision parsing.
    - Extract portable workflow policy where it is not model-loop mechanics.
-
-4. Enforce boundaries and contributor guidance.
-   - Keep architecture tests strict.
-   - Update `docs/architecture.md` after each completed structural move.
-   - Add contribution guidance once the new shape is stable.
 
 ## Acceptance For Each Slice
 
