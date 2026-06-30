@@ -11,7 +11,9 @@ from micro_model_agent.application.ports import ModelProvider
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample
 from micro_model_agent.infrastructure.dataset_metadata import tool_profile_for_example
-from micro_model_agent.infrastructure.synthetic_evaluation import SyntheticBehaviorEvaluationSuite
+from micro_model_agent.infrastructure.evaluation_response_parsing import (
+    json_object_from_response,
+)
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
 STAGE_NAMES = (
@@ -152,7 +154,7 @@ class WorkspaceStagedEvaluationSuite:
             default_available_tools=list(TOOL_ARGUMENT_CONTRACTS),
         )
         try:
-            response = SyntheticBehaviorEvaluationSuite()._json_object_from_response(raw_response)
+            response = json_object_from_response(raw_response)
         except ValueError as exc:
             return WorkspaceStagedExampleScore(
                 example_id=str(example.id),

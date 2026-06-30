@@ -61,6 +61,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     extracted from `training_artifacts.py` into
     `infrastructure/local_finetuning.py`, with compatibility re-exports left in
     place.
+  - Trace-derived behavior evaluation was extracted from
+    `synthetic_evaluation.py` into `infrastructure/trace_evaluation.py`, and
+    shared JSON response parsing was extracted into
+    `infrastructure/evaluation_response_parsing.py`.
 
 ## Larger Remaining Slices
 
