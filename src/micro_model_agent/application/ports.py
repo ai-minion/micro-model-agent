@@ -297,6 +297,23 @@ class DatasetValidator(Protocol):
         """Validate dataset examples before export or training."""
 
 
+class DatasetFileHasher(Protocol):
+    """Hashes concrete dataset files for training metadata."""
+
+    def dataset_file_sha256(self, path: Path) -> str:
+        """Return a dataset file SHA-256 digest."""
+
+
+class DatasetToolProfileSummarizer(Protocol):
+    """Summarizes tool-profile metadata across dataset examples."""
+
+    def summarize_dataset_tool_profiles(
+        self,
+        examples: list[DatasetExample],
+    ) -> dict[str, Any]:
+        """Return JSON-ready tool-profile summary metadata."""
+
+
 class DatasetBuilder(Protocol):
     """Creates named splits such as train, validation, and test."""
 

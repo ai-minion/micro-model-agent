@@ -20,6 +20,8 @@ verification details.
   - `dataset relabel`
   - `dataset export-traces`
   - `dataset review-trace`
+- Training commands:
+  - `train synthetic`
 
 ## Remaining CLI Orchestration
 
@@ -28,12 +30,6 @@ slices. Keep concrete file formats, model providers, local process execution,
 and external integrations in infrastructure. Keep Typer option parsing, output
 formatting, and exit behavior in CLI adapters.
 
-- `train synthetic`
-  - Load and validate dataset examples.
-  - Export training JSONL.
-  - Build training config.
-  - Run training backend.
-  - Report run status/artifacts.
 - `eval compare`
   - Load persisted evaluation reports.
   - Compare score/metric deltas.

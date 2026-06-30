@@ -84,6 +84,13 @@ command-module split, and the first CLI-orchestration move:
   loading/writing, trace export, and trace export validation helpers to the
   trace dataset export and review application ports.
 - `SyntheticTemplateGenerator` implements the dataset synthesis generator port.
+- `application/training.py` owns `RunSyntheticTrainingWorkflow`; `train
+  synthetic` now delegates dataset loading, validation, run-local SFT export,
+  training config construction, backend execution, and artifact recording
+  through application ports while keeping dotenv loading, backend selection,
+  CLI output formatting, and exit behavior in the adapter.
+- `LocalDatasetFileHasher` and `LocalDatasetToolProfileSummarizer` adapt
+  existing dataset metadata helpers to the synthetic training application ports.
 
 Last known verification:
 
@@ -95,7 +102,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-240 passed
+242 passed
 ```
 
 ## Compatibility Invariants
@@ -134,7 +141,7 @@ inside CLI command handlers.
 Suggested implementation:
 
 1. Pick another narrow command path that currently performs orchestration in CLI
-   code, such as `train synthetic`, `eval compare`, or another eval command.
+   code, such as `eval compare`, `eval synthetic`, or another eval command.
    The `promote` group is complete.
 2. Introduce an application request/result service that depends on existing
    ports or small new ports.

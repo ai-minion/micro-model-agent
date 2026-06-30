@@ -6,15 +6,18 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.domain.training import TrainingConfig
-from micro_model_agent.infrastructure.dataset_metadata import (
-    dataset_file_sha256,
-    summarize_tool_profiles,
+from micro_model_agent.application.training import (
+    RunSyntheticTrainingRequest,
+    RunSyntheticTrainingWorkflow,
 )
-from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
+from micro_model_agent.infrastructure.dataset_metadata import (
+    LocalDatasetFileHasher,
+    LocalDatasetToolProfileSummarizer,
+)
+from micro_model_agent.infrastructure.dataset_store import LocalDatasetExampleReader
 from micro_model_agent.infrastructure.dataset_validation import (
     LocalDatasetValidator,
-    export_sft_jsonl,
+    SftJsonlDatasetExporter,
 )
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
@@ -61,47 +64,42 @@ def train_synthetic(
 
     _load_dotenv()
 
-    examples = load_dataset_examples(dataset)
-    validation = _run(LocalDatasetValidator().validate(examples))
-    if not validation.passed:
-        typer.echo(validation.summary, err=True)
-        raise typer.Exit(1)
-
-    output_dir.mkdir(parents=True, exist_ok=True)
-    training_dataset = output_dir / "synthetic.sft.jsonl"
-    # Training backends consume SFT JSONL, so export a run-local copy first.
-    export_sft_jsonl(training_dataset, examples)
-    source_dataset_sha256 = dataset_file_sha256(dataset)
-    training_dataset_sha256 = dataset_file_sha256(training_dataset)
-
-    config = TrainingConfig(
-        base_model=base_model,
-        output_dir=str(output_dir),
-        max_steps=max_steps,
-        learning_rate=learning_rate,
-        batch_size=batch_size,
-        gradient_accumulation_steps=gradient_accumulation_steps,
-        dry_run=dry_run,
-        parameters={
-            "dataset_path": str(training_dataset),
-            "source_dataset_path": str(dataset),
-            "source_dataset_sha256": source_dataset_sha256,
-            "training_dataset_sha256": training_dataset_sha256,
-            "example_count": len(examples),
-            "dataset_tool_profile": summarize_tool_profiles(examples),
-            "max_seq_length": max_seq_length,
-            "lora_r": lora_r,
-            "lora_alpha": lora_alpha,
-            "lora_dropout": lora_dropout,
-        },
-    )
     # dry_run uses the fake runner; real training uses the hardware-dependent runner.
     runner = FakeTrainingRunner() if dry_run else LocalFineTuningRunner()
-    run = _run(runner.run(config))
-    artifact_store = JsonTrainingArtifactStore(Path(".micro_model_agent/training"))
-    for artifact in run.artifacts:
-        _run(artifact_store.save(artifact))
+    workflow = RunSyntheticTrainingWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+        exporter=SftJsonlDatasetExporter(),
+        file_hasher=LocalDatasetFileHasher(),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        runner=runner,
+        artifact_store=JsonTrainingArtifactStore(Path(".micro_model_agent/training")),
+    )
+    result = _run(
+        workflow.run(
+            RunSyntheticTrainingRequest(
+                base_model=base_model,
+                dataset_path=dataset,
+                output_dir=output_dir,
+                dry_run=dry_run,
+                max_steps=max_steps,
+                batch_size=batch_size,
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                learning_rate=learning_rate,
+                max_seq_length=max_seq_length,
+                lora_r=lora_r,
+                lora_alpha=lora_alpha,
+                lora_dropout=lora_dropout,
+            )
+        )
+    )
+    if not result.evaluation.passed:
+        typer.echo(result.evaluation.summary, err=True)
+        raise typer.Exit(1)
 
+    run = result.run
+    if run is None:
+        raise typer.Exit(1)
     typer.echo(
         f"Training run {run.id} completed with status {run.status.value}; "
         f"metadata written to {output_dir}"

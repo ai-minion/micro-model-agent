@@ -111,6 +111,27 @@ def dataset_file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+class LocalDatasetFileHasher:
+    """Filesystem adapter for hashing dataset files."""
+
+    def dataset_file_sha256(self, path: Path) -> str:
+        """Return the SHA-256 digest for a dataset file."""
+
+        return dataset_file_sha256(path)
+
+
+class LocalDatasetToolProfileSummarizer:
+    """Adapter for summarizing dataset tool-profile metadata."""
+
+    def summarize_dataset_tool_profiles(
+        self,
+        examples: list[DatasetExample],
+    ) -> dict[str, Any]:
+        """Return JSON-ready tool-profile summary metadata."""
+
+        return summarize_tool_profiles(examples)
+
+
 def _available_tools(
     example: DatasetExample,
     default_available_tools: Sequence[str] | None,

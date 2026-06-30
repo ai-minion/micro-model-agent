@@ -53,6 +53,7 @@ Implemented services:
 - `RunDatasetRelabelWorkflow`
 - `RunTraceDatasetExportWorkflow`
 - `RunTraceReviewWorkflow`
+- `RunSyntheticTrainingWorkflow`
 - `RunPromotionGateWorkflow`
 - `RunPromotionRecordWorkflow`
 - `RunPromotionListWorkflow`
@@ -83,6 +84,14 @@ trace/review JSONL loading, trace-example export, review persistence, concrete
 validation rules, merge/deduplication and relabel policies, and SFT JSONL
 writing, and the application coordinates the generator, reader, writer,
 validator, merger, relabeler, trace exporter, review writer, and exporter ports.
+
+Synthetic fine-tuning is represented by `RunSyntheticTrainingWorkflow`.
+Interfaces supply CLI options, environment loading, backend selection, output
+formatting, and exit behavior. Infrastructure owns JSONL dataset loading,
+validation rules, SFT JSONL rendering, dataset metadata hashing/profile
+summaries, concrete training backends, and artifact persistence. The
+application coordinates validation, run-local export, training config assembly,
+runner execution, and artifact recording through ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,
