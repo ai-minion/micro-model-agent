@@ -83,6 +83,8 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     `agents/tool_loop_agent.py` into `agents/tool_loop_history.py`.
   - Prompt payload assembly and system prompt rendering were extracted from
     `agents/tool_loop_agent.py` into `agents/tool_loop_prompting.py`.
+  - Portable workflow policy helpers were extracted from
+    `agents/tool_loop_agent.py` into `agents/tool_loop_policy.py`.
 
 ## Larger Remaining Slices
 
@@ -109,8 +111,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
    - Keep report serialization in infrastructure.
 
 3. Slim `ToolLoopAgent`.
-   - Prompt rendering, history compaction, and decision parsing are extracted.
-   - Extract portable workflow policy where it is not model-loop mechanics.
+   - Prompt rendering, history compaction, decision parsing, and portable
+     workflow policy helpers are extracted.
+   - Remaining slimming is optional and should focus on model-loop mechanics
+     only if the class grows again.
 
 ## Acceptance For Each Slice
 

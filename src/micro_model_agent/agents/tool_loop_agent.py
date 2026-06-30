@@ -13,6 +13,15 @@ from datetime import UTC, datetime
 from typing import Any
 
 from micro_model_agent.agents.tool_loop_decisions import parse_model_response
+from micro_model_agent.agents.tool_loop_policy import (
+    has_unresolved_failed_tool_step,
+    is_duplicate_successful_write,
+    missing_required_tools,
+    missing_verification_after_write,
+    orchestration_hints,
+    should_allow_extra_finalization_turn,
+    tool_budget_exhausted,
+)
 from micro_model_agent.agents.tool_loop_prompting import build_prompt
 from micro_model_agent.application.ports import ModelProvider, ToolExecutor, TraceStore
 from micro_model_agent.application.tool_loop import (
@@ -68,12 +77,12 @@ class ToolLoopAgent:
         try:
             while turn_number <= task.max_turns or (
                 not used_extra_finalization_turn
-                and self._should_allow_extra_finalization_turn(task, tool_calls_made, steps)
+                and should_allow_extra_finalization_turn(task, tool_calls_made, steps)
             ):
                 force_final_response = turn_number > task.max_turns
                 if force_final_response:
                     used_extra_finalization_turn = True
-                budget_exhausted = self._tool_budget_exhausted(
+                budget_exhausted = tool_budget_exhausted(
                     task,
                     tool_calls_made,
                     steps,
@@ -85,8 +94,8 @@ class ToolLoopAgent:
                     tool_calls_made=tool_calls_made,
                     turn_number=turn_number,
                     final_response_only=final_response_only,
-                    missing_required_tools=self._missing_required_tools(task, steps),
-                    orchestration_hints=self._orchestration_hints(task, steps),
+                    missing_required_tools=missing_required_tools(task, steps),
+                    orchestration_hints=orchestration_hints(task, steps),
                     steps=steps,
                 )
                 try:
@@ -148,12 +157,12 @@ class ToolLoopAgent:
                         )
                         turn_number += 1
                         continue
-                    missing_required_tools = self._missing_required_tools(task, steps)
-                    if missing_required_tools:
+                    missing_required = missing_required_tools(task, steps)
+                    if missing_required:
                         output = {
                             "raw_response": decision.raw_response,
                             "error": "final_response_before_required_tools",
-                            "missing_required_tools": list(missing_required_tools),
+                            "missing_required_tools": list(missing_required),
                         }
                         if task.capture_prompts:
                             output["prompt"] = prompt
@@ -173,13 +182,13 @@ class ToolLoopAgent:
                                 "ok": False,
                                 "error": (
                                     "Before final_response, call these required tools: "
-                                    + ", ".join(missing_required_tools)
+                                    + ", ".join(missing_required)
                                 ),
                             }
                         )
                         turn_number += 1
                         continue
-                    verification_needed = self._missing_verification_after_write(task, steps)
+                    verification_needed = missing_verification_after_write(task, steps)
                     if verification_needed:
                         output = {
                             "raw_response": decision.raw_response,
@@ -210,7 +219,7 @@ class ToolLoopAgent:
                         )
                         turn_number += 1
                         continue
-                    final_ok = decision.ok and not self._has_unresolved_failed_tool_step(steps)
+                    final_ok = decision.ok and not has_unresolved_failed_tool_step(steps)
                     return await self._finish(
                         trace=trace,
                         steps=[
@@ -264,7 +273,7 @@ class ToolLoopAgent:
                     turn_number += 1
                     continue
 
-                if force_final_response or self._tool_budget_exhausted(
+                if force_final_response or tool_budget_exhausted(
                     task,
                     tool_calls_made,
                     steps,
@@ -309,7 +318,7 @@ class ToolLoopAgent:
                         ok=False,
                         error=f"tool is not available: {tool_call.tool_name}",
                     )
-                elif self._is_duplicate_successful_write(tool_call, steps):
+                elif is_duplicate_successful_write(tool_call, steps):
                     output = {
                         "raw_response": decision.raw_response,
                         "error": "duplicate_successful_write",
@@ -374,309 +383,6 @@ class ToolLoopAgent:
                 error="cancelled",
                 status=WorkflowStatus.CANCELLED,
             )
-    def _tool_budget_exhausted(
-        self,
-        task: ToolLoopAgentTask,
-        tool_calls_made: int,
-        steps: list[WorkflowStep],
-    ) -> bool:
-        """Return true when the task has used all allowed tool calls."""
-
-        return (
-            task.max_tool_calls is not None
-            and tool_calls_made >= task.max_tool_calls
-            and not self._missing_required_tools(task, steps)
-        )
-
-    def _should_allow_extra_finalization_turn(
-        self,
-        task: ToolLoopAgentTask,
-        tool_calls_made: int,
-        steps: list[WorkflowStep],
-    ) -> bool:
-        """Allow exactly one final-answer turn after a useful last action."""
-
-        return (
-            self._tool_budget_exhausted(task, tool_calls_made, steps)
-            or (bool(steps) and steps[-1].tool_result is not None)
-            or self._is_duplicate_write_block_step(steps[-1] if steps else None)
-        )
-
-    def _is_duplicate_write_block_step(self, step: WorkflowStep | None) -> bool:
-        """Return whether a step blocked a repeated write and should now finalize."""
-
-        return (
-            step is not None
-            and step.tool_call is not None
-            and step.tool_call.tool_name == "repo.write_files"
-            and step.output.get("error") == "duplicate_successful_write"
-        )
-
-    def _has_unresolved_failed_tool_step(self, steps: list[WorkflowStep]) -> bool:
-        """Check whether a tool failure still represents the final task state."""
-
-        last_success_by_tool = {
-            step.tool_call.tool_name: index
-            for index, step in enumerate(steps)
-            if step.tool_call is not None
-            and step.tool_result is not None
-            and step.tool_result.ok
-        }
-        latest_successful_write = max(
-            (
-                index
-                for index, step in enumerate(steps)
-                if step.tool_call is not None
-                and step.tool_call.tool_name in {"repo.write_patch", "repo.write_files"}
-                and step.tool_result is not None
-                and step.tool_result.ok
-            ),
-            default=None,
-        )
-        for index, step in enumerate(steps):
-            if (
-                step.tool_call is None
-                or step.tool_result is None
-                or step.tool_result.ok
-                or self._is_repaired_tool_failure(
-                    step,
-                    step_index=index,
-                    last_success_by_tool=last_success_by_tool,
-                    latest_successful_write=latest_successful_write,
-                )
-            ):
-                continue
-            return True
-        return False
-
-    def _is_repaired_tool_failure(
-        self,
-        step: WorkflowStep,
-        *,
-        step_index: int,
-        last_success_by_tool: dict[str, int],
-        latest_successful_write: int | None,
-    ) -> bool:
-        """Return true when a later action supersedes a failed tool attempt."""
-
-        if step.tool_call is None:
-            return False
-        tool_name = step.tool_call.tool_name
-        if last_success_by_tool.get(tool_name, -1) > step_index:
-            return True
-        return tool_name == "test.run" and (
-            latest_successful_write is not None and latest_successful_write > step_index
-        )
-
-    def _is_duplicate_successful_write(
-        self,
-        tool_call: ToolCall,
-        steps: list[WorkflowStep],
-    ) -> bool:
-        """Return true when repo.write_files repeats a prior successful file set."""
-
-        if tool_call.tool_name != "repo.write_files":
-            return False
-        requested_paths = self._write_file_paths(tool_call.arguments)
-        if not requested_paths:
-            return False
-        for step in steps:
-            if (
-                step.tool_call is None
-                or step.tool_result is None
-                or not step.tool_result.ok
-                or step.tool_call.tool_name != "repo.write_files"
-            ):
-                continue
-            if self._write_file_paths(step.tool_call.arguments) == requested_paths:
-                return True
-        return False
-
-    def _write_file_paths(self, arguments: dict[str, Any]) -> tuple[str, ...]:
-        """Extract a stable file-path tuple from repo.write_files arguments."""
-
-        files = arguments.get("files")
-        if not isinstance(files, list):
-            return ()
-        paths = []
-        for file in files:
-            if not isinstance(file, dict) or not isinstance(file.get("path"), str):
-                return ()
-            paths.append(file["path"])
-        return tuple(sorted(paths))
-
-    def _orchestration_hints(
-        self,
-        task: ToolLoopAgentTask,
-        steps: list[WorkflowStep],
-    ) -> list[str]:
-        """Return compact process hints derived from repeated tool outcomes."""
-
-        hints: list[str] = []
-        if self._looks_like_creation_task(task):
-            empty_searches = sum(1 for step in steps if self._is_empty_search_step(step))
-            if empty_searches >= 2 and "repo.write_files" in task.available_tools:
-                hints.append(
-                    "This appears to be a creation/scaffolding task in an empty workspace. "
-                    "Repeated search calls returned no matches; stop searching and use "
-                    "repo.write_files to create the requested files."
-                )
-
-        failed_patch_writes = [
-            step
-            for step in steps
-            if step.tool_call is not None
-            and step.tool_call.tool_name == "repo.write_patch"
-            and step.tool_result is not None
-            and not step.tool_result.ok
-            and step.tool_result.error == "tool argument validation failed"
-        ]
-        if failed_patch_writes and "repo.write_files" in task.available_tools:
-            hints.append(
-                "A repo.write_patch call failed validation. For new files and scaffolds, "
-                "use repo.write_files with explicit path/content entries instead of "
-                "hand-authoring unified diffs."
-            )
-        failed_write_files = [
-            step
-            for step in steps
-            if step.tool_call is not None
-            and step.tool_call.tool_name == "repo.write_files"
-            and step.tool_result is not None
-            and not step.tool_result.ok
-            and step.tool_result.error == "tool argument validation failed"
-        ]
-        if failed_write_files and "repo.write_files" in task.available_tools:
-            hints.append(
-                'A repo.write_files call failed validation. Use arguments shaped exactly like '
-                '{"files":[{"path":"README.md","content":"# Title\\n"}],'
-                '"dry_run":false,"require_approval":false}; do not use a paths map, '
-                "filename keys, or top-level content."
-            )
-        if self._missing_verification_after_write(task, steps):
-            hints.append(
-                "This task is about a failing test/import/verification issue. A file write "
-                "has succeeded, but no test.run has passed after the latest write. Run "
-                "test.run before final_response."
-            )
-        successful_writes = [
-            step
-            for step in steps
-            if step.tool_call is not None
-            and step.tool_call.tool_name == "repo.write_files"
-            and step.tool_result is not None
-            and step.tool_result.ok
-        ]
-        if successful_writes:
-            hints.append(
-                "A repo.write_files call already succeeded. Do not repeat the same write. "
-                "Return final_response, or run a distinct verification tool if one is available."
-            )
-        return hints
-
-    def _looks_like_creation_task(self, task: ToolLoopAgentTask) -> bool:
-        """Heuristic for greenfield creation/scaffolding requests."""
-
-        text = f"{task.goal} {task.context}".lower()
-        return any(
-            term in text
-            for term in (
-                "create",
-                "scaffold",
-                "skeleton",
-                "greenfield",
-                "empty repository",
-                "empty workspace",
-                "new file",
-                "new project",
-            )
-        )
-
-    def _is_empty_search_step(self, step: WorkflowStep) -> bool:
-        """Return true for successful search-style calls with zero results."""
-
-        if step.tool_call is None or step.tool_result is None or not step.tool_result.ok:
-            return False
-        if step.tool_call.tool_name == "repo.search":
-            matches = step.tool_result.output.get("matches")
-            return isinstance(matches, list) and len(matches) == 0
-        if step.tool_call.tool_name == "repo.semantic_search":
-            results = step.tool_result.output.get("results")
-            return isinstance(results, list) and len(results) == 0
-        return False
-
-    def _missing_required_tools(
-        self,
-        task: ToolLoopAgentTask,
-        steps: list[WorkflowStep],
-    ) -> tuple[str, ...]:
-        """List required tools that have not successfully appeared in the trace."""
-
-        used_tools = {
-            step.tool_call.tool_name
-            for step in steps
-            if step.tool_call is not None
-            and step.tool_result is not None
-            and step.tool_result.ok
-        }
-        return tuple(
-            tool_name
-            for tool_name in task.required_tools
-            if not self._required_tool_satisfied(tool_name, used_tools)
-        )
-
-    def _required_tool_satisfied(self, required_tool: str, used_tools: set[str]) -> bool:
-        """Treat successful repository writes as equivalent required write evidence."""
-
-        if required_tool in {"repo.write_patch", "repo.write_files"}:
-            return bool({"repo.write_patch", "repo.write_files"} & used_tools)
-        return required_tool in used_tools
-
-    def _missing_verification_after_write(
-        self,
-        task: ToolLoopAgentTask,
-        steps: list[WorkflowStep],
-    ) -> bool:
-        """Require test.run after writes for explicit test/import repair tasks."""
-
-        if "test.run" not in task.available_tools or not self._looks_like_verification_task(task):
-            return False
-        latest_write_index: int | None = None
-        latest_passing_test_index: int | None = None
-        for index, step in enumerate(steps):
-            if step.tool_call is None or step.tool_result is None or not step.tool_result.ok:
-                continue
-            if step.tool_call.tool_name in {"repo.write_patch", "repo.write_files"}:
-                latest_write_index = index
-            if step.tool_call.tool_name == "test.run":
-                output_ok = step.tool_result.output.get("ok")
-                exit_code = step.tool_result.output.get("exit_code")
-                if output_ok is True or exit_code == 0:
-                    latest_passing_test_index = index
-        return latest_write_index is not None and (
-            latest_passing_test_index is None or latest_passing_test_index < latest_write_index
-        )
-
-    def _looks_like_verification_task(self, task: ToolLoopAgentTask) -> bool:
-        """Heuristic for tasks whose success depends on running verification."""
-
-        text = f"{task.goal} {task.context}".lower()
-        return any(
-            term in text
-            for term in (
-                "pytest",
-                "test failure",
-                "tests fail",
-                "test fails",
-                "failing test",
-                "failing import",
-                "import error",
-                "modulenotfounderror",
-                "runs successfully",
-                "verification",
-            )
-        )
-
     async def _finish(
         self,
         *,
