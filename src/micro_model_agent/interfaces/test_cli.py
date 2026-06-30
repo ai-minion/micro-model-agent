@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 
 import pytest
+import typer
 from typer.testing import CliRunner
 
 from micro_model_agent.domain.datasets import (
@@ -25,6 +26,64 @@ from micro_model_agent.infrastructure.repository_metadata import (
     update_model_configuration,
 )
 from micro_model_agent.interfaces.cli import _load_dotenv, _resolve_loop_model_options, app
+
+
+def _registered_command_names(typer_app: typer.Typer) -> set[str]:
+    names: set[str] = set()
+    for command in typer_app.registered_commands:
+        name = command.name
+        if name is None and command.callback is not None:
+            name = command.callback.__name__.replace("_", "-")
+        if name is not None:
+            names.add(name)
+    return names
+
+
+def _registered_group(typer_app: typer.Typer, name: str) -> typer.Typer:
+    for group in typer_app.registered_groups:
+        if group.name == name:
+            return group.typer_instance
+    raise AssertionError(f"missing Typer group {name!r}")
+
+
+def test_cli_command_surface_is_stable() -> None:
+    assert _registered_command_names(app) == {
+        "init",
+        "index",
+        "task",
+        "loop",
+        "serve-mcp",
+    }
+    assert {group.name for group in app.registered_groups} == {
+        "dataset",
+        "train",
+        "eval",
+        "promote",
+    }
+    assert _registered_command_names(_registered_group(app, "dataset")) == {
+        "synthesize",
+        "validate",
+        "export",
+        "export-traces",
+        "review-trace",
+        "relabel",
+        "merge",
+    }
+    assert _registered_command_names(_registered_group(app, "train")) == {"synthetic"}
+    assert _registered_command_names(_registered_group(app, "eval")) == {
+        "synthetic",
+        "traces",
+        "workspace-staged",
+        "review-workspace-staged",
+        "compare",
+    }
+    assert _registered_command_names(_registered_group(app, "promote")) == {
+        "gate",
+        "record",
+        "list",
+        "select",
+        "package-ollama",
+    }
 
 
 def test_load_dotenv_sets_values_without_overriding_existing_env(

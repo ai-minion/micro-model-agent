@@ -62,7 +62,8 @@ src = ["src"]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.per-file-ignores]
-"src/micro_model_agent/interfaces/cli.py" = ["B008"]
+"src/micro_model_agent/interfaces/cli/*.py" = ["B008"]
+"src/micro_model_agent/interfaces/cli/commands/*.py" = ["B008"]
 
 [tool.mypy]
 python_version = "3.12"
