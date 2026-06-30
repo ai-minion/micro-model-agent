@@ -72,6 +72,8 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
 - Slim `ToolLoopAgent`:
   - Model decision parsing and JSON response extraction were extracted from
     `agents/tool_loop_agent.py` into `agents/tool_loop_decisions.py`.
+  - Tool history compaction and bulky output summarization were extracted from
+    `agents/tool_loop_agent.py` into `agents/tool_loop_history.py`.
 
 ## Larger Remaining Slices
 
