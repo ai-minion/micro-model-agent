@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
+from micro_model_agent.application.ports import PromotedArtifactRecord
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.training import (
     ModelArtifact,
@@ -168,6 +169,67 @@ class PromotionRegistryEntry:
     approved_by: str | None = None
     id: UUID = dataclass_field(default_factory=uuid4)
     created_at: datetime = dataclass_field(default_factory=lambda: datetime.now(UTC))
+
+
+class LocalPromotionGateStore:
+    """Filesystem adapter for promotion gate artifact, evaluation, and result files."""
+
+    def load_artifact_from_training_run(self, run_dir: Path) -> ModelArtifact:
+        """Load artifact metadata for one training run."""
+
+        return load_artifact_from_training_run(run_dir)
+
+    def load_evaluation_result(self, path: Path) -> EvaluationResult:
+        """Load one evaluation report."""
+
+        return load_evaluation_result(path)
+
+    def write_promotion_gate_result(
+        self,
+        run_dir: Path,
+        *,
+        promoted: bool,
+        minimum_score: float,
+        evaluation_reports: list[tuple[Path, EvaluationResult, bool]],
+    ) -> Path:
+        """Write one promotion gate decision."""
+
+        return write_promotion_gate_result(
+            run_dir,
+            promoted=promoted,
+            minimum_score=minimum_score,
+            evaluation_reports=evaluation_reports,
+        )
+
+    def record_promoted_artifact(
+        self,
+        registry_path: Path,
+        *,
+        artifact: ModelArtifact,
+        run_dir: Path,
+        promotion_report_path: Path,
+        reviewer_notes: str | None = None,
+        approved_by: str | None = None,
+        ) -> PromotedArtifactRecord:
+        """Append one promoted artifact record to a local registry."""
+
+        entry = record_promoted_artifact(
+            registry_path,
+            artifact=artifact,
+            run_dir=run_dir,
+            promotion_report_path=promotion_report_path,
+            reviewer_notes=reviewer_notes,
+            approved_by=approved_by,
+        )
+        return _promoted_artifact_record_from_entry(entry)
+
+    def load_promotion_registry(self, registry_path: Path) -> list[PromotedArtifactRecord]:
+        """Load promoted artifact records from a local registry."""
+
+        return [
+            _promoted_artifact_record_from_entry(entry)
+            for entry in load_promotion_registry(registry_path)
+        ]
 
 
 class LocalFineTuningBackend(Protocol):
@@ -473,6 +535,28 @@ def promotion_registry_entry_from_record(record: dict[str, Any]) -> PromotionReg
         reviewer_notes=record.get("reviewer_notes"),
         approved_by=record.get("approved_by"),
         created_at=datetime.fromisoformat(created_at) if created_at else datetime.now(UTC),
+    )
+
+
+def _promoted_artifact_record_from_entry(
+    entry: PromotionRegistryEntry,
+) -> PromotedArtifactRecord:
+    """Convert an infrastructure registry entry into the application view."""
+
+    return PromotedArtifactRecord(
+        artifact_id=entry.artifact_id,
+        artifact_name=entry.artifact_name,
+        artifact_path=entry.artifact_path,
+        artifact_kind=entry.artifact_kind,
+        base_model=entry.base_model,
+        run_dir=entry.run_dir,
+        promotion_report_path=entry.promotion_report_path,
+        evaluation_report_paths=entry.evaluation_report_paths,
+        minimum_score=entry.minimum_score,
+        reviewer_notes=entry.reviewer_notes,
+        approved_by=entry.approved_by,
+        id=entry.id,
+        created_at=entry.created_at,
     )
 
 

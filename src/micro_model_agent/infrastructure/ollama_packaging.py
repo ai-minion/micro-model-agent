@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from micro_model_agent.application.ports import OllamaPackageRecord, PromotedArtifactRecord
 from micro_model_agent.infrastructure.training_artifacts import PromotionRegistryEntry
 
 
@@ -44,6 +45,42 @@ class OllamaPackageResult:
         record["command"] = list(self.command)
         record["warnings"] = list(self.warnings)
         return record
+
+
+class LocalOllamaAdapterPackager:
+    """Filesystem adapter for packaging promoted adapters for Ollama."""
+
+    def package_promoted_adapter_for_ollama(
+        self,
+        *,
+        record: PromotedArtifactRecord,
+        model_name: str,
+        output_dir: Path,
+        ollama_base_model: str | None = None,
+        create: bool = False,
+    ) -> OllamaPackageRecord:
+        """Write Ollama package files for one promoted artifact."""
+
+        result = package_promoted_adapter_for_ollama(
+            entry=_promotion_entry_from_record(record),
+            model_name=model_name,
+            output_dir=output_dir,
+            ollama_base_model=ollama_base_model,
+            create=create,
+        )
+        return OllamaPackageRecord(
+            model_name=result.model_name,
+            base_model=result.base_model,
+            adapter_path=result.adapter_path,
+            modelfile_path=result.modelfile_path,
+            manifest_path=result.manifest_path,
+            command=result.command,
+            created=result.created,
+            return_code=result.return_code,
+            stdout=result.stdout,
+            stderr=result.stderr,
+            warnings=result.warnings,
+        )
 
 
 def package_promoted_adapter_for_ollama(
@@ -112,6 +149,26 @@ def package_promoted_adapter_for_ollama(
         encoding="utf-8",
     )
     return result
+
+
+def _promotion_entry_from_record(record: PromotedArtifactRecord) -> PromotionRegistryEntry:
+    """Convert the application registry view into the existing infrastructure shape."""
+
+    return PromotionRegistryEntry(
+        artifact_id=record.artifact_id,
+        artifact_name=record.artifact_name,
+        artifact_path=record.artifact_path,
+        artifact_kind=record.artifact_kind,
+        base_model=record.base_model,
+        run_dir=record.run_dir,
+        promotion_report_path=record.promotion_report_path,
+        evaluation_report_paths=record.evaluation_report_paths,
+        minimum_score=record.minimum_score,
+        reviewer_notes=record.reviewer_notes,
+        approved_by=record.approved_by,
+        id=record.id or uuid4(),
+        created_at=record.created_at or datetime.now(UTC),
+    )
 
 
 def _modelfile_text(*, base_model: str, adapter_path: Path) -> str:

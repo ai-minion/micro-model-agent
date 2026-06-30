@@ -12,6 +12,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
+from micro_model_agent.application.ports import ModelConfigurationUpdate
+
 METADATA_DIR_NAME = ".micro_model_agent"
 CONFIG_FILE_NAME = "config.json"
 CONFIG_SCHEMA_VERSION = 1
@@ -58,6 +60,32 @@ class RepositoryConfigUpdateResult:
         """Return a JSON-serializable representation."""
 
         return asdict(self)
+
+
+class LocalRepositoryModelConfigurationStore:
+    """Filesystem adapter for repository-local model defaults."""
+
+    def update_model_configuration(
+        self,
+        repository_root: Path,
+        *,
+        base_model: str,
+        adapter_path: str,
+        selected_promotion: dict[str, object],
+    ) -> ModelConfigurationUpdate:
+        """Update repository-local model defaults."""
+
+        result = update_model_configuration(
+            repository_root,
+            base_model=base_model,
+            adapter_path=adapter_path,
+            selected_promotion=selected_promotion,
+        )
+        return ModelConfigurationUpdate(
+            ok=result.ok,
+            config_path=result.config_path,
+            error=result.error,
+        )
 
 
 def repository_config_path(repository_root: str | Path = ".") -> Path:

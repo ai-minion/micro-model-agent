@@ -6,17 +6,25 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.infrastructure.ollama_packaging import (
-    package_promoted_adapter_for_ollama,
+from micro_model_agent.application.promotion import (
+    RunPromotionGateRequest,
+    RunPromotionGateWorkflow,
+    RunPromotionListRequest,
+    RunPromotionListWorkflow,
+    RunPromotionPackageOllamaRequest,
+    RunPromotionPackageOllamaWorkflow,
+    RunPromotionRecordRequest,
+    RunPromotionRecordWorkflow,
+    RunPromotionSelectRequest,
+    RunPromotionSelectWorkflow,
 )
-from micro_model_agent.infrastructure.repository_metadata import update_model_configuration
+from micro_model_agent.infrastructure.ollama_packaging import LocalOllamaAdapterPackager
+from micro_model_agent.infrastructure.repository_metadata import (
+    LocalRepositoryModelConfigurationStore,
+)
 from micro_model_agent.infrastructure.training_artifacts import (
+    LocalPromotionGateStore,
     MinimumScorePromotionPolicy,
-    load_artifact_from_training_run,
-    load_evaluation_result,
-    load_promotion_registry,
-    record_promoted_artifact,
-    write_promotion_gate_result,
 )
 from micro_model_agent.interfaces.cli.common import _fail, _run
 
@@ -47,41 +55,48 @@ def promote_gate(
 ) -> None:
     """Gate promotion on one or more persisted evaluation reports."""
 
-    run_dir = Path(run_id)
-    if not run_dir.exists():
-        run_dir = Path(".micro_model_agent/training/runs") / run_id
-
-    artifact = load_artifact_from_training_run(run_dir)
-    report_paths = list(evaluation_report or [run_dir / "evaluation.json"])
-    if not report_paths:
-        _fail("at least one evaluation report is required")
-
-    policy = MinimumScorePromotionPolicy(minimum_score=minimum_score)
-    evaluated_reports = []
-    for report_path in report_paths:
-        evaluation = load_evaluation_result(report_path)
-        can_promote = _run(policy.can_promote(artifact, evaluation))
-        evaluated_reports.append((report_path, evaluation, can_promote))
-
-    promoted = all(can_promote for _, _, can_promote in evaluated_reports)
-    output = write_promotion_gate_result(
-        run_dir,
-        promoted=promoted,
-        minimum_score=minimum_score,
-        evaluation_reports=evaluated_reports,
+    store = LocalPromotionGateStore()
+    workflow = RunPromotionGateWorkflow(
+        artifact_reader=store,
+        evaluation_reader=store,
+        result_writer=store,
+        policy_factory=MinimumScorePromotionPolicy,
     )
+    try:
+        result = _run(
+            workflow.run(
+                RunPromotionGateRequest(
+                    run_id=run_id,
+                    evaluation_report_paths=tuple(evaluation_report or ()),
+                    minimum_score=minimum_score,
+                )
+            )
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        _fail(str(exc))
 
-    if promoted:
-        typer.echo(f"Promotion gate passed for {artifact.name}; report written to {output}")
+    if result.promoted:
+        typer.echo(
+            f"Promotion gate passed for {result.artifact.name}; "
+            f"report written to {result.output_path}"
+        )
         return
 
-    typer.echo(f"Promotion gate blocked for {artifact.name}; report written to {output}", err=True)
-    for report_path, evaluation, can_promote in evaluated_reports:
-        if not can_promote:
-            score = "none" if evaluation.score is None else f"{evaluation.score:.2f}"
+    typer.echo(
+        f"Promotion gate blocked for {result.artifact.name}; "
+        f"report written to {result.output_path}",
+        err=True,
+    )
+    for evaluated in result.evaluations:
+        if not evaluated.can_promote:
+            score = (
+                "none"
+                if evaluated.evaluation.score is None
+                else f"{evaluated.evaluation.score:.2f}"
+            )
             typer.echo(
-                f"{report_path}: passed={evaluation.passed} score={score} "
-                f"summary={evaluation.summary}",
+                f"{evaluated.report_path}: passed={evaluated.evaluation.passed} "
+                f"score={score} summary={evaluated.evaluation.summary}",
                 err=True,
             )
     raise typer.Exit(1)
@@ -112,23 +127,29 @@ def promote_record(
 ) -> None:
     """Record a gate-passing artifact in the local promotion registry."""
 
-    run_dir = Path(run_id)
-    if not run_dir.exists():
-        run_dir = Path(".micro_model_agent/training/runs") / run_id
-
-    artifact = load_artifact_from_training_run(run_dir)
-    report_path = promotion_report or run_dir / "promotion.json"
-    entry = record_promoted_artifact(
-        registry,
-        artifact=artifact,
-        run_dir=run_dir,
-        promotion_report_path=report_path,
-        reviewer_notes=reviewer_notes,
-        approved_by=approved_by,
+    store = LocalPromotionGateStore()
+    workflow = RunPromotionRecordWorkflow(
+        artifact_reader=store,
+        registry_writer=store,
     )
+    try:
+        result = _run(
+            workflow.run(
+                RunPromotionRecordRequest(
+                    run_id=run_id,
+                    registry_path=registry,
+                    promotion_report_path=promotion_report,
+                    reviewer_notes=reviewer_notes,
+                    approved_by=approved_by,
+                )
+            )
+        )
+    except (FileNotFoundError, ValueError) as exc:
+        _fail(str(exc))
+
     typer.echo(
-        f"Recorded promoted artifact {entry.artifact_name} "
-        f"({entry.artifact_id}) in {registry}"
+        f"Recorded promoted artifact {result.record.artifact_name} "
+        f"({result.record.artifact_id}) in {registry}"
     )
 
 
@@ -141,12 +162,13 @@ def promote_list(
 ) -> None:
     """List locally recorded promoted artifacts."""
 
-    entries = load_promotion_registry(registry)
-    if not entries:
+    workflow = RunPromotionListWorkflow(registry_reader=LocalPromotionGateStore())
+    result = _run(workflow.run(RunPromotionListRequest(registry_path=registry)))
+    if not result.records:
         typer.echo(f"No promoted artifacts recorded in {registry}")
         return
 
-    for entry in entries:
+    for entry in result.records:
         typer.echo(
             f"{entry.artifact_name} {entry.artifact_id} "
             f"score>={entry.minimum_score:.2f} path={entry.artifact_path}"
@@ -180,31 +202,27 @@ def promote_select(
     if not confirm:
         _fail("Selecting a promoted adapter changes local defaults; rerun with --confirm")
 
-    entries = load_promotion_registry(registry)
-    entry = next((item for item in entries if str(item.artifact_id) == artifact_id), None)
-    if entry is None:
-        _fail(f"promoted artifact id not found in {registry}: {artifact_id}")
-
-    result = update_model_configuration(
-        repository_root,
-        base_model=entry.base_model,
-        adapter_path=entry.artifact_path,
-        selected_promotion={
-            "artifact_id": str(entry.artifact_id),
-            "artifact_name": entry.artifact_name,
-            "promotion_report_path": entry.promotion_report_path,
-            "registry_path": str(registry),
-            "minimum_score": entry.minimum_score,
-            "approved_by": entry.approved_by,
-            "created_at": entry.created_at.isoformat(),
-        },
+    promotion_store = LocalPromotionGateStore()
+    workflow = RunPromotionSelectWorkflow(
+        registry_reader=promotion_store,
+        configuration_writer=LocalRepositoryModelConfigurationStore(),
     )
-    if not result.ok:
-        _fail(result.error or "failed to update MicroModelAgent config")
+    try:
+        result = _run(
+            workflow.run(
+                RunPromotionSelectRequest(
+                    artifact_id=artifact_id,
+                    repository_root=repository_root,
+                    registry_path=registry,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
 
     typer.echo(
-        f"Selected promoted adapter {entry.artifact_name} "
-        f"({entry.artifact_id}) in {result.config_path}"
+        f"Selected promoted adapter {result.record.artifact_name} "
+        f"({result.record.artifact_id}) in {result.config_path}"
     )
 
 
@@ -242,39 +260,41 @@ def promote_package_ollama(
 ) -> None:
     """Package a recorded promoted adapter for Ollama with a generated Modelfile."""
 
-    entries = load_promotion_registry(registry)
-    entry = next((item for item in entries if str(item.artifact_id) == artifact_id), None)
-    if entry is None:
-        _fail(f"promoted artifact id not found in {registry}: {artifact_id}")
-
-    package_dir = output_dir or Path(".micro_model_agent/training/ollama") / _path_safe_name(
-        model_name
+    promotion_store = LocalPromotionGateStore()
+    workflow = RunPromotionPackageOllamaWorkflow(
+        registry_reader=promotion_store,
+        packager=LocalOllamaAdapterPackager(),
     )
-    result = package_promoted_adapter_for_ollama(
-        entry=entry,
-        model_name=model_name,
-        output_dir=package_dir,
-        ollama_base_model=ollama_base_model,
-        create=create,
-    )
+    try:
+        result = _run(
+            workflow.run(
+                RunPromotionPackageOllamaRequest(
+                    artifact_id=artifact_id,
+                    registry_path=registry,
+                    model_name=model_name,
+                    output_dir=output_dir,
+                    ollama_base_model=ollama_base_model,
+                    create=create,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
 
-    typer.echo(f"Wrote Ollama Modelfile to {result.modelfile_path}")
-    typer.echo(f"Wrote package manifest to {result.manifest_path}")
-    typer.echo("Command: " + " ".join(result.command))
-    for warning in result.warnings:
+    package = result.package
+    typer.echo(f"Wrote Ollama Modelfile to {package.modelfile_path}")
+    typer.echo(f"Wrote package manifest to {package.manifest_path}")
+    typer.echo("Command: " + " ".join(package.command))
+    for warning in package.warnings:
         typer.echo(f"Warning: {warning}", err=True)
     if create:
-        if result.created:
-            typer.echo(f"Created Ollama model {result.model_name}")
+        if package.created:
+            typer.echo(f"Created Ollama model {package.model_name}")
             return
-        typer.echo(f"ollama create failed with exit code {result.return_code}", err=True)
-        if result.stderr:
-            typer.echo(result.stderr, err=True)
+        typer.echo(
+            f"ollama create failed with exit code {package.return_code}",
+            err=True,
+        )
+        if package.stderr:
+            typer.echo(package.stderr, err=True)
         raise typer.Exit(1)
-
-
-def _path_safe_name(value: str) -> str:
-    """Return a conservative directory name for a model tag."""
-
-    safe = "".join(character if character.isalnum() else "-" for character in value.lower())
-    return "-".join(part for part in safe.split("-") if part) or "ollama-model"
