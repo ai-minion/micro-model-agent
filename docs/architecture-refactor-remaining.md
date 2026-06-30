@@ -69,6 +69,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     `workspace_staged_evaluation.py` into
     `infrastructure/workspace_staged_review.py`, with compatibility re-exports
     left in place.
+- Slim `ToolLoopAgent`:
+  - Model decision parsing and JSON response extraction were extracted from
+    `agents/tool_loop_agent.py` into `agents/tool_loop_decisions.py`.
 
 ## Larger Remaining Slices
 
