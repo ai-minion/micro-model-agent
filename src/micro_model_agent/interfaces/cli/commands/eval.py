@@ -13,6 +13,8 @@ from micro_model_agent.application.evaluation import (
     RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationRequest,
     RunSyntheticEvaluationWorkflow,
+    RunTraceEvaluationRequest,
+    RunTraceEvaluationWorkflow,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample
@@ -316,30 +318,35 @@ def eval_traces(
         ollama_base_url=ollama_base_url,
     )
 
-    if model_selection.provider is None:
-        _fail("trace eval requires a runnable model, adapter, or scripted response")
-
-    examples = load_dataset_examples(dataset)
-    if max_examples is not None:
-        examples = examples[:max_examples]
-    result = _run(
-        TraceBehaviorEvaluationSuite(pass_threshold=pass_threshold).evaluate_model(
-            model_selection.provider,
-            examples,
+    workflow = RunTraceEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=TraceBehaviorEvaluationSuite(pass_threshold=pass_threshold),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
+    )
+    try:
+        workflow_result = _run(
+            workflow.run(
+                RunTraceEvaluationRequest(
+                    run_id=run_id,
+                    run_dir=run_dir,
+                    dataset_path=dataset,
+                    provider_kind=model_selection.provider_kind,
+                    model_provider=model_selection.provider,
+                    model=model_selection.model,
+                    base_model=model_selection.base_model,
+                    adapter_path=model_selection.adapter_path,
+                    max_examples=max_examples,
+                    output_path=output,
+                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                )
+            )
         )
-    )
-    result = _with_evaluation_metadata(
-        result,
-        run_id=run_id,
-        dataset=dataset,
-        examples=examples,
-        provider_kind=model_selection.provider_kind,
-        model=model_selection.model,
-        base_model=model_selection.base_model,
-        adapter_path=model_selection.adapter_path,
-    )
-    report_path = write_evaluation_result(run_dir, result, output)
-    typer.echo(f"{result.summary}; report written to {report_path}")
+    except ValueError as exc:
+        _fail(str(exc))
+
+    result = workflow_result.evaluation
+    typer.echo(f"{result.summary}; report written to {workflow_result.report_path}")
     if not result.passed:
         raise typer.Exit(1)
 

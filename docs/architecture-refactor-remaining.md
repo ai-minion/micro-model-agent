@@ -25,6 +25,7 @@ verification details.
 - Eval commands:
   - `eval compare`
   - `eval synthetic`
+  - `eval traces`
 
 ## Remaining CLI Orchestration
 
@@ -34,7 +35,6 @@ and external integrations in infrastructure. Keep Typer option parsing, output
 formatting, and exit behavior in CLI adapters.
 
 - Remaining eval command orchestration, as needed:
-  - `eval traces`
   - `eval workspace-staged`
   - `eval review-workspace-staged`
 

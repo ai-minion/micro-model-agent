@@ -127,6 +127,31 @@ class RunSyntheticEvaluationResult:
     evaluation: EvaluationResult
 
 
+@dataclass(frozen=True, slots=True)
+class RunTraceEvaluationRequest:
+    """Request for trace-derived behavior evaluation."""
+
+    run_id: str
+    run_dir: Path
+    dataset_path: Path
+    provider_kind: str
+    model_provider: ModelProvider | None
+    model: str | None = None
+    base_model: str | None = None
+    adapter_path: Path | None = None
+    max_examples: int | None = None
+    output_path: Path | None = None
+    default_available_tools: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RunTraceEvaluationResult:
+    """Result returned after trace-derived behavior evaluation."""
+
+    report_path: Path
+    evaluation: EvaluationResult
+
+
 class RunEvaluationComparisonWorkflow:
     """Load, compare, and persist evaluation comparison reports."""
 
@@ -196,12 +221,17 @@ class RunSyntheticEvaluationWorkflow:
                 request.model_provider,
                 examples,
             )
-            evaluation = self._with_evaluation_metadata(
+            evaluation = _with_evaluation_metadata(
                 evaluation,
-                request=request,
+                run_id=request.run_id,
+                dataset_path=request.dataset_path,
                 examples=examples,
+                provider_kind=request.provider_kind,
+                model=request.model,
                 base_model=request.base_model,
                 adapter_path=request.adapter_path,
+                tool_profile_summarizer=self.tool_profile_summarizer,
+                default_available_tools=request.default_available_tools,
             )
             report_path = self.evaluation_writer.write_evaluation_result(
                 request.run_dir,
@@ -221,12 +251,17 @@ class RunSyntheticEvaluationWorkflow:
 
         evaluation = await self.artifact_suite.evaluate_artifact(request.artifact)
         examples = self._load_examples(request)
-        evaluation = self._with_evaluation_metadata(
+        evaluation = _with_evaluation_metadata(
             evaluation,
-            request=request,
+            run_id=request.run_id,
+            dataset_path=request.dataset_path,
             examples=examples,
+            provider_kind=request.provider_kind,
+            model=request.model,
             base_model=request.artifact.base_model,
             adapter_path=Path(request.artifact.path),
+            tool_profile_summarizer=self.tool_profile_summarizer,
+            default_available_tools=request.default_available_tools,
         )
         report_path = self.evaluation_writer.write_evaluation_result(
             request.run_dir,
@@ -247,40 +282,55 @@ class RunSyntheticEvaluationWorkflow:
             return examples[: request.max_examples]
         return examples
 
-    def _with_evaluation_metadata(
-        self,
-        result: EvaluationResult,
-        *,
-        request: RunSyntheticEvaluationRequest,
-        examples: list[DatasetExample],
-        base_model: str | None,
-        adapter_path: Path | None,
-    ) -> EvaluationResult:
-        """Add report-level metadata without changing evaluator scoring."""
+class RunTraceEvaluationWorkflow:
+    """Evaluate trace-derived examples against a runnable model provider."""
 
-        return EvaluationResult(
-            passed=result.passed,
-            summary=result.summary,
-            score=result.score,
-            details={
-                **result.details,
-                "evaluation_metadata": {
-                    "run_id": request.run_id,
-                    "dataset_path": str(request.dataset_path),
-                    "provider": request.provider_kind,
-                    "model": request.model,
-                    "base_model": base_model,
-                    "adapter_path": str(adapter_path) if adapter_path else None,
-                    "tool_profile": (
-                        self.tool_profile_summarizer.summarize_dataset_tool_profiles(
-                            examples,
-                            default_available_tools=list(
-                                request.default_available_tools
-                            ),
-                        )
-                    ),
-                },
-            },
+    def __init__(
+        self,
+        *,
+        example_reader: DatasetExampleReader,
+        behavior_suite: ModelBehaviorEvaluationSuite,
+        tool_profile_summarizer: DatasetToolProfileSummarizer,
+        evaluation_writer: EvaluationResultWriter,
+    ) -> None:
+        self.example_reader = example_reader
+        self.behavior_suite = behavior_suite
+        self.tool_profile_summarizer = tool_profile_summarizer
+        self.evaluation_writer = evaluation_writer
+
+    async def run(self, request: RunTraceEvaluationRequest) -> RunTraceEvaluationResult:
+        """Run trace-derived behavior evaluation."""
+
+        if request.model_provider is None:
+            raise ValueError("trace eval requires a runnable model, adapter, or scripted response")
+
+        examples = self.example_reader.load_dataset_examples(request.dataset_path)
+        if request.max_examples is not None:
+            examples = examples[: request.max_examples]
+        evaluation = await self.behavior_suite.evaluate_model(
+            request.model_provider,
+            examples,
+        )
+        evaluation = _with_evaluation_metadata(
+            evaluation,
+            run_id=request.run_id,
+            dataset_path=request.dataset_path,
+            examples=examples,
+            provider_kind=request.provider_kind,
+            model=request.model,
+            base_model=request.base_model,
+            adapter_path=request.adapter_path,
+            tool_profile_summarizer=self.tool_profile_summarizer,
+            default_available_tools=request.default_available_tools,
+        )
+        report_path = self.evaluation_writer.write_evaluation_result(
+            request.run_dir,
+            evaluation,
+            request.output_path,
+        )
+        return RunTraceEvaluationResult(
+            report_path=report_path,
+            evaluation=evaluation,
         )
 
 
@@ -394,4 +444,43 @@ def _summary(
     return (
         f"evaluation comparison {status}: score delta {score_text} "
         f"(minimum +{minimum_score_delta:.2f}); checked {checked_metrics} metric threshold(s)"
+    )
+
+
+def _with_evaluation_metadata(
+    result: EvaluationResult,
+    *,
+    run_id: str,
+    dataset_path: Path,
+    examples: list[DatasetExample],
+    provider_kind: str,
+    model: str | None,
+    base_model: str | None,
+    adapter_path: Path | None,
+    tool_profile_summarizer: DatasetToolProfileSummarizer,
+    default_available_tools: tuple[str, ...],
+) -> EvaluationResult:
+    """Add report-level metadata without changing evaluator scoring."""
+
+    return EvaluationResult(
+        passed=result.passed,
+        summary=result.summary,
+        score=result.score,
+        details={
+            **result.details,
+            "evaluation_metadata": {
+                "run_id": run_id,
+                "dataset_path": str(dataset_path),
+                "provider": provider_kind,
+                "model": model,
+                "base_model": base_model,
+                "adapter_path": str(adapter_path) if adapter_path else None,
+                "tool_profile": (
+                    tool_profile_summarizer.summarize_dataset_tool_profiles(
+                        examples,
+                        default_available_tools=list(default_available_tools),
+                    )
+                ),
+            },
+        },
     )

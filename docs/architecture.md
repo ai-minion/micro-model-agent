@@ -55,6 +55,7 @@ Implemented services:
 - `RunTraceReviewWorkflow`
 - `RunSyntheticTrainingWorkflow`
 - `RunSyntheticEvaluationWorkflow`
+- `RunTraceEvaluationWorkflow`
 - `RunEvaluationComparisonWorkflow`
 - `RunPromotionGateWorkflow`
 - `RunPromotionRecordWorkflow`
@@ -96,13 +97,14 @@ application coordinates validation, run-local export, training config assembly,
 runner execution, and artifact recording through ports.
 
 Synthetic behavior and metadata-only artifact evaluation are represented by
-`RunSyntheticEvaluationWorkflow`. Evaluation report comparison is represented by
-`RunEvaluationComparisonWorkflow`. Interfaces supply CLI model selection,
-threshold parsing, output formatting, and exit behavior. Infrastructure owns
-persisted report loading, JSON report writing, concrete behavior/artifact
-evaluators, model providers, and dataset metadata helpers, while the
-application coordinates dataset loading, evaluation execution, report metadata,
-score/metric comparison, and report persistence through ports.
+`RunSyntheticEvaluationWorkflow`; trace-derived behavior evaluation is
+represented by `RunTraceEvaluationWorkflow`. Evaluation report comparison is
+represented by `RunEvaluationComparisonWorkflow`. Interfaces supply CLI model
+selection, threshold parsing, output formatting, and exit behavior.
+Infrastructure owns persisted report loading, JSON report writing, concrete
+behavior/artifact evaluators, model providers, and dataset metadata helpers,
+while the application coordinates dataset loading, evaluation execution, report
+metadata, score/metric comparison, and report persistence through ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,

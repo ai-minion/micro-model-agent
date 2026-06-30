@@ -12,6 +12,8 @@ from micro_model_agent.application.evaluation import (
     RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationRequest,
     RunSyntheticEvaluationWorkflow,
+    RunTraceEvaluationRequest,
+    RunTraceEvaluationWorkflow,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import (
@@ -377,6 +379,98 @@ def test_synthetic_evaluation_workflow_requires_provider_or_artifact() -> None:
                 )
             )
         )
+
+
+def test_trace_evaluation_workflow_evaluates_provider_and_writes_metadata() -> None:
+    examples = [_example(source="trace:one"), _example(source="trace:two")]
+    reader = FakeDatasetReader(examples)
+    provider = FakeModelProvider()
+    behavior_suite = FakeBehaviorEvaluationSuite(
+        EvaluationResult(
+            passed=True,
+            summary="trace behavior eval scored 1.00 over 1 example(s)",
+            score=1.0,
+            details={"example_count": 1},
+        )
+    )
+    summarizer = FakeToolProfileSummarizer()
+    writer = FakeEvaluationResultWriter()
+    workflow = RunTraceEvaluationWorkflow(
+        example_reader=reader,
+        behavior_suite=behavior_suite,
+        tool_profile_summarizer=summarizer,
+        evaluation_writer=writer,
+    )
+
+    result = asyncio.run(
+        workflow.run(
+            RunTraceEvaluationRequest(
+                run_id="latest",
+                run_dir=Path("runs/latest"),
+                dataset_path=Path("held-out-trace.jsonl"),
+                provider_kind="scripted",
+                model_provider=provider,
+                model="scripted-model",
+                base_model="base-model",
+                adapter_path=Path("adapter"),
+                max_examples=1,
+                output_path=Path("trace-evaluation.json"),
+                default_available_tools=("repo.read",),
+            )
+        )
+    )
+
+    assert reader.loaded_paths == [Path("held-out-trace.jsonl")]
+    assert behavior_suite.provider is provider
+    assert behavior_suite.examples == [examples[0]]
+    assert summarizer.examples == [examples[0]]
+    assert summarizer.default_available_tools == ("repo.read",)
+    assert result.report_path == Path("trace-evaluation.json")
+    assert result.evaluation.details["evaluation_metadata"] == {
+        "run_id": "latest",
+        "dataset_path": "held-out-trace.jsonl",
+        "provider": "scripted",
+        "model": "scripted-model",
+        "base_model": "base-model",
+        "adapter_path": "adapter",
+        "tool_profile": {
+            "example_count": 1,
+            "available_tools": ["repo.read"],
+        },
+    }
+    assert writer.written == (
+        Path("runs/latest"),
+        result.evaluation,
+        Path("trace-evaluation.json"),
+    )
+
+
+def test_trace_evaluation_workflow_requires_provider() -> None:
+    workflow = RunTraceEvaluationWorkflow(
+        example_reader=FakeDatasetReader([]),
+        behavior_suite=FakeBehaviorEvaluationSuite(
+            EvaluationResult(passed=False, summary="unused", score=0.0)
+        ),
+        tool_profile_summarizer=FakeToolProfileSummarizer(),
+        evaluation_writer=FakeEvaluationResultWriter(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="trace eval requires a runnable model, adapter, or scripted response",
+    ):
+        asyncio.run(
+            workflow.run(
+                RunTraceEvaluationRequest(
+                    run_id="latest",
+                    run_dir=Path("runs/latest"),
+                    dataset_path=Path("held-out-trace.jsonl"),
+                    provider_kind="none",
+                    model_provider=None,
+                )
+            )
+        )
+
 
 def _example(source: str = "synthetic:test") -> DatasetExample:
     return DatasetExample(
