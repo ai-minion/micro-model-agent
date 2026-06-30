@@ -69,6 +69,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     `workspace_staged_evaluation.py` into
     `infrastructure/workspace_staged_review.py`, with compatibility re-exports
     left in place.
+  - Synthetic behavior scoring and aggregate/category metrics were extracted
+    from `synthetic_evaluation.py` into `infrastructure/synthetic_rubrics.py`,
+    with compatibility re-exports left in place.
 - Slim `ToolLoopAgent`:
   - Model decision parsing and JSON response extraction were extracted from
     `agents/tool_loop_agent.py` into `agents/tool_loop_decisions.py`.
@@ -83,8 +86,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
    - `training_artifacts.py` has been reduced to artifact store/fake-runner
      compatibility exports; remaining splits are optional unless new training
      responsibilities land there.
-   - `synthetic_evaluation.py` has been split from trace evaluation; remaining
-     work is mostly extracting the synthetic scoring rubric into pure functions.
+   - `synthetic_evaluation.py` has been split from trace evaluation and pure
+     synthetic rubrics; remaining splits are optional unless new responsibilities
+     land there.
    - `workspace_staged_evaluation.py` still contains staged prompt payload
      helpers and the staged scoring rubric; review queue storage has been split
      out.
@@ -92,10 +96,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
      needed.
 
 2. Extract pure evaluation rubrics.
-   - Synthetic behavior scoring is still implemented as methods on
-     `SyntheticBehaviorEvaluationSuite`.
    - Staged workspace scoring is still implemented as methods on
      `WorkspaceStagedEvaluationSuite`.
+   - Synthetic behavior scoring is isolated in `synthetic_rubrics.py`.
    - Trace scoring is isolated in `trace_evaluation.py`, but its rubric can be
      made more directly unit-testable if it grows.
    - Shared response JSON parsing is already extracted.
