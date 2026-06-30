@@ -11,11 +11,19 @@ import typer
 from micro_model_agent.application.evaluation import (
     RunEvaluationComparisonRequest,
     RunEvaluationComparisonWorkflow,
+    RunSyntheticEvaluationRequest,
+    RunSyntheticEvaluationWorkflow,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample
-from micro_model_agent.infrastructure.dataset_metadata import summarize_tool_profiles
-from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
+from micro_model_agent.infrastructure.dataset_metadata import (
+    LocalDatasetToolProfileSummarizer,
+    summarize_tool_profiles,
+)
+from micro_model_agent.infrastructure.dataset_store import (
+    LocalDatasetExampleReader,
+    load_dataset_examples,
+)
 from micro_model_agent.infrastructure.evaluation_comparison import (
     LocalEvaluationComparisonReportWriter,
 )
@@ -26,6 +34,7 @@ from micro_model_agent.infrastructure.synthetic_evaluation import (
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.infrastructure.training_artifacts import (
     LocalEvaluationResultReader,
+    LocalEvaluationResultWriter,
     SyntheticEvaluationSuite,
     load_evaluation_result,
     write_evaluation_result,
@@ -190,58 +199,43 @@ def eval_synthetic(
         ollama_base_url=ollama_base_url,
     )
 
-    if model_selection.provider is not None:
-        examples = load_dataset_examples(dataset)
-        if max_examples is not None:
-            examples = examples[:max_examples]
-        result = _run(
-            SyntheticBehaviorEvaluationSuite(pass_threshold=pass_threshold).evaluate_model(
-                model_selection.provider,
-                examples,
+    workflow = RunSyntheticEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=SyntheticBehaviorEvaluationSuite(pass_threshold=pass_threshold),
+        artifact_suite=SyntheticEvaluationSuite(),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
+    )
+    try:
+        workflow_result = _run(
+            workflow.run(
+                RunSyntheticEvaluationRequest(
+                    run_id=run_id,
+                    run_dir=run_dir,
+                    dataset_path=dataset,
+                    provider_kind=model_selection.provider_kind,
+                    model_provider=model_selection.provider,
+                    artifact=model_selection.artifact,
+                    model=model_selection.model,
+                    base_model=model_selection.base_model,
+                    adapter_path=model_selection.adapter_path,
+                    max_examples=max_examples,
+                    output_path=output,
+                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                )
             )
         )
-        result = _with_evaluation_metadata(
-            result,
-            run_id=run_id,
-            dataset=dataset,
-            examples=examples,
-            provider_kind=model_selection.provider_kind,
-            model=model_selection.model,
-            base_model=model_selection.base_model,
-            adapter_path=model_selection.adapter_path,
-        )
-        report_path = write_evaluation_result(run_dir, result, output)
-        typer.echo(f"{result.summary}; report written to {report_path}")
-        if not result.passed:
-            failure_lines = _format_behavioral_eval_failures(result.details)
-            if failure_lines:
-                typer.echo("Failures:", err=True)
-                for line in failure_lines:
-                    typer.echo(line, err=True)
-            raise typer.Exit(1)
-        return
+    except ValueError as exc:
+        _fail(str(exc))
 
-    # Dry-run training artifacts do not contain runnable model weights. Keep the
-    # old metadata smoke gate for those cases, but mark it clearly in the report.
-    if model_selection.artifact is None:
-        _fail("synthetic eval requires a training artifact, runnable model, or scripted response")
-    result = _run(SyntheticEvaluationSuite().evaluate_artifact(model_selection.artifact))
-    dataset_examples = load_dataset_examples(dataset)
-    if max_examples is not None:
-        dataset_examples = dataset_examples[:max_examples]
-    result = _with_evaluation_metadata(
-        result,
-        run_id=run_id,
-        dataset=dataset,
-        examples=dataset_examples,
-        provider_kind=model_selection.provider_kind,
-        model=model_selection.model,
-        base_model=model_selection.artifact.base_model,
-        adapter_path=Path(model_selection.artifact.path),
-    )
-    report_path = write_evaluation_result(run_dir, result, output)
-    typer.echo(f"{result.summary}; report written to {report_path}")
+    result = workflow_result.evaluation
+    typer.echo(f"{result.summary}; report written to {workflow_result.report_path}")
     if not result.passed:
+        failure_lines = _format_behavioral_eval_failures(result.details)
+        if failure_lines:
+            typer.echo("Failures:", err=True)
+            for line in failure_lines:
+                typer.echo(line, err=True)
         raise typer.Exit(1)
 
 

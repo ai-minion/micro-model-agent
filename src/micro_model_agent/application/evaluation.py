@@ -7,10 +7,18 @@ from pathlib import Path
 from typing import Any
 
 from micro_model_agent.application.ports import (
+    DatasetExampleReader,
+    DatasetToolProfileSummarizer,
     EvaluationComparisonReportWriter,
     EvaluationResultReader,
+    EvaluationResultWriter,
+    EvaluationSuite,
+    ModelBehaviorEvaluationSuite,
+    ModelProvider,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
+from micro_model_agent.domain.datasets import DatasetExample
+from micro_model_agent.domain.training import ModelArtifact
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,6 +101,32 @@ class RunEvaluationComparisonResult:
     comparison: EvaluationComparisonResult
 
 
+@dataclass(frozen=True, slots=True)
+class RunSyntheticEvaluationRequest:
+    """Request for synthetic behavior or artifact evaluation."""
+
+    run_id: str
+    run_dir: Path
+    dataset_path: Path
+    provider_kind: str
+    model_provider: ModelProvider | None = None
+    artifact: ModelArtifact | None = None
+    model: str | None = None
+    base_model: str | None = None
+    adapter_path: Path | None = None
+    max_examples: int | None = None
+    output_path: Path | None = None
+    default_available_tools: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class RunSyntheticEvaluationResult:
+    """Result returned after synthetic evaluation."""
+
+    report_path: Path
+    evaluation: EvaluationResult
+
+
 class RunEvaluationComparisonWorkflow:
     """Load, compare, and persist evaluation comparison reports."""
 
@@ -129,6 +163,124 @@ class RunEvaluationComparisonWorkflow:
         return RunEvaluationComparisonResult(
             output_path=request.output_path,
             comparison=comparison,
+        )
+
+
+class RunSyntheticEvaluationWorkflow:
+    """Evaluate synthetic examples or metadata-only synthetic artifacts."""
+
+    def __init__(
+        self,
+        *,
+        example_reader: DatasetExampleReader,
+        behavior_suite: ModelBehaviorEvaluationSuite,
+        artifact_suite: EvaluationSuite,
+        tool_profile_summarizer: DatasetToolProfileSummarizer,
+        evaluation_writer: EvaluationResultWriter,
+    ) -> None:
+        self.example_reader = example_reader
+        self.behavior_suite = behavior_suite
+        self.artifact_suite = artifact_suite
+        self.tool_profile_summarizer = tool_profile_summarizer
+        self.evaluation_writer = evaluation_writer
+
+    async def run(
+        self,
+        request: RunSyntheticEvaluationRequest,
+    ) -> RunSyntheticEvaluationResult:
+        """Run synthetic model or artifact evaluation."""
+
+        if request.model_provider is not None:
+            examples = self._load_examples(request)
+            evaluation = await self.behavior_suite.evaluate_model(
+                request.model_provider,
+                examples,
+            )
+            evaluation = self._with_evaluation_metadata(
+                evaluation,
+                request=request,
+                examples=examples,
+                base_model=request.base_model,
+                adapter_path=request.adapter_path,
+            )
+            report_path = self.evaluation_writer.write_evaluation_result(
+                request.run_dir,
+                evaluation,
+                request.output_path,
+            )
+            return RunSyntheticEvaluationResult(
+                report_path=report_path,
+                evaluation=evaluation,
+            )
+
+        if request.artifact is None:
+            raise ValueError(
+                "synthetic eval requires a training artifact, runnable model, "
+                "or scripted response"
+            )
+
+        evaluation = await self.artifact_suite.evaluate_artifact(request.artifact)
+        examples = self._load_examples(request)
+        evaluation = self._with_evaluation_metadata(
+            evaluation,
+            request=request,
+            examples=examples,
+            base_model=request.artifact.base_model,
+            adapter_path=Path(request.artifact.path),
+        )
+        report_path = self.evaluation_writer.write_evaluation_result(
+            request.run_dir,
+            evaluation,
+            request.output_path,
+        )
+        return RunSyntheticEvaluationResult(
+            report_path=report_path,
+            evaluation=evaluation,
+        )
+
+    def _load_examples(
+        self,
+        request: RunSyntheticEvaluationRequest,
+    ) -> list[DatasetExample]:
+        examples = self.example_reader.load_dataset_examples(request.dataset_path)
+        if request.max_examples is not None:
+            return examples[: request.max_examples]
+        return examples
+
+    def _with_evaluation_metadata(
+        self,
+        result: EvaluationResult,
+        *,
+        request: RunSyntheticEvaluationRequest,
+        examples: list[DatasetExample],
+        base_model: str | None,
+        adapter_path: Path | None,
+    ) -> EvaluationResult:
+        """Add report-level metadata without changing evaluator scoring."""
+
+        return EvaluationResult(
+            passed=result.passed,
+            summary=result.summary,
+            score=result.score,
+            details={
+                **result.details,
+                "evaluation_metadata": {
+                    "run_id": request.run_id,
+                    "dataset_path": str(request.dataset_path),
+                    "provider": request.provider_kind,
+                    "model": request.model,
+                    "base_model": base_model,
+                    "adapter_path": str(adapter_path) if adapter_path else None,
+                    "tool_profile": (
+                        self.tool_profile_summarizer.summarize_dataset_tool_profiles(
+                            examples,
+                            default_available_tools=list(
+                                request.default_available_tools
+                            ),
+                        )
+                    ),
+                },
+            },
         )
 
 

@@ -126,10 +126,15 @@ class LocalDatasetToolProfileSummarizer:
     def summarize_dataset_tool_profiles(
         self,
         examples: list[DatasetExample],
+        *,
+        default_available_tools: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Return JSON-ready tool-profile summary metadata."""
 
-        return summarize_tool_profiles(examples)
+        return summarize_tool_profiles(
+            examples,
+            default_available_tools=default_available_tools,
+        )
 
 
 def _available_tools(

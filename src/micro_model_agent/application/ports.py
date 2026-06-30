@@ -7,7 +7,7 @@ workflow code independent from the concrete storage, model, and tool classes.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -310,6 +310,8 @@ class DatasetToolProfileSummarizer(Protocol):
     def summarize_dataset_tool_profiles(
         self,
         examples: list[DatasetExample],
+        *,
+        default_available_tools: Sequence[str] | None = None,
     ) -> dict[str, Any]:
         """Return JSON-ready tool-profile summary metadata."""
 
@@ -343,6 +345,29 @@ class EvaluationSuite(Protocol):
 
     async def evaluate_artifact(self, artifact: ModelArtifact) -> EvaluationResult:
         """Evaluate a model artifact against configured tasks."""
+
+
+class ModelBehaviorEvaluationSuite(Protocol):
+    """Runs dataset examples against a model provider."""
+
+    async def evaluate_model(
+        self,
+        model_provider: ModelProvider,
+        examples: list[DatasetExample],
+    ) -> EvaluationResult:
+        """Evaluate model behavior on dataset examples."""
+
+
+class EvaluationResultWriter(Protocol):
+    """Persists evaluation reports."""
+
+    def write_evaluation_result(
+        self,
+        run_dir: Path,
+        result: EvaluationResult,
+        output_path: Path | None = None,
+    ) -> Path:
+        """Persist one evaluation report and return its path."""
 
 
 class ModelPromotionPolicy(Protocol):

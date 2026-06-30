@@ -101,6 +101,20 @@ class LocalEvaluationResultReader:
         return load_evaluation_result(path)
 
 
+class LocalEvaluationResultWriter:
+    """Filesystem adapter for writing persisted evaluation reports."""
+
+    def write_evaluation_result(
+        self,
+        run_dir: Path,
+        result: EvaluationResult,
+        output_path: Path | None = None,
+    ) -> Path:
+        """Write one evaluation report and return its path."""
+
+        return write_evaluation_result(run_dir, result, output_path)
+
+
 class FakeTrainingRunner:
     """Training runner that writes deterministic metadata without touching a GPU."""
 

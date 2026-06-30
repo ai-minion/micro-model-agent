@@ -81,6 +81,8 @@ class FakeDatasetToolProfileSummarizer:
     def summarize_dataset_tool_profiles(
         self,
         examples: list[DatasetExample],
+        *,
+        default_available_tools: list[str] | tuple[str, ...] | None = None,
     ) -> dict[str, object]:
         self.examples = examples
         return {"example_count": len(examples), "tools_used": ["repo.read"]}
