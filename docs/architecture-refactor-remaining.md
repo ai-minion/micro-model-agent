@@ -22,6 +22,8 @@ verification details.
   - `dataset review-trace`
 - Training commands:
   - `train synthetic`
+- Eval commands:
+  - `eval compare`
 
 ## Remaining CLI Orchestration
 
@@ -30,10 +32,6 @@ slices. Keep concrete file formats, model providers, local process execution,
 and external integrations in infrastructure. Keep Typer option parsing, output
 formatting, and exit behavior in CLI adapters.
 
-- `eval compare`
-  - Load persisted evaluation reports.
-  - Compare score/metric deltas.
-  - Write comparison report.
 - Remaining eval command orchestration, as needed:
   - `eval synthetic`
   - `eval traces`

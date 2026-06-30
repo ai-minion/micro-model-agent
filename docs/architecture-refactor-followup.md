@@ -91,6 +91,17 @@ command-module split, and the first CLI-orchestration move:
   CLI output formatting, and exit behavior in the adapter.
 - `LocalDatasetFileHasher` and `LocalDatasetToolProfileSummarizer` adapt
   existing dataset metadata helpers to the synthetic training application ports.
+- `application/evaluation.py` owns `RunEvaluationComparisonWorkflow`; `eval
+  compare` now delegates persisted report loading, score/metric comparison, and
+  comparison report writing through application ports while keeping metric
+  threshold option parsing, CLI output formatting, and exit behavior in the
+  adapter.
+- `LocalEvaluationResultReader` adapts existing evaluation report loading to
+  the evaluation comparison application port.
+- `LocalEvaluationComparisonReportWriter` adapts comparison report JSON writing
+  to the evaluation comparison application port. The old
+  `infrastructure.evaluation_comparison` comparison imports remain available as
+  compatibility re-exports.
 
 Last known verification:
 
@@ -102,7 +113,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-242 passed
+244 passed
 ```
 
 ## Compatibility Invariants
@@ -141,7 +152,7 @@ inside CLI command handlers.
 Suggested implementation:
 
 1. Pick another narrow command path that currently performs orchestration in CLI
-   code, such as `eval compare`, `eval synthetic`, or another eval command.
+   code, such as `eval synthetic`, `eval traces`, or another eval command.
    The `promote` group is complete.
 2. Introduce an application request/result service that depends on existing
    ports or small new ports.

@@ -92,6 +92,15 @@ class JsonTrainingArtifactStore:
         return self.root_dir / "artifacts" / f"{artifact_id}.json"
 
 
+class LocalEvaluationResultReader:
+    """Filesystem adapter for loading persisted evaluation reports."""
+
+    def load_evaluation_result(self, path: Path) -> EvaluationResult:
+        """Load one evaluation report."""
+
+        return load_evaluation_result(path)
+
+
 class FakeTrainingRunner:
     """Training runner that writes deterministic metadata without touching a GPU."""
 

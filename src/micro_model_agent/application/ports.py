@@ -366,6 +366,17 @@ class EvaluationResultReader(Protocol):
         """Load one evaluation report."""
 
 
+class EvaluationComparisonReportWriter(Protocol):
+    """Persists evaluation comparison reports."""
+
+    def write_evaluation_comparison_report(
+        self,
+        path: Path,
+        record: dict[str, Any],
+    ) -> None:
+        """Write one JSON-ready evaluation comparison report."""
+
+
 class PromotionGateResultWriter(Protocol):
     """Persists model promotion gate decisions."""
 

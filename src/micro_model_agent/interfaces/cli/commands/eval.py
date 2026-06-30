@@ -8,17 +8,24 @@ from typing import Any
 
 import typer
 
+from micro_model_agent.application.evaluation import (
+    RunEvaluationComparisonRequest,
+    RunEvaluationComparisonWorkflow,
+)
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import DatasetExample
 from micro_model_agent.infrastructure.dataset_metadata import summarize_tool_profiles
 from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
-from micro_model_agent.infrastructure.evaluation_comparison import compare_evaluation_results
+from micro_model_agent.infrastructure.evaluation_comparison import (
+    LocalEvaluationComparisonReportWriter,
+)
 from micro_model_agent.infrastructure.synthetic_evaluation import (
     SyntheticBehaviorEvaluationSuite,
     TraceBehaviorEvaluationSuite,
 )
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.infrastructure.training_artifacts import (
+    LocalEvaluationResultReader,
     SyntheticEvaluationSuite,
     load_evaluation_result,
     write_evaluation_result,
@@ -577,24 +584,24 @@ def eval_compare(
     """Compare a baseline evaluation report with a trained adapter report."""
 
     thresholds = _parse_metric_delta_options(minimum_metric_delta or [])
-    baseline = load_evaluation_result(baseline_report)
-    adapter = load_evaluation_result(adapter_report)
-    comparison = compare_evaluation_results(
-        baseline,
-        adapter,
-        minimum_score_delta=minimum_score_delta,
-        minimum_metric_deltas=thresholds,
-        require_adapter_passed=require_adapter_passed,
-    )
-
     report_path = output or adapter_report.with_suffix(".comparison.json")
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(
-        json.dumps(comparison.as_record(), indent=2, sort_keys=True),
-        encoding="utf-8",
+    workflow = RunEvaluationComparisonWorkflow(
+        evaluation_reader=LocalEvaluationResultReader(),
+        comparison_writer=LocalEvaluationComparisonReportWriter(),
     )
+    result = workflow.run(
+        RunEvaluationComparisonRequest(
+            baseline_report_path=baseline_report,
+            adapter_report_path=adapter_report,
+            output_path=report_path,
+            minimum_score_delta=minimum_score_delta,
+            minimum_metric_deltas=thresholds,
+            require_adapter_passed=require_adapter_passed,
+        )
+    )
+    comparison = result.comparison
 
-    typer.echo(f"{comparison.summary}; report written to {report_path}")
+    typer.echo(f"{comparison.summary}; report written to {result.output_path}")
     if not comparison.passed:
         for error in comparison.errors:
             typer.echo(error, err=True)
