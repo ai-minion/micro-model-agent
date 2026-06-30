@@ -53,6 +53,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
   - Training and artifact JSON record helpers were extracted from
     `training_artifacts.py` into `infrastructure/training_records.py`, with
     compatibility re-exports left in place.
+  - Promotion gate storage, registry serialization, and the minimum-score policy
+    were extracted from `training_artifacts.py` into
+    `infrastructure/promotion_gate.py`, with compatibility re-exports left in
+    place.
 
 ## Larger Remaining Slices
 

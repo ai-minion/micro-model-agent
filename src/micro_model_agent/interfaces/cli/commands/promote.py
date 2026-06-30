@@ -19,12 +19,12 @@ from micro_model_agent.application.promotion import (
     RunPromotionSelectWorkflow,
 )
 from micro_model_agent.infrastructure.ollama_packaging import LocalOllamaAdapterPackager
-from micro_model_agent.infrastructure.repository_metadata import (
-    LocalRepositoryModelConfigurationStore,
-)
-from micro_model_agent.infrastructure.training_artifacts import (
+from micro_model_agent.infrastructure.promotion_gate import (
     LocalPromotionGateStore,
     MinimumScorePromotionPolicy,
+)
+from micro_model_agent.infrastructure.repository_metadata import (
+    LocalRepositoryModelConfigurationStore,
 )
 from micro_model_agent.interfaces.cli.common import _fail, _run
 
