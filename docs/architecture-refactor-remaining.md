@@ -80,19 +80,30 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
 ## Larger Remaining Slices
 
 1. Split large infrastructure modules.
-   - Break up `training_artifacts.py`.
-   - Break up `synthetic_evaluation.py`.
-   - Break up `workspace_staged_evaluation.py`.
-   - Preserve old import paths with temporary re-export modules if needed.
+   - `training_artifacts.py` has been reduced to artifact store/fake-runner
+     compatibility exports; remaining splits are optional unless new training
+     responsibilities land there.
+   - `synthetic_evaluation.py` has been split from trace evaluation; remaining
+     work is mostly extracting the synthetic scoring rubric into pure functions.
+   - `workspace_staged_evaluation.py` still contains staged prompt payload
+     helpers and the staged scoring rubric; review queue storage has been split
+     out.
+   - Continue preserving old import paths with temporary re-export modules if
+     needed.
 
 2. Extract pure evaluation rubrics.
+   - Synthetic behavior scoring is still implemented as methods on
+     `SyntheticBehaviorEvaluationSuite`.
+   - Staged workspace scoring is still implemented as methods on
+     `WorkspaceStagedEvaluationSuite`.
+   - Trace scoring is isolated in `trace_evaluation.py`, but its rubric can be
+     made more directly unit-testable if it grows.
+   - Shared response JSON parsing is already extracted.
    - Make scoring testable without model providers or filesystem setup.
    - Keep report serialization in infrastructure.
 
 3. Slim `ToolLoopAgent`.
-   - Extract prompt rendering.
-   - Extract history compaction.
-   - Extract decision parsing.
+   - Prompt rendering, history compaction, and decision parsing are extracted.
    - Extract portable workflow policy where it is not model-loop mechanics.
 
 ## Acceptance For Each Slice
