@@ -33,6 +33,12 @@ DEFAULT_PUBLIC_TOOLS = {
     "micro_agent_stop_trace",
     "micro_agent_review_trace",
 }
+DEFAULT_PROMPTS = {
+    "compare_local_model_on_task",
+    "collect_real_trace",
+    "review_comparison_trace",
+    "smoke_test_micro_agent",
+}
 
 
 def _model_response(payload: dict[str, object]) -> str:
@@ -102,12 +108,7 @@ def test_mcp_server_exposes_workflow_prompts() -> None:
         )
     )
 
-    assert {
-        "compare_local_model_on_task",
-        "collect_real_trace",
-        "review_comparison_trace",
-        "smoke_test_micro_agent",
-    } <= prompt_names
+    assert prompt_names == DEFAULT_PROMPTS
     assert "micro_agent_start_trace" in str(rendered.messages)
     assert "Qwen2.5-Coder-7B-Instruct" in str(rendered.messages)
 

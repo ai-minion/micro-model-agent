@@ -1,0 +1,2 @@
+"""MCP prompt registration helpers."""
+
