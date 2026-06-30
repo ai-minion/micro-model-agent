@@ -8,17 +8,15 @@ tools, JSON parsing, and trace capture.
 from __future__ import annotations
 
 import asyncio
-import json
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
 from micro_model_agent.agents.tool_loop_decisions import parse_model_response
-from micro_model_agent.agents.tool_loop_history import tool_history
+from micro_model_agent.agents.tool_loop_prompting import build_prompt
 from micro_model_agent.application.ports import ModelProvider, ToolExecutor, TraceStore
 from micro_model_agent.application.tool_loop import (
     DEFAULT_TOOL_NAMES,
-    PromptContext,
     ToolLoopAgentResult,
     ToolLoopAgentTask,
 )
@@ -75,12 +73,20 @@ class ToolLoopAgent:
                 force_final_response = turn_number > task.max_turns
                 if force_final_response:
                     used_extra_finalization_turn = True
-                prompt = self._build_prompt(
+                budget_exhausted = self._tool_budget_exhausted(
+                    task,
+                    tool_calls_made,
+                    steps,
+                )
+                final_response_only = force_final_response or budget_exhausted
+                prompt = build_prompt(
                     task,
                     transcript,
                     tool_calls_made=tool_calls_made,
                     turn_number=turn_number,
-                    force_final_response=force_final_response,
+                    final_response_only=final_response_only,
+                    missing_required_tools=self._missing_required_tools(task, steps),
+                    orchestration_hints=self._orchestration_hints(task, steps),
                     steps=steps,
                 )
                 try:
@@ -368,134 +374,6 @@ class ToolLoopAgent:
                 error="cancelled",
                 status=WorkflowStatus.CANCELLED,
             )
-    def _build_prompt(
-        self,
-        task: ToolLoopAgentTask,
-        transcript: list[dict[str, Any]],
-        *,
-        tool_calls_made: int,
-        turn_number: int,
-        force_final_response: bool = False,
-        steps: list[WorkflowStep],
-    ) -> str:
-        """Build the prompt that asks the model for one JSON decision."""
-
-        budget_exhausted = self._tool_budget_exhausted(task, tool_calls_made, steps)
-        final_response_only = force_final_response or budget_exhausted
-        missing_required_tools = self._missing_required_tools(task, steps)
-        payload: dict[str, Any] = {
-            "goal": task.goal,
-            "available_tools": [] if final_response_only else list(task.available_tools),
-            "context": self._prompt_context(task.context),
-            "loop_budget": self._loop_budget_payload(
-                task,
-                tool_calls_made=tool_calls_made,
-                turn_number=turn_number,
-                final_response_only=final_response_only,
-            ),
-        }
-        if task.required_tools:
-            payload["required_tools"] = list(task.required_tools)
-            payload["missing_required_tools"] = list(missing_required_tools)
-        orchestration_hints = self._orchestration_hints(task, steps)
-        if orchestration_hints:
-            payload["orchestration_hints"] = orchestration_hints
-        tool_history_payload = tool_history(
-            steps,
-            max_prompt_chars=task.max_tool_result_prompt_chars,
-        )
-        if tool_history_payload:
-            payload["tool_history"] = tool_history_payload
-        policy_results = [entry for entry in transcript if entry.get("role") == "tool"]
-        if policy_results:
-            payload["tool_results"] = policy_results
-        tool_schemas = self._available_tool_schemas(task)
-        if tool_schemas and not final_response_only:
-            payload["tool_schemas"] = tool_schemas
-
-        if final_response_only:
-            # When no more tools are allowed, the system prompt removes tool
-            # choices and asks for a final_response JSON object.
-            system_prompt = (
-                "You are MicroModelAgent's workflow executor. "
-                "No more tool calls are allowed. "
-                "Use the provided tool_results to answer the user. "
-                "Respond with exactly one JSON object and no markdown: "
-                '{"final_response":"Concise answer to the user.","ok":true}. '
-                "Final responses must be concise and must not repeat full tool output."
-            )
-        else:
-            # In normal turns, the model sees available tools and the exact JSON
-            # shapes it can return.
-            system_prompt = (
-                "You are MicroModelAgent's workflow executor. "
-                "Choose safe typed tool calls and follow retrieved context. "
-                "Respond with exactly one JSON object and no markdown. "
-                "Call at least one available tool before final_response. "
-                "This loop has a small fixed turn budget; each turn must either make "
-                "new progress or finish. "
-                "Track loop_budget carefully; if this is the last turn, prefer "
-                "final_response unless a required tool still has to be called. "
-                "Do not reread the same file or repeat the same write unless the previous "
-                "result was missing or failed. "
-                "After a useful write succeeds, either run one distinct verification tool "
-                "or return final_response. "
-                "Final responses must be concise and must not repeat full tool output. "
-                "For greenfield creation or scaffolding tasks, prefer repo.write_files over "
-                "repo.write_patch. If repo.search or repo.semantic_search repeatedly returns "
-                "no matches for a creation task, stop searching and create the requested files. "
-                "For a tool call, return "
-                '{"tool_name":"repo.read","arguments":{"files":[{"path":"README.md"}]},'
-                '"reason":"..."}. '
-                "When the task is complete, return "
-                '{"final_response":"Concise answer to the user.","ok":true}.'
-            )
-        return (
-            f"<|system|>\n{system_prompt}\n"
-            f"<|user|>\n{json.dumps(payload, sort_keys=True)}\n"
-            "<|assistant|>\n"
-        )
-
-    def _available_tool_schemas(self, task: ToolLoopAgentTask) -> dict[str, Any]:
-        """Return schemas only for tools that are both available and documented."""
-
-        return {
-            tool_name: task.tool_schemas[tool_name]
-            for tool_name in task.available_tools
-            if tool_name in task.tool_schemas
-        }
-
-    def _loop_budget_payload(
-        self,
-        task: ToolLoopAgentTask,
-        *,
-        tool_calls_made: int,
-        turn_number: int,
-        final_response_only: bool,
-    ) -> dict[str, Any]:
-        """Expose loop limits so the model can plan instead of guessing."""
-
-        turns_remaining = max(task.max_turns - turn_number + 1, 0)
-        tool_calls_remaining: int | None = None
-        if task.max_tool_calls is not None:
-            tool_calls_remaining = max(task.max_tool_calls - tool_calls_made, 0)
-        return {
-            "turn_number": turn_number,
-            "max_turns": task.max_turns,
-            "turns_remaining_including_current": turns_remaining,
-            "tool_calls_made": tool_calls_made,
-            "max_tool_calls": task.max_tool_calls,
-            "tool_calls_remaining": tool_calls_remaining,
-            "final_response_only": final_response_only,
-        }
-
-    def _prompt_context(self, context: PromptContext) -> PromptContext:
-        """Normalize an empty context to a string so JSON output stays simple."""
-
-        if context:
-            return context
-        return ""
-
     def _tool_budget_exhausted(
         self,
         task: ToolLoopAgentTask,

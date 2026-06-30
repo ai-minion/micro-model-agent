@@ -74,6 +74,8 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
     `agents/tool_loop_agent.py` into `agents/tool_loop_decisions.py`.
   - Tool history compaction and bulky output summarization were extracted from
     `agents/tool_loop_agent.py` into `agents/tool_loop_history.py`.
+  - Prompt payload assembly and system prompt rendering were extracted from
+    `agents/tool_loop_agent.py` into `agents/tool_loop_prompting.py`.
 
 ## Larger Remaining Slices
 
