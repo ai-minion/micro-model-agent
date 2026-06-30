@@ -47,6 +47,9 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
   - Evaluation report loading/writing was extracted from `training_artifacts.py`
     into `infrastructure/evaluation_reports.py`, with compatibility re-exports
     left in place.
+  - Metadata-only synthetic artifact evaluation was extracted from
+    `training_artifacts.py` into `infrastructure/artifact_evaluation.py`, with a
+    compatibility re-export left in place.
 
 ## Larger Remaining Slices
 

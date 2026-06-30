@@ -20,6 +20,7 @@ from micro_model_agent.application.evaluation import (
     RunWorkspaceStagedReviewWorkflow,
     RunWorkspaceStagedReviewWriteRequest,
 )
+from micro_model_agent.infrastructure.artifact_evaluation import SyntheticEvaluationSuite
 from micro_model_agent.infrastructure.dataset_metadata import (
     LocalDatasetToolProfileSummarizer,
 )
@@ -38,9 +39,6 @@ from micro_model_agent.infrastructure.synthetic_evaluation import (
     TraceBehaviorEvaluationSuite,
 )
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
-from micro_model_agent.infrastructure.training_artifacts import (
-    SyntheticEvaluationSuite,
-)
 from micro_model_agent.infrastructure.workspace_staged_evaluation import (
     LocalWorkspaceStagedReviewBuilder,
     LocalWorkspaceStagedReviewQueueWriter,
