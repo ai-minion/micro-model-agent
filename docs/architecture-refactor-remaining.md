@@ -19,6 +19,7 @@ verification details.
   - `dataset merge`
   - `dataset relabel`
   - `dataset export-traces`
+  - `dataset review-trace`
 
 ## Remaining CLI Orchestration
 
@@ -27,9 +28,6 @@ slices. Keep concrete file formats, model providers, local process execution,
 and external integrations in infrastructure. Keep Typer option parsing, output
 formatting, and exit behavior in CLI adapters.
 
-- `dataset review-trace`
-  - Parse corrected target JSON.
-  - Build and save trace review records.
 - `train synthetic`
   - Load and validate dataset examples.
   - Export training JSONL.

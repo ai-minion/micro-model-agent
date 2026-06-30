@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from typing import Any
 
 import typer
 
@@ -21,11 +19,12 @@ from micro_model_agent.application.datasets import (
     RunDatasetValidationWorkflow,
     RunTraceDatasetExportRequest,
     RunTraceDatasetExportWorkflow,
+    RunTraceReviewRequest,
+    RunTraceReviewWorkflow,
 )
 from micro_model_agent.domain.contracts import WorkflowStatus
 from micro_model_agent.domain.datasets import (
     DatasetExampleKind,
-    DatasetLabel,
     FailureMode,
     OutcomeLabel,
     QualityLabel,
@@ -48,9 +47,8 @@ from micro_model_agent.infrastructure.trace_export import (
     LocalTraceDatasetExportValidator,
 )
 from micro_model_agent.infrastructure.trace_review import (
-    JsonlTraceReviewStore,
     LocalTraceReviewReader,
-    TraceReview,
+    LocalTraceReviewWriter,
 )
 from micro_model_agent.infrastructure.trace_store import LocalWorkflowTraceReader
 from micro_model_agent.interfaces.cli.common import (
@@ -346,34 +344,35 @@ def review_trace(
     if corrected_target_json and corrected_target_file:
         _fail("pass only one of --corrected-target-json or --corrected-target-file")
 
-    corrected_target: dict[str, Any] | None = None
     raw_corrected_target: str | None = corrected_target_json
     if corrected_target_file:
         if not corrected_target_file.exists():
             _fail(f"corrected target file does not exist: {corrected_target_file}")
         raw_corrected_target = corrected_target_file.read_text(encoding="utf-8")
-    if raw_corrected_target:
-        try:
-            parsed = json.loads(raw_corrected_target)
-        except json.JSONDecodeError as exc:
-            _fail(f"corrected target must be valid JSON: {exc}")
-        if not isinstance(parsed, dict):
-            _fail("corrected target must be a JSON object")
-        corrected_target = parsed
 
-    review = TraceReview(
-        trace_id=trace_id,
-        label=DatasetLabel(
-            outcome=outcome,
-            quality=quality,
-            failure_modes=tuple(failure_mode or ()),
-            reviewer_notes=reviewer_notes,
-        ),
-        corrected_target=corrected_target,
+    workflow = RunTraceReviewWorkflow(review_writer=LocalTraceReviewWriter())
+    try:
+        result = _run(
+            workflow.run(
+                RunTraceReviewRequest(
+                    trace_id=trace_id,
+                    outcome=outcome,
+                    quality=quality,
+                    output_path=output,
+                    failure_modes=tuple(failure_mode or ()),
+                    reviewer_notes=reviewer_notes,
+                    corrected_target_json=raw_corrected_target,
+                )
+            )
+        )
+    except ValueError as exc:
+        _fail(str(exc))
+
+    typer.echo(
+        f"Recorded {result.quality.value}/{result.outcome.value} review "
+        f"for trace {result.trace_id}"
     )
-    _run(JsonlTraceReviewStore(output).save(review))
-    typer.echo(f"Recorded {quality.value}/{outcome.value} review for trace {trace_id}")
-    typer.echo(f"Review: {review.id}")
+    typer.echo(f"Review: {result.review_id}")
 
 
 def relabel_dataset(

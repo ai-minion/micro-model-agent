@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+from uuid import UUID
 
 from micro_model_agent.application.ports import (
     DatasetExampleReader,
@@ -16,11 +19,14 @@ from micro_model_agent.application.ports import (
     TraceDatasetExampleExporter,
     TraceDatasetExportValidator,
     TraceReviewReader,
+    TraceReviewRecord,
+    TraceReviewWriter,
     WorkflowTraceReader,
 )
 from micro_model_agent.domain.contracts import EvaluationResult, WorkflowStatus
 from micro_model_agent.domain.datasets import (
     DatasetExampleKind,
+    DatasetLabel,
     FailureMode,
     OutcomeLabel,
     QualityLabel,
@@ -160,6 +166,30 @@ class RunTraceDatasetExportResult:
     outcome_counts: dict[str, int]
     validation_errors: tuple[str, ...]
     saved: bool
+
+
+@dataclass(frozen=True, slots=True)
+class RunTraceReviewRequest:
+    """Request for recording a human review for one stored trace."""
+
+    trace_id: str
+    outcome: OutcomeLabel
+    quality: QualityLabel
+    output_path: Path
+    failure_modes: tuple[FailureMode, ...] = ()
+    reviewer_notes: str | None = None
+    corrected_target_json: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RunTraceReviewResult:
+    """Result returned after recording a human trace review."""
+
+    trace_id: str
+    outcome: OutcomeLabel
+    quality: QualityLabel
+    review_id: UUID
+    output_path: Path
 
 
 class RunDatasetSynthesisWorkflow:
@@ -403,3 +433,46 @@ class RunTraceDatasetExportWorkflow:
             validation_errors=tuple(errors),
             saved=saved,
         )
+
+
+class RunTraceReviewWorkflow:
+    """Create and persist one human review for a stored workflow trace."""
+
+    def __init__(self, *, review_writer: TraceReviewWriter) -> None:
+        self.review_writer = review_writer
+
+    async def run(self, request: RunTraceReviewRequest) -> RunTraceReviewResult:
+        """Run trace review recording."""
+
+        corrected_target = _parse_corrected_target(request.corrected_target_json)
+        review = TraceReviewRecord(
+            trace_id=request.trace_id,
+            label=DatasetLabel(
+                outcome=request.outcome,
+                quality=request.quality,
+                failure_modes=request.failure_modes,
+                reviewer_notes=request.reviewer_notes,
+            ),
+            corrected_target=corrected_target,
+        )
+        await self.review_writer.save_trace_review(request.output_path, review)
+        return RunTraceReviewResult(
+            trace_id=request.trace_id,
+            outcome=request.outcome,
+            quality=request.quality,
+            review_id=review.id,
+            output_path=request.output_path,
+        )
+
+
+def _parse_corrected_target(raw_corrected_target: str | None) -> dict[str, Any] | None:
+    if not raw_corrected_target:
+        return None
+
+    try:
+        parsed = json.loads(raw_corrected_target)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"corrected target must be valid JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("corrected target must be a JSON object")
+    return parsed

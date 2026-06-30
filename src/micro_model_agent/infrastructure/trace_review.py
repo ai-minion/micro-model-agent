@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
+from micro_model_agent.application.ports import TraceReviewRecord
 from micro_model_agent.domain.datasets import (
     DatasetLabel,
     FailureMode,
@@ -118,3 +119,20 @@ class LocalTraceReviewReader:
         """Return the newest review for each trace id."""
 
         return await self.store.latest_by_trace_id()
+
+
+class LocalTraceReviewWriter:
+    """Filesystem adapter for saving trace review records."""
+
+    async def save_trace_review(self, path: Path, review: TraceReviewRecord) -> None:
+        """Save a trace review to a JSONL review store."""
+
+        await JsonlTraceReviewStore(path).save(
+            TraceReview(
+                trace_id=review.trace_id,
+                label=review.label,
+                corrected_target=review.corrected_target,
+                id=review.id,
+                created_at=review.created_at,
+            )
+        )

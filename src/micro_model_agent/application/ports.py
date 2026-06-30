@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Protocol
-from uuid import UUID
+from typing import Any, Protocol
+from uuid import UUID, uuid4
 
 from micro_model_agent.domain.contracts import (
     EvaluationResult,
@@ -26,6 +26,7 @@ from micro_model_agent.domain.contracts import (
 from micro_model_agent.domain.datasets import (
     DatasetExample,
     DatasetExampleKind,
+    DatasetLabel,
     DatasetSplit,
     FailureMode,
     OutcomeLabel,
@@ -106,6 +107,17 @@ class OllamaPackageRecord:
     warnings: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class TraceReviewRecord:
+    """Application-owned record for one human trace review."""
+
+    trace_id: str
+    label: DatasetLabel
+    corrected_target: dict[str, Any] | None = None
+    id: UUID = field(default_factory=uuid4)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+
+
 class ModelProvider(Protocol):
     """Anything that can turn a prompt into model text."""
 
@@ -156,6 +168,13 @@ class TraceReviewReader(Protocol):
 
     async def latest_trace_reviews_by_trace_id(self) -> Mapping[str, object]:
         """Return the newest review record for each trace id."""
+
+
+class TraceReviewWriter(Protocol):
+    """Persists human trace review records."""
+
+    async def save_trace_review(self, path: Path, review: TraceReviewRecord) -> None:
+        """Persist one trace review record."""
 
 
 class TraceDatasetExampleExporter(Protocol):

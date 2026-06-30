@@ -18,7 +18,10 @@ from micro_model_agent.application.datasets import (
     RunDatasetValidationWorkflow,
     RunTraceDatasetExportRequest,
     RunTraceDatasetExportWorkflow,
+    RunTraceReviewRequest,
+    RunTraceReviewWorkflow,
 )
+from micro_model_agent.application.ports import TraceReviewRecord
 from micro_model_agent.domain.contracts import EvaluationResult, WorkflowStatus, WorkflowTrace
 from micro_model_agent.domain.datasets import (
     DatasetExample,
@@ -239,6 +242,16 @@ class FakeTraceDatasetExportValidator:
     def validate_trace_dataset_examples(self, examples: list[DatasetExample]) -> list[str]:
         self.validated_examples = examples
         return self.errors
+
+
+class FakeTraceReviewWriter:
+    """In-memory trace review writer for application tests."""
+
+    def __init__(self) -> None:
+        self.saved: tuple[Path, TraceReviewRecord] | None = None
+
+    async def save_trace_review(self, path: Path, review: TraceReviewRecord) -> None:
+        self.saved = (path, review)
 
 
 def test_dataset_synthesis_workflow_generates_validates_and_saves() -> None:
@@ -735,6 +748,83 @@ def test_trace_dataset_export_workflow_skips_save_when_validation_fails() -> Non
 
     assert result.saved is False
     assert result.validation_errors == ("bad trace export",)
+    assert writer.saved is None
+
+
+def test_trace_review_workflow_parses_corrected_target_and_saves_review() -> None:
+    writer = FakeTraceReviewWriter()
+    workflow = RunTraceReviewWorkflow(review_writer=writer)
+
+    result = asyncio.run(
+        workflow.run(
+            RunTraceReviewRequest(
+                trace_id="trace-1",
+                outcome=OutcomeLabel.ACCEPTED,
+                quality=QualityLabel.GOOD,
+                output_path=Path("reviews.jsonl"),
+                failure_modes=(FailureMode.BAD_PATCH,),
+                reviewer_notes="Reviewed by human.",
+                corrected_target_json='{"final_response": "corrected"}',
+            )
+        )
+    )
+
+    assert writer.saved is not None
+    path, review = writer.saved
+    assert path == Path("reviews.jsonl")
+    assert review.trace_id == "trace-1"
+    assert review.label.outcome is OutcomeLabel.ACCEPTED
+    assert review.label.quality is QualityLabel.GOOD
+    assert review.label.failure_modes == (FailureMode.BAD_PATCH,)
+    assert review.label.reviewer_notes == "Reviewed by human."
+    assert review.corrected_target == {"final_response": "corrected"}
+    assert result.review_id == review.id
+    assert result.output_path == Path("reviews.jsonl")
+
+
+def test_trace_review_workflow_rejects_invalid_corrected_target_json() -> None:
+    writer = FakeTraceReviewWriter()
+    workflow = RunTraceReviewWorkflow(review_writer=writer)
+
+    try:
+        asyncio.run(
+            workflow.run(
+                RunTraceReviewRequest(
+                    trace_id="trace-1",
+                    outcome=OutcomeLabel.REJECTED,
+                    quality=QualityLabel.BAD,
+                    output_path=Path("reviews.jsonl"),
+                    corrected_target_json="{not-json",
+                )
+            )
+        )
+    except ValueError as exc:
+        assert str(exc).startswith("corrected target must be valid JSON:")
+    else:
+        raise AssertionError("expected ValueError")
+    assert writer.saved is None
+
+
+def test_trace_review_workflow_rejects_non_object_corrected_target_json() -> None:
+    writer = FakeTraceReviewWriter()
+    workflow = RunTraceReviewWorkflow(review_writer=writer)
+
+    try:
+        asyncio.run(
+            workflow.run(
+                RunTraceReviewRequest(
+                    trace_id="trace-1",
+                    outcome=OutcomeLabel.REJECTED,
+                    quality=QualityLabel.BAD,
+                    output_path=Path("reviews.jsonl"),
+                    corrected_target_json='["not", "object"]',
+                )
+            )
+        )
+    except ValueError as exc:
+        assert str(exc) == "corrected target must be a JSON object"
+    else:
+        raise AssertionError("expected ValueError")
     assert writer.saved is None
 
 

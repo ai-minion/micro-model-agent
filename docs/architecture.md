@@ -52,6 +52,7 @@ Implemented services:
 - `RunDatasetMergeWorkflow`
 - `RunDatasetRelabelWorkflow`
 - `RunTraceDatasetExportWorkflow`
+- `RunTraceReviewWorkflow`
 - `RunPromotionGateWorkflow`
 - `RunPromotionRecordWorkflow`
 - `RunPromotionListWorkflow`
@@ -75,12 +76,13 @@ Dataset synthesis, validation, export, merge, and relabel use cases are
 represented by `RunDatasetSynthesisWorkflow`, `RunDatasetValidationWorkflow`,
 `RunDatasetExportWorkflow`, `RunDatasetMergeWorkflow`, and
 `RunDatasetRelabelWorkflow`. Trace-derived dataset export is represented by
-`RunTraceDatasetExportWorkflow`. Interfaces supply CLI options and output
-formatting, infrastructure owns template-based generation, JSONL dataset
-loading/writing, trace/review JSONL loading, trace-example export, concrete
+`RunTraceDatasetExportWorkflow`; human trace review recording is represented by
+`RunTraceReviewWorkflow`. Interfaces supply CLI options and output formatting,
+infrastructure owns template-based generation, JSONL dataset loading/writing,
+trace/review JSONL loading, trace-example export, review persistence, concrete
 validation rules, merge/deduplication and relabel policies, and SFT JSONL
 writing, and the application coordinates the generator, reader, writer,
-validator, merger, relabeler, trace exporter, and exporter ports.
+validator, merger, relabeler, trace exporter, review writer, and exporter ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,
