@@ -72,6 +72,10 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
   - Synthetic behavior scoring and aggregate/category metrics were extracted
     from `synthetic_evaluation.py` into `infrastructure/synthetic_rubrics.py`,
     with compatibility re-exports left in place.
+  - Staged workspace scoring and aggregate/category metrics were extracted from
+    `workspace_staged_evaluation.py` into
+    `infrastructure/workspace_staged_rubrics.py`, with compatibility re-exports
+    left in place.
 - Slim `ToolLoopAgent`:
   - Model decision parsing and JSON response extraction were extracted from
     `agents/tool_loop_agent.py` into `agents/tool_loop_decisions.py`.
@@ -90,14 +94,13 @@ formatting, interactive prompts, and exit behavior in CLI adapters.
      synthetic rubrics; remaining splits are optional unless new responsibilities
      land there.
    - `workspace_staged_evaluation.py` still contains staged prompt payload
-     helpers and the staged scoring rubric; review queue storage has been split
-     out.
+     helpers and provider/report orchestration; review queue storage and rubrics
+     have been split out.
    - Continue preserving old import paths with temporary re-export modules if
      needed.
 
 2. Extract pure evaluation rubrics.
-   - Staged workspace scoring is still implemented as methods on
-     `WorkspaceStagedEvaluationSuite`.
+   - Staged workspace scoring is isolated in `workspace_staged_rubrics.py`.
    - Synthetic behavior scoring is isolated in `synthetic_rubrics.py`.
    - Trace scoring is isolated in `trace_evaluation.py`, but its rubric can be
      made more directly unit-testable if it grows.
