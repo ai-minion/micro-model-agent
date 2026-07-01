@@ -12,6 +12,7 @@ APPLICATION_BANNED_PREFIXES = (
     "micro_model_agent.infrastructure",
     "micro_model_agent.interfaces",
 )
+INTERFACE_BANNED_PREFIXES = ("micro_model_agent.agents",)
 APPLICATION_BANNED_EXTERNALS = ("typer", "mcp", "pydantic")
 DOMAIN_BANNED_EXTERNALS = (
     "pydantic",
@@ -23,6 +24,119 @@ DOMAIN_BANNED_EXTERNALS = (
     "torch",
     "transformers",
 )
+FLAT_MODEL_PROVIDER_MODULES = (
+    "micro_model_agent.infrastructure.fake_model_provider",
+    "micro_model_agent.infrastructure.ollama_model_provider",
+    "micro_model_agent.infrastructure.transformers_model_provider",
+)
+FLAT_REPOSITORY_MODULES = (
+    "micro_model_agent.infrastructure.local_index",
+    "micro_model_agent.infrastructure.local_retrieval",
+    "micro_model_agent.infrastructure.repository_metadata",
+    "micro_model_agent.infrastructure.repository_paths",
+)
+FLAT_PERSISTENCE_MODULES = (
+    "micro_model_agent.infrastructure.comparison_trace",
+    "micro_model_agent.infrastructure.dataset_store",
+    "micro_model_agent.infrastructure.trace_store",
+    "micro_model_agent.infrastructure.training_records",
+    "micro_model_agent.infrastructure.workspace_registry",
+)
+FLAT_TRAINING_MODULES = (
+    "micro_model_agent.infrastructure.local_finetuning",
+    "micro_model_agent.infrastructure.ollama_packaging",
+)
+FLAT_PROMOTION_MODULES = ("micro_model_agent.infrastructure.promotion_gate",)
+FLAT_EVALUATION_MODULES = (
+    "micro_model_agent.infrastructure.artifact_evaluation",
+    "micro_model_agent.infrastructure.evaluation_comparison",
+    "micro_model_agent.infrastructure.evaluation_reports",
+    "micro_model_agent.infrastructure.evaluation_response_parsing",
+    "micro_model_agent.infrastructure.synthetic_rubrics",
+    "micro_model_agent.infrastructure.synthetic_evaluation",
+    "micro_model_agent.infrastructure.trace_rubrics",
+    "micro_model_agent.infrastructure.trace_evaluation",
+    "micro_model_agent.infrastructure.workspace_staged_rubrics",
+    "micro_model_agent.infrastructure.workspace_staged_evaluation",
+    "micro_model_agent.infrastructure.workspace_staged_review",
+)
+FLAT_TOOL_MODULES = ("micro_model_agent.infrastructure.tool_executor",)
+FLAT_DATASET_MODULES = (
+    "micro_model_agent.infrastructure.dataset_curation",
+    "micro_model_agent.infrastructure.dataset_metadata",
+    "micro_model_agent.infrastructure.dataset_prompting",
+    "micro_model_agent.infrastructure.dataset_validation",
+    "micro_model_agent.infrastructure.synthetic_data",
+)
+FLAT_TRACE_MODULES = (
+    "micro_model_agent.infrastructure.trace_export",
+    "micro_model_agent.infrastructure.trace_review",
+)
+RETIRED_CLI_COMPAT_NAMES = (
+    "_load_dotenv",
+    "_resolve_loop_model_options",
+)
+RETIRED_MCP_SERVER_COMPAT_NAMES = (
+    "_allowed_test_commands",
+    "_allowed_tool_names",
+    "_base_model_from_adapter",
+    "_model_provider",
+    "_path_from_user_input",
+    "_required_tool_names",
+    "_resolve_model_settings",
+    "_run_profile_settings",
+    "_string_config_value",
+    "_tool_prompt_schemas",
+    "_workflow_trace_store",
+)
+MODEL_PROVIDER_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "fake_model_provider.py",
+    PACKAGE_ROOT / "infrastructure" / "ollama_model_provider.py",
+    PACKAGE_ROOT / "infrastructure" / "transformers_model_provider.py",
+}
+REPOSITORY_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "local_index.py",
+    PACKAGE_ROOT / "infrastructure" / "local_retrieval.py",
+    PACKAGE_ROOT / "infrastructure" / "repository_metadata.py",
+    PACKAGE_ROOT / "infrastructure" / "repository_paths.py",
+}
+PERSISTENCE_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "comparison_trace.py",
+    PACKAGE_ROOT / "infrastructure" / "dataset_store.py",
+    PACKAGE_ROOT / "infrastructure" / "trace_store.py",
+    PACKAGE_ROOT / "infrastructure" / "training_records.py",
+    PACKAGE_ROOT / "infrastructure" / "workspace_registry.py",
+}
+TRAINING_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "local_finetuning.py",
+    PACKAGE_ROOT / "infrastructure" / "ollama_packaging.py",
+}
+PROMOTION_SHIM_PATHS = {PACKAGE_ROOT / "infrastructure" / "promotion_gate.py"}
+EVALUATION_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "artifact_evaluation.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation_comparison.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation_reports.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation_response_parsing.py",
+    PACKAGE_ROOT / "infrastructure" / "synthetic_rubrics.py",
+    PACKAGE_ROOT / "infrastructure" / "synthetic_evaluation.py",
+    PACKAGE_ROOT / "infrastructure" / "trace_rubrics.py",
+    PACKAGE_ROOT / "infrastructure" / "trace_evaluation.py",
+    PACKAGE_ROOT / "infrastructure" / "workspace_staged_rubrics.py",
+    PACKAGE_ROOT / "infrastructure" / "workspace_staged_evaluation.py",
+    PACKAGE_ROOT / "infrastructure" / "workspace_staged_review.py",
+}
+TOOL_SHIM_PATHS = {PACKAGE_ROOT / "infrastructure" / "tool_executor.py"}
+DATASET_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "dataset_curation.py",
+    PACKAGE_ROOT / "infrastructure" / "dataset_metadata.py",
+    PACKAGE_ROOT / "infrastructure" / "dataset_prompting.py",
+    PACKAGE_ROOT / "infrastructure" / "dataset_validation.py",
+    PACKAGE_ROOT / "infrastructure" / "synthetic_data.py",
+}
+TRACE_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "trace_export.py",
+    PACKAGE_ROOT / "infrastructure" / "trace_review.py",
+}
 
 
 def _production_modules(package: str) -> list[Path]:
@@ -43,6 +157,47 @@ def _imports(path: Path) -> list[str]:
         elif isinstance(node, ast.ImportFrom) and node.module:
             imports.append(node.module)
     return imports
+
+
+def _top_level_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                names.add(alias.asname or alias.name.partition(".")[0])
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                names.add(alias.asname or alias.name)
+        elif isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.Assign):
+            names.update(target.id for target in node.targets if isinstance(target, ast.Name))
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+    return names
+
+
+def _all_exports(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        assigns_all = any(
+            isinstance(target, ast.Name) and target.id == "__all__"
+            for target in node.targets
+        )
+        if not assigns_all:
+            continue
+        if not isinstance(node.value, (ast.List, ast.Tuple)):
+            raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} has dynamic __all__")
+        exports: set[str] = set()
+        for element in node.value.elts:
+            if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
+                raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} has dynamic __all__")
+            exports.add(element.value)
+        return exports
+    raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} does not define __all__")
 
 
 def test_application_layer_does_not_import_outer_layers() -> None:
@@ -67,3 +222,269 @@ def test_domain_layer_has_no_project_or_framework_imports() -> None:
                 violations.append(f"{relative_path}: {imported}")
 
     assert violations == []
+
+
+def test_cli_package_exports_only_public_app() -> None:
+    path = PACKAGE_ROOT / "interfaces" / "cli" / "__init__.py"
+
+    assert _all_exports(path) == {"app"}
+    assert set(RETIRED_CLI_COMPAT_NAMES).isdisjoint(_top_level_names(path))
+
+
+def test_mcp_server_compatibility_module_does_not_export_private_helpers() -> None:
+    path = PACKAGE_ROOT / "interfaces" / "mcp_server.py"
+    exports = _all_exports(path)
+
+    assert all(not name.startswith("_") for name in exports)
+    assert set(RETIRED_MCP_SERVER_COMPAT_NAMES).isdisjoint(_top_level_names(path))
+
+
+def test_interface_modules_do_not_import_concrete_agents() -> None:
+    violations: list[str] = []
+    for path in _production_modules("interfaces"):
+        for imported in _imports(path):
+            if imported.startswith(INTERFACE_BANNED_PREFIXES):
+                relative_path = path.relative_to(PACKAGE_ROOT)
+                violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_pure_rubrics_do_not_import_concrete_infrastructure() -> None:
+    violations: list[str] = []
+    for path in (
+        PACKAGE_ROOT / "infrastructure" / "evaluation" / "synthetic_rubric.py",
+        PACKAGE_ROOT / "infrastructure" / "evaluation" / "trace_rubric.py",
+        PACKAGE_ROOT / "infrastructure" / "evaluation" / "workspace_staged_rubric.py",
+    ):
+        violations.extend(
+            f"{path.relative_to(PACKAGE_ROOT)}: {imported}"
+            for imported in _imports(path)
+            if imported.startswith("micro_model_agent.infrastructure")
+        )
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_model_provider_package() -> None:
+    violations: list[str] = []
+    for package in ("agents", "infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in MODEL_PROVIDER_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_MODEL_PROVIDER_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_repository_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in REPOSITORY_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_REPOSITORY_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_persistence_package() -> None:
+    violations: list[str] = []
+    for package in ("agents", "infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in PERSISTENCE_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_PERSISTENCE_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_training_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in TRAINING_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_TRAINING_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_promotion_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in PROMOTION_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_PROMOTION_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_evaluation_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in EVALUATION_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_EVALUATION_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_tool_package() -> None:
+    violations: list[str] = []
+    for package in ("agents", "infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in TOOL_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_TOOL_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_dataset_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in DATASET_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_DATASET_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_trace_package() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in TRACE_SHIM_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_TRACE_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_flat_model_provider_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        MODEL_PROVIDER_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.models",
+    )
+
+    assert violations == []
+
+
+def test_flat_repository_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        REPOSITORY_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.repositories",
+    )
+
+    assert violations == []
+
+
+def test_flat_persistence_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        PERSISTENCE_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.persistence",
+    )
+
+    assert violations == []
+
+
+def test_flat_training_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        TRAINING_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.training",
+    )
+
+    assert violations == []
+
+
+def test_flat_promotion_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        PROMOTION_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.promotion",
+    )
+
+    assert violations == []
+
+
+def test_flat_evaluation_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        EVALUATION_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.evaluation",
+    )
+
+    assert violations == []
+
+
+def test_flat_tool_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        TOOL_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.tools",
+    )
+
+    assert violations == []
+
+
+def test_flat_dataset_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        DATASET_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.datasets",
+    )
+
+    assert violations == []
+
+
+def test_flat_trace_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        TRACE_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.infrastructure.traces",
+    )
+
+    assert violations == []
+
+
+def _shim_violations(paths: set[Path], *, allowed_import_prefix: str) -> list[str]:
+    violations: list[str] = []
+    for path in paths:
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        definitions = (
+            node.name
+            for node in tree.body
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+        )
+        for name in definitions:
+            violations.append(f"{path.relative_to(PACKAGE_ROOT)} defines {name}")
+        for imported in _imports(path):
+            if not imported.startswith(allowed_import_prefix):
+                violations.append(f"{path.relative_to(PACKAGE_ROOT)} imports {imported}")
+    return violations

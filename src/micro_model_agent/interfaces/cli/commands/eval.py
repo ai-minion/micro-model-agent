@@ -20,32 +20,32 @@ from micro_model_agent.application.evaluation import (
     RunWorkspaceStagedReviewWorkflow,
     RunWorkspaceStagedReviewWriteRequest,
 )
-from micro_model_agent.infrastructure.artifact_evaluation import SyntheticEvaluationSuite
-from micro_model_agent.infrastructure.dataset_metadata import (
+from micro_model_agent.infrastructure.datasets.metadata import (
     LocalDatasetToolProfileSummarizer,
 )
-from micro_model_agent.infrastructure.dataset_store import (
-    LocalDatasetExampleReader,
-)
-from micro_model_agent.infrastructure.evaluation_comparison import (
+from micro_model_agent.infrastructure.evaluation.artifact import SyntheticEvaluationSuite
+from micro_model_agent.infrastructure.evaluation.comparison import (
     LocalEvaluationComparisonReportWriter,
 )
-from micro_model_agent.infrastructure.evaluation_reports import (
+from micro_model_agent.infrastructure.evaluation.reports import (
     LocalEvaluationResultReader,
     LocalEvaluationResultWriter,
 )
-from micro_model_agent.infrastructure.synthetic_evaluation import (
+from micro_model_agent.infrastructure.evaluation.synthetic_behavior import (
     SyntheticBehaviorEvaluationSuite,
 )
-from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
-from micro_model_agent.infrastructure.trace_evaluation import TraceBehaviorEvaluationSuite
-from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+from micro_model_agent.infrastructure.evaluation.trace_behavior import TraceBehaviorEvaluationSuite
+from micro_model_agent.infrastructure.evaluation.workspace_staged import (
     WorkspaceStagedEvaluationSuite,
 )
-from micro_model_agent.infrastructure.workspace_staged_review import (
+from micro_model_agent.infrastructure.evaluation.workspace_staged_review import (
     LocalWorkspaceStagedReviewBuilder,
     LocalWorkspaceStagedReviewQueueWriter,
 )
+from micro_model_agent.infrastructure.persistence.dataset_store import (
+    LocalDatasetExampleReader,
+)
+from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.interfaces.cli.common import (
     _fail,
     _format_count_distribution,

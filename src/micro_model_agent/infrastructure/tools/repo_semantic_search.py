@@ -11,8 +11,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.infrastructure.local_index import LocalLexicalIndexReader
-from micro_model_agent.infrastructure.repository_paths import (
+from micro_model_agent.infrastructure.repositories.local_index import LocalLexicalIndexReader
+from micro_model_agent.infrastructure.repositories.paths import (
     RepositoryPathError,
     RepositoryRoot,
     looks_binary,

@@ -9,7 +9,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from micro_model_agent.infrastructure.repository_paths import RepositoryPathError, RepositoryRoot
+from micro_model_agent.infrastructure.repositories.paths import RepositoryPathError, RepositoryRoot
 from micro_model_agent.infrastructure.tools.contracts import (
     GitDiffRequest,
     GitDiffResult,

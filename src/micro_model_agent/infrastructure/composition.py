@@ -4,26 +4,41 @@ from __future__ import annotations
 
 import json
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.application.ports import ModelProvider
+from micro_model_agent.agents.coding_agent import CodingAgent
+from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
+from micro_model_agent.application.ports import DatasetExampleStore, ModelProvider, ToolExecutor
+from micro_model_agent.application.tool_loop import (
+    DEFAULT_TOOL_NAMES,
+    PrepareToolLoopRequest,
+    RunProfile,
+    RunToolLoopResult,
+    RunToolLoopWorkflow,
+    ToolLoopBudget,
+    prepare_tool_loop_run,
+)
+from micro_model_agent.application.workflows import RunAgentWorkflow
 from micro_model_agent.domain.training import ModelArtifact
-from micro_model_agent.infrastructure.comparison_trace import JsonlComparisonTraceStore
-from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
-from micro_model_agent.infrastructure.ollama_model_provider import OllamaModelProvider
-from micro_model_agent.infrastructure.repository_metadata import load_repository_config
-from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
-from micro_model_agent.infrastructure.tools.catalog import builtin_tool_prompt_schemas
-from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
-from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
-from micro_model_agent.infrastructure.training_artifacts import load_artifact_from_training_run
-from micro_model_agent.infrastructure.transformers_model_provider import (
+from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider, StaticModelProvider
+from micro_model_agent.infrastructure.models.ollama import OllamaModelProvider
+from micro_model_agent.infrastructure.models.transformers import (
     TransformersPeftModelProvider,
 )
-from micro_model_agent.infrastructure.workspace_registry import JsonlWorkspaceRegistry
+from micro_model_agent.infrastructure.persistence.comparison_trace import JsonlComparisonTraceStore
+from micro_model_agent.infrastructure.persistence.trace_store import JsonlTraceStore
+from micro_model_agent.infrastructure.persistence.workspace_registry import JsonlWorkspaceRegistry
+from micro_model_agent.infrastructure.repositories.metadata import load_repository_config
+from micro_model_agent.infrastructure.tools.catalog import (
+    BUILTIN_TOOL_SPECS,
+    builtin_tool_prompt_schemas,
+)
+from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
+from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
+from micro_model_agent.infrastructure.training_artifacts import load_artifact_from_training_run
 
 DEFAULT_TRACE_DIR = Path(".traces")
 _MODEL_CACHE: dict[tuple[str, str | None, int], TransformersPeftModelProvider] = {}
@@ -49,6 +64,18 @@ class EvaluationModelSelection:
     base_model: str | None
     adapter_path: Path | None
     artifact: ModelArtifact | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ConfiguredToolLoopResult:
+    """Result and runtime decisions for a configured tool-loop run."""
+
+    result: RunToolLoopResult
+    budget: ToolLoopBudget
+    model: dict[str, str | None]
+    available_tools: tuple[str, ...]
+    required_tools: tuple[str, ...]
+    allowed_test_command_names: tuple[str, ...]
 
 
 def resolve_model_options(
@@ -147,6 +174,105 @@ def build_model_provider(
     if require_model:
         raise ValueError("a model, base model, adapter path, or scripted responses are required")
     return None
+
+
+def runtime_model_metadata(options: RuntimeModelOptions) -> dict[str, str | None]:
+    """Return JSON-ready metadata for resolved model options."""
+
+    return {
+        "model": options.model,
+        "base_model": options.base_model,
+        "adapter_path": str(options.adapter_path) if options.adapter_path else None,
+        "selected_promotion_artifact_id": options.selected_promotion_artifact_id,
+    }
+
+
+async def run_configured_tool_loop(
+    *,
+    goal: str,
+    repository_root: str | Path,
+    model_options: RuntimeModelOptions,
+    max_new_tokens: int,
+    scripted_responses: Sequence[str] | None = None,
+    ollama_base_url: str | None = None,
+    offline: bool = False,
+    available_tools: Sequence[str] | None = None,
+    required_tools: Sequence[str] | None = None,
+    default_tools: tuple[str, ...] = DEFAULT_TOOL_NAMES,
+    max_turns: int = 8,
+    max_tool_calls: int | None = None,
+    max_tool_result_prompt_chars: int = 12_000,
+    model_timeout_seconds: float | None = None,
+    run_profile: RunProfile | None = None,
+    context: str = "",
+    schema_prompt: bool = True,
+    require_tool_call: bool = True,
+    capture_prompts: bool = False,
+    allowed_commands: Mapping[str, AllowedTestCommand | Sequence[str]] | None = None,
+    trace_repository_root: str | Path | None = None,
+    executor_wrapper: Callable[[ToolExecutor], ToolExecutor] | None = None,
+    run_metadata: dict[str, Any] | None = None,
+) -> ConfiguredToolLoopResult:
+    """Build and run the standard model-driven tool loop."""
+
+    repository = Path(repository_root)
+    command_allowlist = allowed_commands or {}
+    prepared = prepare_tool_loop_run(
+        PrepareToolLoopRequest(
+            goal=goal,
+            available_tools=tuple(available_tools) if available_tools is not None else None,
+            required_tools=tuple(required_tools) if required_tools is not None else None,
+            default_tools=default_tools,
+            known_tools=tuple(BUILTIN_TOOL_SPECS),
+            repository_has_git=(repository / ".git").exists(),
+            allow_test_run=bool(command_allowlist),
+            run_profile=run_profile,
+            budget=ToolLoopBudget(
+                max_turns=max_turns,
+                max_tool_calls=max_tool_calls,
+                max_new_tokens=max_new_tokens,
+                max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+                model_timeout_seconds=model_timeout_seconds,
+            ),
+            context=context,
+            schema_prompt=schema_prompt,
+            require_tool_call=require_tool_call,
+            capture_prompts=capture_prompts,
+            run_metadata=run_metadata or {},
+        ),
+        tool_schema_builder=lambda tool_names: tool_prompt_schemas(
+            tool_names,
+            allowed_test_commands=command_allowlist,
+        ),
+    )
+    model_provider = build_model_provider(
+        options=model_options,
+        max_new_tokens=prepared.budget.max_new_tokens,
+        scripted_responses=scripted_responses,
+        ollama_base_url=ollama_base_url,
+        offline=offline,
+    )
+    assert model_provider is not None
+
+    executor: ToolExecutor = build_builtin_tool_executor(repository, command_allowlist)
+    if executor_wrapper is not None:
+        executor = executor_wrapper(executor)
+    agent = ToolLoopAgent(
+        model_provider=model_provider,
+        tool_executor=executor,
+        trace_store=workflow_trace_store(trace_repository_root or repository),
+    )
+    workflow = RunToolLoopWorkflow(agent)
+    result = await workflow.run(prepared.request)
+
+    return ConfiguredToolLoopResult(
+        result=result,
+        budget=prepared.budget,
+        model=runtime_model_metadata(model_options),
+        available_tools=prepared.available_tools,
+        required_tools=prepared.required_tools,
+        allowed_test_command_names=tuple(command_allowlist),
+    )
 
 
 def select_evaluation_model(
@@ -271,6 +397,24 @@ def build_builtin_tool_executor(
     return BuiltinToolExecutor(repository_root, allowed_commands)
 
 
+def build_static_coding_workflow(
+    *,
+    repository_root: str | Path,
+    patch: str,
+    allowed_commands: Mapping[str, AllowedTestCommand | Sequence[str]],
+    dataset_store: DatasetExampleStore | None = None,
+) -> RunAgentWorkflow:
+    """Build the fixed coding workflow with a command-line supplied patch."""
+
+    repository = Path(repository_root)
+    agent = CodingAgent(
+        model_provider=StaticModelProvider(patch),
+        tool_executor=build_builtin_tool_executor(repository, allowed_commands),
+        trace_store=workflow_trace_store(repository),
+    )
+    return RunAgentWorkflow(agent=agent, dataset_store=dataset_store)
+
+
 def workflow_trace_store(
     repository_root: str | Path,
     *,
@@ -314,7 +458,7 @@ def workspace_registry(registry_root: str | Path) -> JsonlWorkspaceRegistry:
 def tool_prompt_schemas(
     allowed_tool_names: tuple[str, ...],
     *,
-    allowed_test_commands: Mapping[str, AllowedTestCommand],
+    allowed_test_commands: Mapping[str, object],
 ) -> dict[str, Any]:
     """Return tool schemas enriched with runtime command allowlists."""
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from micro_model_agent.infrastructure.repository_paths import RepositoryPathError, RepositoryRoot
+from micro_model_agent.infrastructure.repositories.paths import RepositoryPathError, RepositoryRoot
 
 
 def test_repository_root_resolves_relative_paths(tmp_path: Path) -> None:

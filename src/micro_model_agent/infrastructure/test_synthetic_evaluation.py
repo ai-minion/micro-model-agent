@@ -7,13 +7,13 @@ import json
 from pathlib import Path
 
 from micro_model_agent.domain.datasets import DatasetExample, OutcomeLabel
-from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
-from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
-from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.infrastructure.synthetic_evaluation import (
+from micro_model_agent.infrastructure.datasets.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.evaluation.synthetic_behavior import (
     SyntheticBehaviorEvaluationSuite,
     TraceBehaviorEvaluationSuite,
 )
+from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.infrastructure.persistence.dataset_store import load_dataset_examples
 
 
 def _response(payload: dict[str, object]) -> str:

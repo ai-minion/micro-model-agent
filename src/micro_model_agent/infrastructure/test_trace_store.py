@@ -13,7 +13,7 @@ from micro_model_agent.domain.contracts import (
     WorkflowStep,
     WorkflowTrace,
 )
-from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
+from micro_model_agent.infrastructure.persistence.trace_store import JsonlTraceStore
 
 
 def test_jsonl_trace_store_round_trips_trace(tmp_path: Path) -> None:

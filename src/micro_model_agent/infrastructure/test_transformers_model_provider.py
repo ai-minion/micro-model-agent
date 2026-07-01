@@ -1,6 +1,6 @@
 """Tests for the Transformers-backed model provider helpers."""
 
-from micro_model_agent.infrastructure.transformers_model_provider import (
+from micro_model_agent.infrastructure.models.transformers import (
     _contains_complete_json_object,
 )
 

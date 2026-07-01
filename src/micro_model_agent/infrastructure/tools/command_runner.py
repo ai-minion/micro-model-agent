@@ -12,7 +12,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from micro_model_agent.infrastructure.repository_paths import RepositoryRoot
+from micro_model_agent.infrastructure.repositories.paths import RepositoryRoot
 from micro_model_agent.infrastructure.tools.contracts import (
     TestRunRequest,
     TestRunResult,

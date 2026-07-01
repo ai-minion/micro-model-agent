@@ -14,16 +14,16 @@ from micro_model_agent.domain.datasets import (
     QualityLabel,
 )
 from micro_model_agent.domain.training import TrainingConfig
-from micro_model_agent.infrastructure.dataset_metadata import dataset_file_sha256
-from micro_model_agent.infrastructure.dataset_store import (
-    JsonlDatasetExampleStore,
-    load_dataset_examples,
-)
-from micro_model_agent.infrastructure.dataset_validation import (
+from micro_model_agent.infrastructure.datasets.metadata import dataset_file_sha256
+from micro_model_agent.infrastructure.datasets.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.datasets.validation import (
     LocalDatasetValidator,
     export_sft_jsonl,
 )
-from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.persistence.dataset_store import (
+    JsonlDatasetExampleStore,
+    load_dataset_examples,
+)
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
     SyntheticEvaluationSuite,

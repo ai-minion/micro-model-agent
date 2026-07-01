@@ -12,11 +12,11 @@ from mcp.server.fastmcp.exceptions import ToolError as FastMcpToolError
 from micro_model_agent.infrastructure.composition import (
     workspace_registry as build_workspace_registry,
 )
-from micro_model_agent.infrastructure.repository_metadata import initialize_repository
-from micro_model_agent.infrastructure.workspace_registry import (
+from micro_model_agent.infrastructure.persistence.workspace_registry import (
     WorkspaceRecord,
     workspace_record_to_dict,
 )
+from micro_model_agent.infrastructure.repositories.metadata import initialize_repository
 from micro_model_agent.interfaces.mcp.compat import WINDOWS_ABSOLUTE_PATH_RE
 
 

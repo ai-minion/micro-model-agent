@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from micro_model_agent.domain.contracts import EvaluationResult
-from micro_model_agent.infrastructure.evaluation_reports import (
+from micro_model_agent.infrastructure.evaluation.reports import (
     LocalEvaluationResultReader,
     LocalEvaluationResultWriter,
 )

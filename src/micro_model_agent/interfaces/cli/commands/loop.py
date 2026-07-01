@@ -10,9 +10,8 @@ import typer
 
 from micro_model_agent.infrastructure.composition import (
     RuntimeModelOptions,
-    build_builtin_tool_executor,
-    build_model_provider,
-    workflow_trace_store,
+    allowed_test_commands,
+    run_configured_tool_loop,
 )
 from micro_model_agent.interfaces.cli.common import (
     _fail,
@@ -125,13 +124,7 @@ def loop(
 ) -> None:
     """Run a model-driven agent loop with typed tool calls."""
 
-    from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
-    from micro_model_agent.application.tool_loop import (
-        DEFAULT_TOOL_NAMES,
-        RunToolLoopRequest,
-        RunToolLoopWorkflow,
-    )
-    from micro_model_agent.infrastructure.tools.catalog import builtin_tool_prompt_schemas
+    from micro_model_agent.application.tool_loop import DEFAULT_TOOL_NAMES
 
     _load_dotenv()
 
@@ -151,61 +144,38 @@ def loop(
             "--model, MICRO_MODEL_AGENT_DEFAULT_MODEL, or configured model default is "
             "required without scripted responses"
         )
-    try:
-        model_provider = build_model_provider(
-            options=RuntimeModelOptions(
-                model=cast(str | None, model_options["model"]),
-                base_model=cast(str | None, model_options["base_model"]),
-                adapter_path=cast(Path | None, model_options["adapter_path"]),
-            ),
-            max_new_tokens=max_new_tokens,
-            scripted_responses=responses,
-            ollama_base_url=ollama_base_url or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
-        )
-    except (ValueError, FileNotFoundError) as exc:
-        _fail(str(exc))
-    assert model_provider is not None
 
-    allowed_commands = {}
-    if verification_command and test_command:
-        allowed_commands[verification_command] = test_command
-    elif verification_command:
+    if verification_command and not test_command:
         _fail("--test-command is required when --verification-command is set")
+    allowed_commands = allowed_test_commands(verification_command, test_command)
 
-    trace_store = workflow_trace_store(repository_root)
-    executor = build_builtin_tool_executor(repository_root, allowed_commands)
-    agent = ToolLoopAgent(
-        model_provider=model_provider,
-        tool_executor=executor,
-        trace_store=trace_store,
-    )
-    workflow = RunToolLoopWorkflow(agent)
-    result = _run(
-        # The model sees the tool schemas by default, which helps it produce
-        # valid JSON arguments for the selected tools.
-        workflow.run(
-            RunToolLoopRequest(
+    try:
+        configured = _run(
+            run_configured_tool_loop(
                 goal=prompt,
+                repository_root=repository_root,
+                model_options=RuntimeModelOptions(
+                    model=cast(str | None, model_options["model"]),
+                    base_model=cast(str | None, model_options["base_model"]),
+                    adapter_path=cast(Path | None, model_options["adapter_path"]),
+                ),
+                max_new_tokens=max_new_tokens,
+                scripted_responses=responses,
+                ollama_base_url=ollama_base_url
+                or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
                 available_tools=tuple(available_tool or DEFAULT_TOOL_NAMES),
                 required_tools=tuple(required_tool or ()),
                 max_turns=max_turns,
-                context=context,
-                tool_schemas=(
-                    builtin_tool_prompt_schemas(available_tool or DEFAULT_TOOL_NAMES)
-                    if schema_prompt
-                    else {}
-                ),
-                require_tool_call=not allow_no_tool_final,
-                max_tool_result_prompt_chars=max_tool_result_prompt_chars,
                 max_tool_calls=max_tool_calls,
+                max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+                context=context,
+                schema_prompt=schema_prompt,
+                require_tool_call=not allow_no_tool_final,
                 capture_prompts=capture_prompts,
+                allowed_commands=allowed_commands,
                 run_metadata={
                     "interface": "cli.loop",
-                    "schema_prompt": schema_prompt,
-                    "capture_prompts": capture_prompts,
                     "use_adapter": use_adapter,
-                    "available_tools": list(available_tool or DEFAULT_TOOL_NAMES),
-                    "required_tools": list(required_tool or ()),
                     "model": {
                         "model": str(model_options["model"])
                         if model_options["model"]
@@ -218,7 +188,9 @@ def loop(
                 },
             )
         )
-    )
+    except (ValueError, FileNotFoundError) as exc:
+        _fail(str(exc))
+    result = configured.result
 
     typer.echo(result.response)
     typer.echo(f"Trace: {result.trace_id}")

@@ -106,11 +106,11 @@ evaluation and review queue generation are represented by
 Evaluation report comparison is represented by `RunEvaluationComparisonWorkflow`.
 Interfaces supply CLI model selection, interactive review prompts, threshold
 parsing, output formatting, and exit behavior. Infrastructure owns persisted
-report loading, JSON/JSONL report writing, concrete behavior/artifact
+report loading, JSON/JSONL report writing, scoring/rubric adapters, artifact
 evaluators, model providers, staged review record construction, and dataset
-metadata helpers, while the application coordinates dataset loading, evaluation
-execution, report metadata, score/metric comparison, review queue
-build/write orchestration, and report persistence through ports.
+metadata helpers, while the application coordinates behavior model-call loops,
+dataset loading, evaluation execution, report metadata, score/metric comparison,
+review queue build/write orchestration, and report persistence through ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,
@@ -125,11 +125,39 @@ repository-local model selection, and packaging requests.
 
 Adapters for external systems and local capabilities:
 
-- `OllamaModelProvider`
-- `LocalSemanticRetriever`
-- `LocalLexicalIndexWriter`
-- `LocalLexicalIndexReader`
-- `BuiltinToolExecutor`
+- `models.OllamaModelProvider`
+- `models.TransformersPeftModelProvider`
+- `models.StaticModelProvider`
+- `models.ScriptedModelProvider`
+- `repositories.LocalSemanticRetriever`
+- `repositories.LocalLexicalIndexWriter`
+- `repositories.LocalLexicalIndexReader`
+- `repositories.LocalRepositoryModelConfigurationStore`
+- `repositories.RepositoryRoot`
+- `persistence.JsonlTraceStore`
+- `persistence.JsonlComparisonTraceStore`
+- `persistence.JsonlDatasetExampleStore`
+- `persistence.JsonlWorkspaceRegistry`
+- `training.LocalFineTuningRunner`
+- `training.LocalOllamaAdapterPackager`
+- `promotion.LocalPromotionGateStore`
+- `evaluation.LocalEvaluationResultReader`
+- `evaluation.LocalEvaluationResultWriter`
+- `evaluation.LocalEvaluationComparisonReportWriter`
+- `evaluation.SyntheticEvaluationSuite`
+- `evaluation.SyntheticBehaviorEvaluationSuite`
+- `evaluation.TraceBehaviorEvaluationSuite`
+- `evaluation.WorkspaceStagedEvaluationSuite`
+- `evaluation.SyntheticRubric`
+- `evaluation.TraceRubric`
+- `evaluation.WorkspaceStagedRubric`
+- `datasets.SyntheticTemplateGenerator`
+- `datasets.LocalDatasetValidator`
+- `datasets.LocalDatasetMerger`
+- `datasets.LocalDatasetRelabeler`
+- `traces.LocalTraceReviewReader`
+- `traces.LocalTraceDatasetExporter`
+- `tools.BuiltinToolExecutor`
 - `RepoSearchTool`
 - `RepoReadTool`
 - `RepoSemanticSearchTool`
@@ -152,6 +180,12 @@ User-facing entrypoints:
 - MCP server
 - Public Python API
 
+The stable public compatibility imports are
+`micro_model_agent.interfaces.cli:app` and
+`micro_model_agent.interfaces.mcp_server`. Private helper behavior is tested
+through its owner modules under `interfaces/cli/*` and `interfaces/mcp/*`,
+rather than through compatibility re-exports.
+
 ### Agents
 
 Reference agents built from workflows and tools. The first implementation is
@@ -172,6 +206,9 @@ domain -> nothing project-specific
 Runtime assembly should happen at the edges, usually in `interfaces` or a small
 composition module. Application services accept explicit dependencies through
 constructors. Domain objects remain plain contracts and policy.
+Concrete reference-agent assembly lives in `infrastructure.composition`, so
+interface modules can stay thin adapters over application workflows and public
+runtime helpers.
 
 ## Retrieval
 

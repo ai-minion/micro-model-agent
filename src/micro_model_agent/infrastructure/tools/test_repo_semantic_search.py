@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
+from micro_model_agent.infrastructure.repositories.local_index import LocalLexicalIndexWriter
 from micro_model_agent.infrastructure.tools.contracts import SemanticSearchRequest
 from micro_model_agent.infrastructure.tools.repo_semantic_search import RepoSemanticSearchTool
 

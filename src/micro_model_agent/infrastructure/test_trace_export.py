@@ -15,11 +15,11 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.trace_export import (
+from micro_model_agent.infrastructure.traces.export import (
     TraceDatasetExporter,
     validate_trace_export_examples,
 )
-from micro_model_agent.infrastructure.trace_review import TraceReview
+from micro_model_agent.infrastructure.traces.review import TraceReview
 
 
 def test_trace_export_defaults_to_review_label_and_redacts_secrets() -> None:

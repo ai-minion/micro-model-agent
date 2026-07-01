@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from micro_model_agent.infrastructure.local_index import (
+from micro_model_agent.infrastructure.repositories.local_index import (
     LocalLexicalIndexReader,
     LocalLexicalIndexWriter,
 )

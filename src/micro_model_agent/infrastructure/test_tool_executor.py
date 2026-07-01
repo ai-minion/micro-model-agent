@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 
 from micro_model_agent.domain.contracts import ToolCall
-from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
+from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
 
 
 def test_builtin_tool_executor_runs_repo_search(tmp_path: Path) -> None:

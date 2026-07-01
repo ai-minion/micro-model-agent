@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from micro_model_agent.infrastructure.ollama_packaging import (
+from micro_model_agent.infrastructure.promotion.gate import PromotionRegistryEntry
+from micro_model_agent.infrastructure.training.ollama_packaging import (
     package_promoted_adapter_for_ollama,
 )
-from micro_model_agent.infrastructure.training_artifacts import PromotionRegistryEntry
 
 
 def _entry(adapter_path: Path) -> PromotionRegistryEntry:

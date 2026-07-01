@@ -9,7 +9,7 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.dataset_curation import merge_datasets, relabel_examples
+from micro_model_agent.infrastructure.datasets.curation import merge_datasets, relabel_examples
 
 
 def _example(source: str, quality: QualityLabel = QualityLabel.UNKNOWN) -> DatasetExample:

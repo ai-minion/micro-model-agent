@@ -6,8 +6,8 @@ import asyncio
 from pathlib import Path
 
 from micro_model_agent.domain.contracts import RetrievalQuery
-from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
-from micro_model_agent.infrastructure.local_retrieval import LocalSemanticRetriever
+from micro_model_agent.infrastructure.repositories.local_index import LocalLexicalIndexWriter
+from micro_model_agent.infrastructure.repositories.local_retrieval import LocalSemanticRetriever
 
 
 def test_local_semantic_retriever_returns_domain_results(tmp_path: Path) -> None:

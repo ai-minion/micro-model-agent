@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -19,6 +21,12 @@ from micro_model_agent.application.evaluation import (
     RunWorkspaceStagedReviewRequest,
     RunWorkspaceStagedReviewWorkflow,
     RunWorkspaceStagedReviewWriteRequest,
+    SyntheticBehaviorEvaluationSuite,
+    SyntheticExampleScorer,
+    TraceBehaviorEvaluationSuite,
+    TraceExampleScorer,
+    WorkspaceStagedEvaluationSuite,
+    WorkspaceStagedExampleScorer,
 )
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.datasets import (
@@ -74,6 +82,86 @@ class FakeModelProvider:
 
     async def complete(self, prompt: str) -> str:
         return '{"ok": true}'
+
+
+class RecordingModelProvider:
+    """Scripted model provider that records prompts."""
+
+    def __init__(self, responses: list[str]) -> None:
+        self.responses = responses
+        self.prompts: list[str] = []
+
+    async def complete(self, prompt: str) -> str:
+        self.prompts.append(prompt)
+        return self.responses.pop(0)
+
+
+@dataclass(frozen=True, slots=True)
+class FakeSyntheticScore:
+    """Minimal synthetic score for application evaluator tests."""
+
+    category: str | None
+    score: float
+    parse_success: bool = True
+    correct_tool: bool = True
+    valid_arguments: bool = True
+    exact_arguments: bool = True
+    expects_refusal: bool = False
+    safe_refusal: bool = True
+    repair_success: bool = True
+    unexpected_final_response: bool = False
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "category": self.category,
+            "score": self.score,
+            "safe_refusal": self.safe_refusal,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FakeTraceScore:
+    """Minimal trace score for application evaluator tests."""
+
+    category: str | None
+    score: float
+    parse_success: bool = True
+    final_response_match: bool = True
+    patch_match: bool = True
+    tool_history_match: bool = True
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "category": self.category,
+            "score": self.score,
+            "tool_history_match": self.tool_history_match,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class FakeWorkspaceStagedScore:
+    """Minimal workspace-staged score for application evaluator tests."""
+
+    category: str | None
+    score: float
+    parse_success: bool = True
+    stage_score: float = 1.0
+    stage_passed: bool = True
+
+    def as_record(self) -> dict[str, object]:
+        return {
+            "category": self.category,
+            "score": self.score,
+            "parse_success": self.parse_success,
+            "stages": [
+                {
+                    "name": "read_search",
+                    "score": self.stage_score,
+                    "passed": self.stage_passed,
+                    "errors": [],
+                }
+            ],
+        }
 
 
 class FakeBehaviorEvaluationSuite:
@@ -277,6 +365,121 @@ def test_evaluation_comparison_workflow_records_threshold_failures() -> None:
     _, record = writer.written
     assert record["passed"] is False
     assert record["errors"] == list(result.comparison.errors)
+
+
+def test_synthetic_behavior_suite_calls_model_and_scores_in_application() -> None:
+    examples = [
+        _example(source="synthetic:one"),
+        _example(source="synthetic:two"),
+    ]
+    provider = RecordingModelProvider(['{"ok": true}', '{"ok": false}'])
+    raw_responses: list[str] = []
+
+    def score_example(example: DatasetExample, raw_response: str) -> FakeSyntheticScore:
+        raw_responses.append(raw_response)
+        return FakeSyntheticScore(
+            category=str(example.source).split(":", 1)[1],
+            score=1.0 if raw_response == '{"ok": true}' else 0.5,
+        )
+
+    suite = SyntheticBehaviorEvaluationSuite(
+        score_example=cast(SyntheticExampleScorer, score_example),
+        pass_threshold=0.75,
+        default_available_tools=("repo.read",),
+    )
+
+    result = asyncio.run(suite.evaluate_model(provider, examples))
+
+    assert raw_responses == ['{"ok": true}', '{"ok": false}']
+    assert len(provider.prompts) == 2
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
+    assert result.passed is True
+    assert result.score == pytest.approx(0.75)
+    assert result.details["metrics"]["correct_tool_rate"] == 1.0
+    assert result.details["category_metrics"]["one"]["score"] == 1.0
+    assert result.details["category_metrics"]["two"]["score"] == 0.5
+
+
+def test_trace_behavior_suite_calls_model_and_scores_in_application() -> None:
+    examples = [
+        _example(source="trace:one"),
+        _example(source="trace:two"),
+    ]
+    examples[0].metadata["tool_profile"] = {"available_tools": ["repo.read"]}
+    examples[1].input["available_tools"] = ["repo.search"]
+    provider = RecordingModelProvider(['{"final_response": "done"}', '{"patch": "diff"}'])
+    raw_responses: list[str] = []
+
+    def score_example(example: DatasetExample, raw_response: str) -> FakeTraceScore:
+        raw_responses.append(raw_response)
+        return FakeTraceScore(
+            category=str(example.source).split(":", 1)[1],
+            score=1.0 if raw_response == '{"final_response": "done"}' else 0.25,
+            tool_history_match=raw_response == '{"final_response": "done"}',
+        )
+
+    suite = TraceBehaviorEvaluationSuite(
+        score_example=cast(TraceExampleScorer, score_example),
+        pass_threshold=0.5,
+        default_available_tools=("git.diff",),
+    )
+
+    result = asyncio.run(suite.evaluate_model(provider, examples))
+
+    assert raw_responses == ['{"final_response": "done"}', '{"patch": "diff"}']
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
+    assert '"available_tools": ["repo.search"]' in provider.prompts[1]
+    assert result.passed is True
+    assert result.score == pytest.approx(0.625)
+    assert result.details["metrics"]["tool_history_match_rate"] == 0.5
+    assert result.details["category_metrics"]["one"]["score"] == 1.0
+    assert result.details["category_metrics"]["two"]["score"] == 0.25
+
+
+def test_workspace_staged_suite_calls_model_and_scores_in_application() -> None:
+    examples = [
+        _example(source="workspace:one"),
+        _example(source="workspace:two"),
+    ]
+    examples[0].metadata["tool_profile"] = {"available_tools": ["repo.read"]}
+    examples[1].input["available_tools"] = ["repo.search"]
+    examples[0].input["workspace_files"] = {"src/app.py": "print('hello')"}
+    provider = RecordingModelProvider(['{"read_search": {}}', '{"diagnosis": {}}'])
+    raw_responses: list[str] = []
+
+    def score_example(
+        example: DatasetExample,
+        raw_response: str,
+    ) -> FakeWorkspaceStagedScore:
+        raw_responses.append(raw_response)
+        return FakeWorkspaceStagedScore(
+            category=str(example.source).split(":", 1)[1],
+            score=1.0 if raw_response == '{"read_search": {}}' else 0.25,
+            stage_score=1.0 if raw_response == '{"read_search": {}}' else 0.0,
+            stage_passed=raw_response == '{"read_search": {}}',
+        )
+
+    suite = WorkspaceStagedEvaluationSuite(
+        score_example=cast(WorkspaceStagedExampleScorer, score_example),
+        pass_threshold=0.5,
+        rubric_version="v2",
+        default_available_tools=("git.diff",),
+    )
+
+    result = asyncio.run(suite.evaluate_model(provider, examples))
+
+    assert raw_responses == ['{"read_search": {}}', '{"diagnosis": {}}']
+    assert '"workspace_files": {"src/app.py": "print' in provider.prompts[0]
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
+    assert '"available_tools": ["repo.search"]' in provider.prompts[1]
+    assert result.passed is True
+    assert result.score == pytest.approx(0.625)
+    assert result.details["rubric_version"] == "v2"
+    assert result.details["metrics"]["parse_success_rate"] == 1.0
+    assert result.details["metrics"]["read_search_score"] == 0.5
+    assert result.details["metrics"]["read_search_pass_rate"] == 0.5
+    assert result.details["category_metrics"]["one"]["score"] == 1.0
+    assert result.details["category_metrics"]["two"]["score"] == 0.25
 
 
 def test_synthetic_evaluation_workflow_evaluates_provider_and_writes_metadata() -> None:

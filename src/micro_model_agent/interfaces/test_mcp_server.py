@@ -7,13 +7,14 @@ import json
 import subprocess
 from pathlib import Path
 
-from micro_model_agent.infrastructure.repository_metadata import (
+from micro_model_agent.infrastructure.repositories.metadata import (
     initialize_repository,
     update_model_configuration,
 )
+from micro_model_agent.interfaces.mcp.policy.tool_names import run_profile_settings
+from micro_model_agent.interfaces.mcp.tools.run_loop import resolve_model_settings
+from micro_model_agent.interfaces.mcp.workspace import path_from_user_input
 from micro_model_agent.interfaces.mcp_server import (
-    _path_from_user_input,
-    _resolve_model_settings,
     call_builtin_tool,
     create_mcp_server,
     init_repository,
@@ -163,11 +164,11 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
 def test_path_from_user_input_maps_windows_paths_to_wsl_mounts(tmp_path: Path) -> None:
     mount_root = tmp_path / "mnt"
 
-    assert _path_from_user_input(
+    assert path_from_user_input(
         "C:/Users/Rodger/workspace5",
         wsl_mount_root=mount_root,
     ) == mount_root / "c" / "Users" / "Rodger" / "workspace5"
-    assert _path_from_user_input(
+    assert path_from_user_input(
         r"D:\Projects\code\workspace",
         wsl_mount_root=mount_root,
     ) == mount_root / "d" / "Projects" / "code" / "workspace"
@@ -195,7 +196,7 @@ def test_mcp_model_settings_use_selected_repository_config(tmp_path: Path) -> No
         },
     )
 
-    settings = _resolve_model_settings(
+    settings = resolve_model_settings(
         repository_root=tmp_path,
         adapter_path=None,
         base_model=None,
@@ -217,7 +218,7 @@ def test_mcp_model_settings_prefer_explicit_args_over_selected_config(tmp_path: 
         adapter_path="configured-adapter",
     )
 
-    settings = _resolve_model_settings(
+    settings = resolve_model_settings(
         repository_root=tmp_path,
         adapter_path="explicit-adapter",
         base_model="explicit-base",
@@ -237,7 +238,7 @@ def test_mcp_model_settings_can_disable_adapter_for_base_collection(
         adapter_path="configured-adapter",
     )
 
-    settings = _resolve_model_settings(
+    settings = resolve_model_settings(
         repository_root=tmp_path,
         adapter_path=None,
         base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
@@ -355,11 +356,9 @@ def test_run_agent_loop_applies_extended_profile_budget(tmp_path: Path) -> None:
 
 
 def test_run_profile_settings_increase_by_tier() -> None:
-    from micro_model_agent.interfaces.mcp_server import _run_profile_settings
-
-    quick = _run_profile_settings("quick")
-    standard = _run_profile_settings("standard")
-    extended = _run_profile_settings("extended")
+    quick = run_profile_settings("quick")
+    standard = run_profile_settings("standard")
+    extended = run_profile_settings("extended")
 
     assert quick["max_tool_calls"] == 8
     assert quick["max_new_tokens"] == 2048

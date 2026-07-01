@@ -14,16 +14,16 @@ from micro_model_agent.infrastructure.composition import (
     workflow_trace_store,
     workspace_registry,
 )
-from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
-from micro_model_agent.infrastructure.ollama_model_provider import OllamaModelProvider
-from micro_model_agent.infrastructure.repository_metadata import (
+from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.infrastructure.models.ollama import OllamaModelProvider
+from micro_model_agent.infrastructure.models.transformers import (
+    TransformersPeftModelProvider,
+)
+from micro_model_agent.infrastructure.repositories.metadata import (
     initialize_repository,
     update_model_configuration,
 )
-from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
-from micro_model_agent.infrastructure.transformers_model_provider import (
-    TransformersPeftModelProvider,
-)
+from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
 
 
 def test_resolve_model_options_uses_selected_repository_config(tmp_path: Path) -> None:

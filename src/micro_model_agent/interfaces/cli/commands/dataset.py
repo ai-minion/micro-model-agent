@@ -29,28 +29,28 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.dataset_curation import (
+from micro_model_agent.infrastructure.datasets.curation import (
     LocalDatasetMerger,
     LocalDatasetRelabeler,
 )
-from micro_model_agent.infrastructure.dataset_store import (
-    LocalDatasetExampleReader,
-    LocalDatasetExampleWriter,
-)
-from micro_model_agent.infrastructure.dataset_validation import (
+from micro_model_agent.infrastructure.datasets.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.datasets.validation import (
     LocalDatasetValidator,
     SftJsonlDatasetExporter,
 )
-from micro_model_agent.infrastructure.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.infrastructure.trace_export import (
+from micro_model_agent.infrastructure.persistence.dataset_store import (
+    LocalDatasetExampleReader,
+    LocalDatasetExampleWriter,
+)
+from micro_model_agent.infrastructure.persistence.trace_store import LocalWorkflowTraceReader
+from micro_model_agent.infrastructure.traces.export import (
     LocalTraceDatasetExporter,
     LocalTraceDatasetExportValidator,
 )
-from micro_model_agent.infrastructure.trace_review import (
+from micro_model_agent.infrastructure.traces.review import (
     LocalTraceReviewReader,
     LocalTraceReviewWriter,
 )
-from micro_model_agent.infrastructure.trace_store import LocalWorkflowTraceReader
 from micro_model_agent.interfaces.cli.common import (
     DEFAULT_TRACE_DIR,
     _fail,

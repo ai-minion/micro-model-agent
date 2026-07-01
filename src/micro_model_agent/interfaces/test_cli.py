@@ -17,15 +17,16 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.dataset_store import (
+from micro_model_agent.infrastructure.persistence.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
 )
-from micro_model_agent.infrastructure.repository_metadata import (
+from micro_model_agent.infrastructure.repositories.metadata import (
     initialize_repository,
     update_model_configuration,
 )
-from micro_model_agent.interfaces.cli import _load_dotenv, _resolve_loop_model_options, app
+from micro_model_agent.interfaces.cli import app
+from micro_model_agent.interfaces.cli.common import _load_dotenv, _resolve_loop_model_options
 
 
 def _registered_command_names(typer_app: typer.Typer) -> set[str]:

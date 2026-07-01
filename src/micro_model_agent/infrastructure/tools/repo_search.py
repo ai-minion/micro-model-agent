@@ -9,7 +9,7 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from micro_model_agent.infrastructure.repository_paths import (
+from micro_model_agent.infrastructure.repositories.paths import (
     RepositoryPathError,
     RepositoryRoot,
     looks_binary,

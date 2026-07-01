@@ -10,16 +10,16 @@ from micro_model_agent.application.training import (
     RunSyntheticTrainingRequest,
     RunSyntheticTrainingWorkflow,
 )
-from micro_model_agent.infrastructure.dataset_metadata import (
+from micro_model_agent.infrastructure.datasets.metadata import (
     LocalDatasetFileHasher,
     LocalDatasetToolProfileSummarizer,
 )
-from micro_model_agent.infrastructure.dataset_store import LocalDatasetExampleReader
-from micro_model_agent.infrastructure.dataset_validation import (
+from micro_model_agent.infrastructure.datasets.validation import (
     LocalDatasetValidator,
     SftJsonlDatasetExporter,
 )
-from micro_model_agent.infrastructure.local_finetuning import LocalFineTuningRunner
+from micro_model_agent.infrastructure.persistence.dataset_store import LocalDatasetExampleReader
+from micro_model_agent.infrastructure.training.local_finetuning import LocalFineTuningRunner
 from micro_model_agent.infrastructure.training_artifacts import (
     FakeTrainingRunner,
     JsonTrainingArtifactStore,

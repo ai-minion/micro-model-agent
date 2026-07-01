@@ -19,14 +19,31 @@ from micro_model_agent.domain.training import (
     TrainingRunKind,
     TrainingRunStatus,
 )
-from micro_model_agent.infrastructure.artifact_evaluation import SyntheticEvaluationSuite
-from micro_model_agent.infrastructure.evaluation_reports import (
+from micro_model_agent.infrastructure.evaluation.artifact import SyntheticEvaluationSuite
+from micro_model_agent.infrastructure.evaluation.reports import (
     LocalEvaluationResultReader,
     LocalEvaluationResultWriter,
     load_evaluation_result,
     write_evaluation_result,
 )
-from micro_model_agent.infrastructure.local_finetuning import (
+from micro_model_agent.infrastructure.persistence.training_records import (
+    load_artifact_from_training_run,
+    model_artifact_from_record,
+    model_artifact_to_record,
+    training_dataset_version,
+    training_run_to_record,
+)
+from micro_model_agent.infrastructure.promotion.gate import (
+    LocalPromotionGateStore,
+    MinimumScorePromotionPolicy,
+    PromotionRegistryEntry,
+    load_promotion_registry,
+    promotion_registry_entry_from_record,
+    promotion_registry_entry_to_record,
+    record_promoted_artifact,
+    write_promotion_gate_result,
+)
+from micro_model_agent.infrastructure.training.local_finetuning import (
     HuggingFacePeftFineTuningBackend,
     LocalFineTuningBackend,
     LocalFineTuningResult,
@@ -38,23 +55,6 @@ from micro_model_agent.infrastructure.local_finetuning import (
     _numeric_metrics,
     _target_modules,
     _training_text_from_record,
-)
-from micro_model_agent.infrastructure.promotion_gate import (
-    LocalPromotionGateStore,
-    MinimumScorePromotionPolicy,
-    PromotionRegistryEntry,
-    load_promotion_registry,
-    promotion_registry_entry_from_record,
-    promotion_registry_entry_to_record,
-    record_promoted_artifact,
-    write_promotion_gate_result,
-)
-from micro_model_agent.infrastructure.training_records import (
-    load_artifact_from_training_run,
-    model_artifact_from_record,
-    model_artifact_to_record,
-    training_dataset_version,
-    training_run_to_record,
 )
 
 __all__ = [

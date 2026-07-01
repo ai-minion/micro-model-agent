@@ -11,11 +11,11 @@ from typing import Any
 
 from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent, ToolLoopAgentTask
 from micro_model_agent.domain.contracts import WorkflowStatus
-from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
-from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
+from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.infrastructure.persistence.trace_store import JsonlTraceStore
 from micro_model_agent.infrastructure.tools.catalog import builtin_tool_prompt_schemas
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
-from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
+from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
 
 
 def _write_text(path: Path, content: str) -> None:

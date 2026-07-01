@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from micro_model_agent.domain.contracts import EvaluationResult
-from micro_model_agent.infrastructure.evaluation_comparison import compare_evaluation_results
+from micro_model_agent.infrastructure.evaluation.comparison import compare_evaluation_results
 
 
 def test_compare_evaluation_results_passes_score_and_metric_thresholds() -> None:

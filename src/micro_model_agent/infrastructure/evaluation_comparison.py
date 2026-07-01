@@ -1,14 +1,9 @@
-"""Filesystem adapters and compatibility imports for evaluation comparison."""
+"""Compatibility imports for evaluation comparison adapters."""
 
-from __future__ import annotations
-
-import json
-from pathlib import Path
-from typing import Any
-
-from micro_model_agent.application.evaluation import (
+from micro_model_agent.infrastructure.evaluation.comparison import (
     EvaluationComparisonResult,
     EvaluationMetricDelta,
+    LocalEvaluationComparisonReportWriter,
     compare_evaluation_results,
 )
 
@@ -18,20 +13,3 @@ __all__ = [
     "LocalEvaluationComparisonReportWriter",
     "compare_evaluation_results",
 ]
-
-
-class LocalEvaluationComparisonReportWriter:
-    """Filesystem adapter for writing evaluation comparison reports."""
-
-    def write_evaluation_comparison_report(
-        self,
-        path: Path,
-        record: dict[str, Any],
-    ) -> None:
-        """Write one evaluation comparison report as JSON."""
-
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            json.dumps(record, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )

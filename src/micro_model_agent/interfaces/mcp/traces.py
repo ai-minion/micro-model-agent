@@ -5,13 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.infrastructure.comparison_trace import (
-    ComparisonTraceSession,
-    add_comparison_event,
-    comparison_session_to_record,
-    review_comparison_session,
-    stop_comparison_session,
-)
 from micro_model_agent.infrastructure.composition import (
     comparison_trace_store as build_comparison_trace_store,
 )
@@ -19,7 +12,14 @@ from micro_model_agent.infrastructure.composition import trace_dir as build_trac
 from micro_model_agent.infrastructure.composition import (
     workflow_trace_store as build_workflow_trace_store,
 )
-from micro_model_agent.infrastructure.trace_store import workflow_trace_to_record
+from micro_model_agent.infrastructure.persistence.comparison_trace import (
+    ComparisonTraceSession,
+    add_comparison_event,
+    comparison_session_to_record,
+    review_comparison_session,
+    stop_comparison_session,
+)
+from micro_model_agent.infrastructure.persistence.trace_store import workflow_trace_to_record
 from micro_model_agent.interfaces.mcp.compat import TRACE_DIR_NAME
 
 

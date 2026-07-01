@@ -14,12 +14,12 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.dataset_store import load_dataset_examples
-from micro_model_agent.infrastructure.fake_model_provider import ScriptedModelProvider
-from micro_model_agent.infrastructure.workspace_staged_evaluation import (
+from micro_model_agent.infrastructure.evaluation.workspace_staged import (
     WorkspaceStagedEvaluationSuite,
     build_workspace_staged_review_records,
 )
+from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.infrastructure.persistence.dataset_store import load_dataset_examples
 
 
 def _response(payload: dict[str, object]) -> str:

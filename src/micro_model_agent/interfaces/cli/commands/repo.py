@@ -6,13 +6,14 @@ from pathlib import Path
 
 import typer
 
+from micro_model_agent.application.ports import CodingAgentTask
+from micro_model_agent.application.workflows import label_from_workflow_result
 from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
-from micro_model_agent.infrastructure.dataset_store import JsonlDatasetExampleStore
-from micro_model_agent.infrastructure.local_index import LocalLexicalIndexWriter
-from micro_model_agent.infrastructure.repository_metadata import initialize_repository
-from micro_model_agent.infrastructure.trace_store import JsonlTraceStore
+from micro_model_agent.infrastructure.composition import build_static_coding_workflow
+from micro_model_agent.infrastructure.persistence.dataset_store import JsonlDatasetExampleStore
+from micro_model_agent.infrastructure.repositories.local_index import LocalLexicalIndexWriter
+from micro_model_agent.infrastructure.repositories.metadata import initialize_repository
 from micro_model_agent.interfaces.cli.common import (
-    DEFAULT_TRACE_DIR,
     _fail,
     _format_count_distribution,
     _run,
@@ -118,13 +119,6 @@ def task(
 ) -> None:
     """Run a coding-agent task with local fake dependencies and trace capture."""
 
-    # Imports stay inside the command so lightweight commands start quickly and
-    # optional dependencies are only loaded by commands that need them.
-    from micro_model_agent.agents.coding_agent import CodingAgent, CodingAgentTask
-    from micro_model_agent.application.workflows import RunAgentWorkflow, label_from_workflow_result
-    from micro_model_agent.infrastructure.fake_model_provider import StaticModelProvider
-    from micro_model_agent.infrastructure.tool_executor import BuiltinToolExecutor
-
     allowed_commands = {}
     if verification_command and test_command:
         # test.run selects this command by name; it never receives shell text.
@@ -132,17 +126,13 @@ def task(
     elif verification_command:
         _fail("--test-command is required when --verification-command is set")
 
-    trace_store = JsonlTraceStore(repository_root / DEFAULT_TRACE_DIR / "workflows.jsonl")
-    # StaticModelProvider lets this command exercise the workflow using a patch
-    # supplied on the command line instead of calling a real model.
-    executor = BuiltinToolExecutor(repository_root, allowed_commands)
-    agent = CodingAgent(
-        model_provider=StaticModelProvider(patch),
-        tool_executor=executor,
-        trace_store=trace_store,
-    )
     dataset_store = JsonlDatasetExampleStore(dataset_output) if dataset_output else None
-    workflow = RunAgentWorkflow(agent=agent, dataset_store=dataset_store)
+    workflow = build_static_coding_workflow(
+        repository_root=repository_root,
+        patch=patch,
+        allowed_commands=allowed_commands,
+        dataset_store=dataset_store,
+    )
     task_input = CodingAgentTask(
         goal=prompt,
         dry_run=dry_run,

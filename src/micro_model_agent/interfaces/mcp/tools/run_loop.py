@@ -5,33 +5,33 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
 from micro_model_agent.application.ports import ModelProvider
-from micro_model_agent.application.tool_loop import RunToolLoopRequest, RunToolLoopWorkflow
+from micro_model_agent.application.tool_loop import normalized_tool_names
 from micro_model_agent.infrastructure.composition import (
+    ConfiguredToolLoopResult,
     RuntimeModelOptions,
     base_model_from_adapter,
-    build_builtin_tool_executor,
     build_model_provider,
     resolve_model_options,
+    run_configured_tool_loop,
     string_config_value,
 )
 from micro_model_agent.infrastructure.composition import (
     tool_prompt_schemas as build_tool_prompt_schemas,
 )
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
-from micro_model_agent.interfaces.mcp.compat import DEFAULT_7B_ADAPTER_PATH, RunProfile
+from micro_model_agent.interfaces.mcp.compat import (
+    COMPAT_REQUIRED_TOOL_ALIASES,
+    COMPAT_TOOL_ALIASES,
+    DEFAULT_7B_ADAPTER_PATH,
+    DEFAULT_MCP_AVAILABLE_TOOLS,
+    RunProfile,
+)
 from micro_model_agent.interfaces.mcp.policy.patch_policy import PatchPolicyToolExecutor
 from micro_model_agent.interfaces.mcp.policy.tool_names import (
     allowed_test_commands,
-    allowed_tool_names,
-    required_tool_names,
-    run_profile_settings,
 )
 from micro_model_agent.interfaces.mcp.traces import append_comparison_event
-from micro_model_agent.interfaces.mcp.traces import (
-    workflow_trace_store as mcp_workflow_trace_store,
-)
 
 __all__ = [
     "base_model_from_adapter",
@@ -72,33 +72,22 @@ async def run_agent_loop(
 ) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
 
-    profile_settings = run_profile_settings(run_profile)
-    max_turns = profile_settings.get("max_turns", max_turns)
-    max_tool_calls = profile_settings.get("max_tool_calls", max_tool_calls)
-    max_new_tokens = profile_settings.get("max_new_tokens", max_new_tokens)
-    max_tool_result_prompt_chars = profile_settings.get(
-        "max_tool_result_prompt_chars",
-        max_tool_result_prompt_chars,
-    )
-    model_timeout_seconds = profile_settings.get(
-        "model_timeout_seconds",
-        model_timeout_seconds,
-    )
-
     repository = Path(repository_root)
     test_commands = allowed_test_commands(
         test_command_name,
         test_command_args,
         use_default_pytest=allow_test_run and not test_command_name,
     )
-    # Tool availability is narrowed before the model sees it.
-    loop_tool_names = allowed_tool_names(
-        available_tools=available_tools,
-        repository_root=repository,
-        apply_patches=apply_patches,
-        allow_test_run=bool(test_commands),
+    loop_tool_names = normalized_tool_names(
+        available_tools,
+        default_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
+        aliases=COMPAT_TOOL_ALIASES,
     )
-    loop_required_tool_names = required_tool_names(required_tools)
+    loop_required_tool_names = normalized_tool_names(
+        required_tools,
+        default_tools=(),
+        aliases=COMPAT_REQUIRED_TOOL_ALIASES,
+    )
     model_settings = resolve_model_settings(
         repository_root=repository,
         adapter_path=adapter_path,
@@ -106,58 +95,45 @@ async def run_agent_loop(
         use_adapter=use_adapter,
         allow_missing_base_model=bool(scripted_responses),
     )
-    model_provider = model_provider_for_loop(
-        adapter_path=model_settings["adapter_path"],
-        base_model=model_settings["base_model"],
+    configured = await run_configured_tool_loop(
+        goal=goal,
+        repository_root=repository,
+        model_options=RuntimeModelOptions(
+            model=None,
+            base_model=model_settings["base_model"],
+            adapter_path=Path(model_settings["adapter_path"])
+            if model_settings["adapter_path"]
+            else None,
+            selected_promotion_artifact_id=model_settings["selected_promotion_artifact_id"],
+        ),
         max_new_tokens=max_new_tokens,
         scripted_responses=scripted_responses,
         offline=offline,
+        available_tools=loop_tool_names,
+        required_tools=loop_required_tool_names,
+        default_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
+        max_turns=max_turns,
+        max_tool_calls=max_tool_calls,
+        max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+        model_timeout_seconds=model_timeout_seconds,
+        run_profile=run_profile,
+        context=context,
+        schema_prompt=schema_prompt,
+        capture_prompts=capture_prompts,
+        allowed_commands=test_commands,
+        trace_repository_root=comparison_repository_root or repository,
+        executor_wrapper=lambda executor: PatchPolicyToolExecutor(
+            executor,
+            apply_patches=apply_patches,
+        ),
+        run_metadata={
+            "interface": "mcp",
+            "apply_patches": apply_patches,
+            "allowed_test_commands": list(test_commands),
+            "model": model_settings,
+        },
     )
-    # Wrap the normal executor so MCP-specific patch policy is enforced in one place.
-    executor = PatchPolicyToolExecutor(
-        build_builtin_tool_executor(repository, test_commands),
-        apply_patches=apply_patches,
-    )
-    trace_root = Path(comparison_repository_root or repository)
-    trace_store = mcp_workflow_trace_store(trace_root)
-    agent = ToolLoopAgent(
-        model_provider=model_provider,
-        tool_executor=executor,
-        trace_store=trace_store,
-    )
-    workflow = RunToolLoopWorkflow(agent)
-
-    result = await workflow.run(
-        RunToolLoopRequest(
-            goal=goal,
-            available_tools=loop_tool_names,
-            required_tools=loop_required_tool_names,
-            max_turns=max_turns,
-            context=context,
-            tool_schemas=tool_prompt_schemas(
-                loop_tool_names,
-                allowed_test_commands=test_commands,
-            )
-            if schema_prompt
-            else {},
-            max_tool_calls=max_tool_calls,
-            max_tool_result_prompt_chars=max_tool_result_prompt_chars,
-            model_timeout_seconds=model_timeout_seconds,
-            capture_prompts=capture_prompts,
-            run_metadata={
-                "interface": "mcp",
-                "schema_prompt": schema_prompt,
-                "capture_prompts": capture_prompts,
-                "apply_patches": apply_patches,
-                "available_tools": list(loop_tool_names),
-                "required_tools": list(loop_required_tool_names),
-                "allowed_test_commands": list(test_commands),
-                "model": model_settings,
-                "model_timeout_seconds": model_timeout_seconds,
-                "run_profile": run_profile,
-            },
-        )
-    )
+    result = configured.result
     if comparison_session_id:
         await append_comparison_event(
             repository_root=Path(comparison_repository_root or repository),
@@ -170,19 +146,10 @@ async def run_agent_loop(
                 "response": result.response,
                 "turns_used": result.turns_used,
                 "tool_calls_made": result.tool_calls_made,
-                "model": model_settings,
+                "model": configured.model,
             },
         )
-    loop_budget: dict[str, int | float | str | None] = {
-        "max_turns": max_turns,
-        "max_tool_calls": max_tool_calls,
-        "max_new_tokens": max_new_tokens,
-        "max_tool_result_prompt_chars": max_tool_result_prompt_chars,
-    }
-    if model_timeout_seconds is not None:
-        loop_budget["model_timeout_seconds"] = model_timeout_seconds
-    if run_profile is not None:
-        loop_budget["run_profile"] = run_profile
+    loop_budget = loop_budget_response(configured, run_profile=run_profile)
     # Return a compact summary rather than the full trace. The full trace can be
     # loaded by debug tooling when exposed.
     return {
@@ -192,7 +159,7 @@ async def run_agent_loop(
         "turns_used": result.turns_used,
         "tool_calls_made": result.tool_calls_made,
         "loop_budget": loop_budget,
-        "model": model_settings,
+        "model": configured.model,
         "steps": [
             {
                 "name": step.name,
@@ -204,6 +171,26 @@ async def run_agent_loop(
             for step in result.trace.steps
         ],
     }
+
+
+def loop_budget_response(
+    configured: ConfiguredToolLoopResult,
+    *,
+    run_profile: RunProfile | None,
+) -> dict[str, int | float | str | None]:
+    """Return the MCP response shape for the loop budget."""
+
+    loop_budget: dict[str, int | float | str | None] = {
+        "max_turns": configured.budget.max_turns,
+        "max_tool_calls": configured.budget.max_tool_calls,
+        "max_new_tokens": configured.budget.max_new_tokens,
+        "max_tool_result_prompt_chars": configured.budget.max_tool_result_prompt_chars,
+    }
+    if configured.budget.model_timeout_seconds is not None:
+        loop_budget["model_timeout_seconds"] = configured.budget.model_timeout_seconds
+    if run_profile is not None:
+        loop_budget["run_profile"] = run_profile
+    return loop_budget
 
 
 def model_provider_for_loop(
