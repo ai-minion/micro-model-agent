@@ -8,22 +8,8 @@ import typer
 
 from micro_model_agent.application.training import (
     RunSyntheticTrainingRequest,
-    RunSyntheticTrainingWorkflow,
 )
-from micro_model_agent.infrastructure.datasets.metadata import (
-    LocalDatasetFileHasher,
-    LocalDatasetToolProfileSummarizer,
-)
-from micro_model_agent.infrastructure.datasets.validation import (
-    LocalDatasetValidator,
-    SftJsonlDatasetExporter,
-)
-from micro_model_agent.infrastructure.persistence.dataset_store import LocalDatasetExampleReader
-from micro_model_agent.infrastructure.training.local_finetuning import LocalFineTuningRunner
-from micro_model_agent.infrastructure.training_artifacts import (
-    FakeTrainingRunner,
-    JsonTrainingArtifactStore,
-)
+from micro_model_agent.infrastructure.composition import build_synthetic_training_workflow
 from micro_model_agent.interfaces.cli.common import _load_dotenv, _run
 
 
@@ -64,17 +50,7 @@ def train_synthetic(
 
     _load_dotenv()
 
-    # dry_run uses the fake runner; real training uses the hardware-dependent runner.
-    runner = FakeTrainingRunner() if dry_run else LocalFineTuningRunner()
-    workflow = RunSyntheticTrainingWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        validator=LocalDatasetValidator(),
-        exporter=SftJsonlDatasetExporter(),
-        file_hasher=LocalDatasetFileHasher(),
-        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
-        runner=runner,
-        artifact_store=JsonTrainingArtifactStore(Path(".micro_model_agent/training")),
-    )
+    workflow = build_synthetic_training_workflow(dry_run=dry_run)
     result = _run(
         workflow.run(
             RunSyntheticTrainingRequest(

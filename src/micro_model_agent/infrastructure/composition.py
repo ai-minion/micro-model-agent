@@ -11,7 +11,30 @@ from typing import Any
 
 from micro_model_agent.agents.coding_agent import CodingAgent
 from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
+from micro_model_agent.application.datasets import (
+    RunDatasetExportWorkflow,
+    RunDatasetMergeWorkflow,
+    RunDatasetRelabelWorkflow,
+    RunDatasetSynthesisWorkflow,
+    RunDatasetValidationWorkflow,
+    RunTraceDatasetExportWorkflow,
+    RunTraceReviewWorkflow,
+)
+from micro_model_agent.application.evaluation import (
+    RunEvaluationComparisonWorkflow,
+    RunSyntheticEvaluationWorkflow,
+    RunTraceEvaluationWorkflow,
+    RunWorkspaceStagedEvaluationWorkflow,
+    RunWorkspaceStagedReviewWorkflow,
+)
 from micro_model_agent.application.ports import DatasetExampleStore, ModelProvider, ToolExecutor
+from micro_model_agent.application.promotion import (
+    RunPromotionGateWorkflow,
+    RunPromotionListWorkflow,
+    RunPromotionPackageOllamaWorkflow,
+    RunPromotionRecordWorkflow,
+    RunPromotionSelectWorkflow,
+)
 from micro_model_agent.application.tool_loop import (
     DEFAULT_TOOL_NAMES,
     PrepareToolLoopRequest,
@@ -21,24 +44,104 @@ from micro_model_agent.application.tool_loop import (
     ToolLoopBudget,
     prepare_tool_loop_run,
 )
+from micro_model_agent.application.training import RunSyntheticTrainingWorkflow
 from micro_model_agent.application.workflows import RunAgentWorkflow
 from micro_model_agent.domain.training import ModelArtifact
+from micro_model_agent.infrastructure.datasets.curation import (
+    LocalDatasetMerger,
+    LocalDatasetRelabeler,
+)
+from micro_model_agent.infrastructure.datasets.metadata import (
+    LocalDatasetFileHasher,
+    LocalDatasetToolProfileSummarizer,
+)
+from micro_model_agent.infrastructure.datasets.synthetic_data import SyntheticTemplateGenerator
+from micro_model_agent.infrastructure.datasets.validation import (
+    LocalDatasetValidator,
+    SftJsonlDatasetExporter,
+)
+from micro_model_agent.infrastructure.evaluation.artifact import SyntheticEvaluationSuite
+from micro_model_agent.infrastructure.evaluation.comparison import (
+    LocalEvaluationComparisonReportWriter,
+)
+from micro_model_agent.infrastructure.evaluation.reports import (
+    LocalEvaluationResultReader,
+    LocalEvaluationResultWriter,
+)
+from micro_model_agent.infrastructure.evaluation.synthetic_behavior import (
+    SyntheticBehaviorEvaluationSuite,
+)
+from micro_model_agent.infrastructure.evaluation.trace_behavior import (
+    TraceBehaviorEvaluationSuite,
+)
+from micro_model_agent.infrastructure.evaluation.workspace_staged import (
+    WorkspaceStagedEvaluationSuite,
+)
+from micro_model_agent.infrastructure.evaluation.workspace_staged_review import (
+    LocalWorkspaceStagedReviewBuilder,
+    LocalWorkspaceStagedReviewQueueWriter,
+)
 from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider, StaticModelProvider
 from micro_model_agent.infrastructure.models.ollama import OllamaModelProvider
 from micro_model_agent.infrastructure.models.transformers import (
     TransformersPeftModelProvider,
 )
 from micro_model_agent.infrastructure.persistence.comparison_trace import JsonlComparisonTraceStore
-from micro_model_agent.infrastructure.persistence.trace_store import JsonlTraceStore
-from micro_model_agent.infrastructure.persistence.workspace_registry import JsonlWorkspaceRegistry
-from micro_model_agent.infrastructure.repositories.metadata import load_repository_config
+from micro_model_agent.infrastructure.persistence.dataset_store import (
+    JsonlDatasetExampleStore,
+    LocalDatasetExampleReader,
+    LocalDatasetExampleWriter,
+)
+from micro_model_agent.infrastructure.persistence.trace_store import (
+    JsonlTraceStore,
+    LocalWorkflowTraceReader,
+)
+from micro_model_agent.infrastructure.persistence.training_records import (
+    load_artifact_from_training_run,
+)
+from micro_model_agent.infrastructure.persistence.workspace_registry import (
+    JsonlWorkspaceRegistry,
+    WorkspaceRecord,
+    workspace_record_to_dict,
+)
+from micro_model_agent.infrastructure.promotion.gate import (
+    LocalPromotionGateStore,
+    MinimumScorePromotionPolicy,
+)
+from micro_model_agent.infrastructure.repositories.local_index import (
+    LocalIndexResult,
+    LocalLexicalIndexWriter,
+)
+from micro_model_agent.infrastructure.repositories.metadata import (
+    LocalRepositoryModelConfigurationStore,
+    RepositoryInitializationResult,
+    initialize_repository,
+    is_repository_initialized,
+    load_repository_config,
+)
 from micro_model_agent.infrastructure.tools.catalog import (
     BUILTIN_TOOL_SPECS,
+    TOOL_ARGUMENT_CONTRACTS,
     builtin_tool_prompt_schemas,
 )
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
 from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
-from micro_model_agent.infrastructure.training_artifacts import load_artifact_from_training_run
+from micro_model_agent.infrastructure.traces.export import (
+    LocalTraceDatasetExporter,
+    LocalTraceDatasetExportValidator,
+)
+from micro_model_agent.infrastructure.traces.review import (
+    LocalTraceReviewReader,
+    LocalTraceReviewWriter,
+)
+from micro_model_agent.infrastructure.training.artifacts import (
+    FakeTrainingRunner,
+    JsonTrainingArtifactStore,
+)
+from micro_model_agent.infrastructure.training.local_finetuning import LocalFineTuningRunner
+from micro_model_agent.infrastructure.training.ollama_packaging import (
+    LocalOllamaAdapterPackager,
+)
 
 DEFAULT_TRACE_DIR = Path(".traces")
 _MODEL_CACHE: dict[tuple[str, str | None, int], TransformersPeftModelProvider] = {}
@@ -413,6 +516,293 @@ def build_static_coding_workflow(
         trace_store=workflow_trace_store(repository),
     )
     return RunAgentWorkflow(agent=agent, dataset_store=dataset_store)
+
+
+def build_jsonl_dataset_example_store(path: str | Path) -> DatasetExampleStore:
+    """Build the local JSONL dataset store used by coding task capture."""
+
+    return JsonlDatasetExampleStore(path)
+
+
+def initialize_local_repository(
+    repository_root: str | Path,
+    *,
+    default_model: str | None = None,
+    base_model: str | None = None,
+    adapter_path: str | Path | None = None,
+) -> RepositoryInitializationResult:
+    """Initialize local MicroModelAgent repository metadata."""
+
+    return initialize_repository(
+        repository_root,
+        default_model=default_model,
+        base_model=base_model,
+        adapter_path=adapter_path,
+    )
+
+
+def local_repository_initialized(repository_root: str | Path) -> bool:
+    """Return whether local MicroModelAgent metadata is initialized."""
+
+    return is_repository_initialized(repository_root)
+
+
+def write_local_repository_index(
+    repository_root: str | Path,
+    *,
+    max_file_bytes: int,
+) -> LocalIndexResult:
+    """Write the standard local lexical repository index."""
+
+    return LocalLexicalIndexWriter(
+        repository_root,
+        max_file_bytes=max_file_bytes,
+    ).write()
+
+
+async def register_workspace_record(
+    *,
+    registry_root: str | Path,
+    workspace_path: str | Path,
+    name: str | None = None,
+    metadata: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Persist a workspace record and return its JSON-ready representation."""
+
+    record = WorkspaceRecord(
+        path=str(workspace_path),
+        name=name,
+        metadata=dict(metadata or {}),
+    )
+    await workspace_registry(registry_root).save(record)
+    return workspace_record_to_dict(record)
+
+
+async def registered_workspace_path(
+    *,
+    registry_root: str | Path,
+    workspace_id: str,
+) -> Path | None:
+    """Resolve a registered workspace id to its repository path."""
+
+    workspace = await workspace_registry(registry_root).get(workspace_id)
+    if workspace is None:
+        return None
+    return Path(workspace.path)
+
+
+def build_synthetic_training_workflow(
+    *,
+    dry_run: bool,
+    artifact_store_root: str | Path = Path(".micro_model_agent/training"),
+) -> RunSyntheticTrainingWorkflow:
+    """Build the standard synthetic training workflow for CLI entrypoints."""
+
+    runner = FakeTrainingRunner() if dry_run else LocalFineTuningRunner()
+    return RunSyntheticTrainingWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+        exporter=SftJsonlDatasetExporter(),
+        file_hasher=LocalDatasetFileHasher(),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        runner=runner,
+        artifact_store=JsonTrainingArtifactStore(artifact_store_root),
+    )
+
+
+def build_dataset_synthesis_workflow(
+    *,
+    template_dir: str | Path,
+) -> RunDatasetSynthesisWorkflow:
+    """Build the standard synthetic dataset generation workflow."""
+
+    return RunDatasetSynthesisWorkflow(
+        generator=SyntheticTemplateGenerator(template_dir),
+        validator=LocalDatasetValidator(),
+        example_writer=LocalDatasetExampleWriter(),
+    )
+
+
+def build_dataset_validation_workflow() -> RunDatasetValidationWorkflow:
+    """Build the standard persisted dataset validation workflow."""
+
+    return RunDatasetValidationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+    )
+
+
+def build_dataset_export_workflow() -> RunDatasetExportWorkflow:
+    """Build the standard dataset export workflow."""
+
+    return RunDatasetExportWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        validator=LocalDatasetValidator(),
+        exporter=SftJsonlDatasetExporter(),
+    )
+
+
+def build_trace_dataset_export_workflow(
+    *,
+    trace_path: str | Path,
+    review_path: str | Path,
+) -> RunTraceDatasetExportWorkflow:
+    """Build the standard trace-to-dataset export workflow."""
+
+    return RunTraceDatasetExportWorkflow(
+        trace_reader=LocalWorkflowTraceReader(trace_path),
+        review_reader=LocalTraceReviewReader(review_path),
+        trace_exporter=LocalTraceDatasetExporter(),
+        trace_export_validator=LocalTraceDatasetExportValidator(),
+        example_writer=LocalDatasetExampleWriter(),
+    )
+
+
+def build_trace_review_workflow() -> RunTraceReviewWorkflow:
+    """Build the standard human trace review recording workflow."""
+
+    return RunTraceReviewWorkflow(review_writer=LocalTraceReviewWriter())
+
+
+def build_dataset_relabel_workflow() -> RunDatasetRelabelWorkflow:
+    """Build the standard dataset relabeling workflow."""
+
+    return RunDatasetRelabelWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        relabeler=LocalDatasetRelabeler(),
+        example_writer=LocalDatasetExampleWriter(),
+        validator=LocalDatasetValidator(),
+    )
+
+
+def build_dataset_merge_workflow() -> RunDatasetMergeWorkflow:
+    """Build the standard dataset merge workflow."""
+
+    return RunDatasetMergeWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        merger=LocalDatasetMerger(),
+        validator=LocalDatasetValidator(),
+        example_writer=LocalDatasetExampleWriter(),
+    )
+
+
+def default_evaluation_available_tools() -> tuple[str, ...]:
+    """Return the default tool names used in behavior evaluation prompts."""
+
+    return tuple(TOOL_ARGUMENT_CONTRACTS)
+
+
+def build_synthetic_evaluation_workflow(
+    *,
+    pass_threshold: float,
+) -> RunSyntheticEvaluationWorkflow:
+    """Build the standard synthetic evaluation workflow."""
+
+    return RunSyntheticEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=SyntheticBehaviorEvaluationSuite(pass_threshold=pass_threshold),
+        artifact_suite=SyntheticEvaluationSuite(),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
+    )
+
+
+def build_trace_evaluation_workflow(
+    *,
+    pass_threshold: float,
+) -> RunTraceEvaluationWorkflow:
+    """Build the standard trace-derived evaluation workflow."""
+
+    return RunTraceEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=TraceBehaviorEvaluationSuite(pass_threshold=pass_threshold),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
+    )
+
+
+def build_workspace_staged_evaluation_workflow(
+    *,
+    pass_threshold: float,
+    rubric_version: str,
+) -> RunWorkspaceStagedEvaluationWorkflow:
+    """Build the standard staged workspace evaluation workflow."""
+
+    return RunWorkspaceStagedEvaluationWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        behavior_suite=WorkspaceStagedEvaluationSuite(
+            pass_threshold=pass_threshold,
+            rubric_version=rubric_version,
+        ),
+        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
+        evaluation_writer=LocalEvaluationResultWriter(),
+    )
+
+
+def build_workspace_staged_review_workflow() -> RunWorkspaceStagedReviewWorkflow:
+    """Build the standard staged workspace review queue workflow."""
+
+    return RunWorkspaceStagedReviewWorkflow(
+        example_reader=LocalDatasetExampleReader(),
+        evaluation_reader=LocalEvaluationResultReader(),
+        review_builder=LocalWorkspaceStagedReviewBuilder(),
+        review_writer=LocalWorkspaceStagedReviewQueueWriter(),
+    )
+
+
+def build_evaluation_comparison_workflow() -> RunEvaluationComparisonWorkflow:
+    """Build the standard evaluation comparison workflow."""
+
+    return RunEvaluationComparisonWorkflow(
+        evaluation_reader=LocalEvaluationResultReader(),
+        comparison_writer=LocalEvaluationComparisonReportWriter(),
+    )
+
+
+def build_promotion_gate_workflow() -> RunPromotionGateWorkflow:
+    """Build the standard promotion gate workflow."""
+
+    store = LocalPromotionGateStore()
+    return RunPromotionGateWorkflow(
+        artifact_reader=store,
+        evaluation_reader=store,
+        result_writer=store,
+        policy_factory=MinimumScorePromotionPolicy,
+    )
+
+
+def build_promotion_record_workflow() -> RunPromotionRecordWorkflow:
+    """Build the standard promotion registry record workflow."""
+
+    store = LocalPromotionGateStore()
+    return RunPromotionRecordWorkflow(
+        artifact_reader=store,
+        registry_writer=store,
+    )
+
+
+def build_promotion_list_workflow() -> RunPromotionListWorkflow:
+    """Build the standard promotion registry listing workflow."""
+
+    return RunPromotionListWorkflow(registry_reader=LocalPromotionGateStore())
+
+
+def build_promotion_select_workflow() -> RunPromotionSelectWorkflow:
+    """Build the standard repository model selection workflow."""
+
+    return RunPromotionSelectWorkflow(
+        registry_reader=LocalPromotionGateStore(),
+        configuration_writer=LocalRepositoryModelConfigurationStore(),
+    )
+
+
+def build_promotion_package_ollama_workflow() -> RunPromotionPackageOllamaWorkflow:
+    """Build the standard Ollama packaging workflow for promoted adapters."""
+
+    return RunPromotionPackageOllamaWorkflow(
+        registry_reader=LocalPromotionGateStore(),
+        packager=LocalOllamaAdapterPackager(),
+    )
 
 
 def workflow_trace_store(

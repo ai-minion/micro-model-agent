@@ -126,12 +126,14 @@ Move:
 - `dataset_store.py` -> `infrastructure/persistence/dataset_store.py` **done**
 - `training_records.py` -> `infrastructure/persistence/training_records.py` **done**
 - `workspace_registry.py` -> `infrastructure/persistence/workspace_registry.py` **done**
-- `training_artifacts.py` **not moved in this slice**
+- `training_artifacts.py` -> split cohesive pieces into
+  `infrastructure/training/artifacts.py` and existing grouped persistence,
+  evaluation, promotion, and training modules **started**
 
 Some of these include more than persistence today. Move only cohesive pieces
-when needed. `training_artifacts.py` currently also exposes fake training,
-fine-tuning, evaluation-reader, and promotion helpers, so it remains a
-follow-up candidate rather than being forced into `persistence/`.
+when needed. `training_artifacts.py` now remains as a compatibility facade for
+older callers that imported training, evaluation, persistence, and promotion
+helpers from one place.
 
 ### Repositories
 
@@ -152,10 +154,10 @@ Move:
 - `local_finetuning.py` -> `infrastructure/training/local_finetuning.py` **done**
 - `ollama_packaging.py` -> `infrastructure/training/ollama_packaging.py` **done**
 
-Consider keeping `training_artifacts.py` as a compatibility shim after moving
-store and record helpers. It remains a follow-up candidate because it still
-mixes artifact storage, fake training, evaluation re-exports, and compatibility
-imports.
+`training_artifacts.py` is now a compatibility facade after moving
+`JsonTrainingArtifactStore` and `FakeTrainingRunner` to
+`infrastructure/training/artifacts.py`. Keep new internal imports on the owner
+modules.
 
 ### Evaluation
 

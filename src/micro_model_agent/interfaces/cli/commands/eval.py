@@ -9,43 +9,20 @@ import typer
 
 from micro_model_agent.application.evaluation import (
     RunEvaluationComparisonRequest,
-    RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationRequest,
-    RunSyntheticEvaluationWorkflow,
     RunTraceEvaluationRequest,
-    RunTraceEvaluationWorkflow,
     RunWorkspaceStagedEvaluationRequest,
-    RunWorkspaceStagedEvaluationWorkflow,
     RunWorkspaceStagedReviewRequest,
-    RunWorkspaceStagedReviewWorkflow,
     RunWorkspaceStagedReviewWriteRequest,
 )
-from micro_model_agent.infrastructure.datasets.metadata import (
-    LocalDatasetToolProfileSummarizer,
+from micro_model_agent.infrastructure.composition import (
+    build_evaluation_comparison_workflow,
+    build_synthetic_evaluation_workflow,
+    build_trace_evaluation_workflow,
+    build_workspace_staged_evaluation_workflow,
+    build_workspace_staged_review_workflow,
+    default_evaluation_available_tools,
 )
-from micro_model_agent.infrastructure.evaluation.artifact import SyntheticEvaluationSuite
-from micro_model_agent.infrastructure.evaluation.comparison import (
-    LocalEvaluationComparisonReportWriter,
-)
-from micro_model_agent.infrastructure.evaluation.reports import (
-    LocalEvaluationResultReader,
-    LocalEvaluationResultWriter,
-)
-from micro_model_agent.infrastructure.evaluation.synthetic_behavior import (
-    SyntheticBehaviorEvaluationSuite,
-)
-from micro_model_agent.infrastructure.evaluation.trace_behavior import TraceBehaviorEvaluationSuite
-from micro_model_agent.infrastructure.evaluation.workspace_staged import (
-    WorkspaceStagedEvaluationSuite,
-)
-from micro_model_agent.infrastructure.evaluation.workspace_staged_review import (
-    LocalWorkspaceStagedReviewBuilder,
-    LocalWorkspaceStagedReviewQueueWriter,
-)
-from micro_model_agent.infrastructure.persistence.dataset_store import (
-    LocalDatasetExampleReader,
-)
-from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 from micro_model_agent.interfaces.cli.common import (
     _fail,
     _format_count_distribution,
@@ -167,13 +144,7 @@ def eval_synthetic(
         ollama_base_url=ollama_base_url,
     )
 
-    workflow = RunSyntheticEvaluationWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        behavior_suite=SyntheticBehaviorEvaluationSuite(pass_threshold=pass_threshold),
-        artifact_suite=SyntheticEvaluationSuite(),
-        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
-        evaluation_writer=LocalEvaluationResultWriter(),
-    )
+    workflow = build_synthetic_evaluation_workflow(pass_threshold=pass_threshold)
     try:
         workflow_result = _run(
             workflow.run(
@@ -189,7 +160,7 @@ def eval_synthetic(
                     adapter_path=model_selection.adapter_path,
                     max_examples=max_examples,
                     output_path=output,
-                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                    default_available_tools=default_evaluation_available_tools(),
                 )
             )
         )
@@ -284,12 +255,7 @@ def eval_traces(
         ollama_base_url=ollama_base_url,
     )
 
-    workflow = RunTraceEvaluationWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        behavior_suite=TraceBehaviorEvaluationSuite(pass_threshold=pass_threshold),
-        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
-        evaluation_writer=LocalEvaluationResultWriter(),
-    )
+    workflow = build_trace_evaluation_workflow(pass_threshold=pass_threshold)
     try:
         workflow_result = _run(
             workflow.run(
@@ -304,7 +270,7 @@ def eval_traces(
                     adapter_path=model_selection.adapter_path,
                     max_examples=max_examples,
                     output_path=output,
-                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                    default_available_tools=default_evaluation_available_tools(),
                 )
             )
         )
@@ -402,14 +368,9 @@ def eval_workspace_staged(
     if rubric_version not in {"legacy", "v2", "auto"}:
         _fail(f"Unsupported workspace-staged rubric version: {rubric_version}")
 
-    workflow = RunWorkspaceStagedEvaluationWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        behavior_suite=WorkspaceStagedEvaluationSuite(
-            pass_threshold=pass_threshold,
-            rubric_version=rubric_version,
-        ),
-        tool_profile_summarizer=LocalDatasetToolProfileSummarizer(),
-        evaluation_writer=LocalEvaluationResultWriter(),
+    workflow = build_workspace_staged_evaluation_workflow(
+        pass_threshold=pass_threshold,
+        rubric_version=rubric_version,
     )
     try:
         workflow_result = _run(
@@ -425,7 +386,7 @@ def eval_workspace_staged(
                     adapter_path=model_selection.adapter_path,
                     max_examples=max_examples,
                     output_path=output,
-                    default_available_tools=tuple(TOOL_ARGUMENT_CONTRACTS),
+                    default_available_tools=default_evaluation_available_tools(),
                 )
             )
         )
@@ -473,12 +434,7 @@ def review_workspace_staged(
 ) -> None:
     """Build or complete a staged workspace review queue from eval reports."""
 
-    workflow = RunWorkspaceStagedReviewWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        evaluation_reader=LocalEvaluationResultReader(),
-        review_builder=LocalWorkspaceStagedReviewBuilder(),
-        review_writer=LocalWorkspaceStagedReviewQueueWriter(),
-    )
+    workflow = build_workspace_staged_review_workflow()
     try:
         build_result = workflow.build(
             RunWorkspaceStagedReviewRequest(
@@ -568,10 +524,7 @@ def eval_compare(
 
     thresholds = _parse_metric_delta_options(minimum_metric_delta or [])
     report_path = output or adapter_report.with_suffix(".comparison.json")
-    workflow = RunEvaluationComparisonWorkflow(
-        evaluation_reader=LocalEvaluationResultReader(),
-        comparison_writer=LocalEvaluationComparisonReportWriter(),
-    )
+    workflow = build_evaluation_comparison_workflow()
     result = workflow.run(
         RunEvaluationComparisonRequest(
             baseline_report_path=baseline_report,

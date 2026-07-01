@@ -9,10 +9,12 @@ import typer
 from micro_model_agent.application.ports import CodingAgentTask
 from micro_model_agent.application.workflows import label_from_workflow_result
 from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
-from micro_model_agent.infrastructure.composition import build_static_coding_workflow
-from micro_model_agent.infrastructure.persistence.dataset_store import JsonlDatasetExampleStore
-from micro_model_agent.infrastructure.repositories.local_index import LocalLexicalIndexWriter
-from micro_model_agent.infrastructure.repositories.metadata import initialize_repository
+from micro_model_agent.infrastructure.composition import (
+    build_jsonl_dataset_example_store,
+    build_static_coding_workflow,
+    initialize_local_repository,
+    write_local_repository_index,
+)
 from micro_model_agent.interfaces.cli.common import (
     _fail,
     _format_count_distribution,
@@ -48,7 +50,7 @@ def init(
 ) -> None:
     """Initialize MicroModelAgent metadata for the current repository."""
 
-    result = initialize_repository(
+    result = initialize_local_repository(
         repository_root,
         default_model=default_model,
         base_model=base_model,
@@ -71,10 +73,10 @@ def index(
 ) -> None:
     """Index the current repository."""
 
-    result = LocalLexicalIndexWriter(
+    result = write_local_repository_index(
         repository_root,
         max_file_bytes=max_file_bytes,
-    ).write()
+    )
     typer.echo(f"Indexed {result.indexed_file_count} files into {result.index_path}")
     typer.echo(
         "Terms: "
@@ -126,7 +128,9 @@ def task(
     elif verification_command:
         _fail("--test-command is required when --verification-command is set")
 
-    dataset_store = JsonlDatasetExampleStore(dataset_output) if dataset_output else None
+    dataset_store = (
+        build_jsonl_dataset_example_store(dataset_output) if dataset_output else None
+    )
     workflow = build_static_coding_workflow(
         repository_root=repository_root,
         patch=patch,

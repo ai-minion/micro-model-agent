@@ -10,13 +10,13 @@ from uuid import uuid4
 from mcp.server.fastmcp.exceptions import ToolError as FastMcpToolError
 
 from micro_model_agent.infrastructure.composition import (
+    initialize_local_repository,
+    register_workspace_record,
+    registered_workspace_path,
+)
+from micro_model_agent.infrastructure.composition import (
     workspace_registry as build_workspace_registry,
 )
-from micro_model_agent.infrastructure.persistence.workspace_registry import (
-    WorkspaceRecord,
-    workspace_record_to_dict,
-)
-from micro_model_agent.infrastructure.repositories.metadata import initialize_repository
 from micro_model_agent.interfaces.mcp.compat import WINDOWS_ABSOLUTE_PATH_RE
 
 
@@ -48,19 +48,19 @@ async def init_workspace(
 
     init_result = None
     if initialize:
-        init_result = initialize_repository(workspace_path).to_dict()
+        init_result = initialize_local_repository(workspace_path).to_dict()
         if init_result.get("ok") is not True:
             return {"ok": False, "error": init_result.get("error"), "init": init_result}
 
-    record = WorkspaceRecord(
-        path=str(workspace_path),
+    workspace = await register_workspace_record(
+        registry_root=registry_base,
+        workspace_path=workspace_path,
         name=name,
         metadata=dict(metadata or {}),
     )
-    await workspace_registry(registry_base).save(record)
     return {
         "ok": True,
-        "workspace": workspace_record_to_dict(record),
+        "workspace": workspace,
         "repository_root": str(workspace_path),
         "init": init_result,
     }
@@ -75,7 +75,7 @@ def init_repository(
 ) -> dict[str, Any]:
     """Initialize repository metadata through MCP."""
 
-    return initialize_repository(
+    return initialize_local_repository(
         repository_root,
         default_model=default_model,
         base_model=base_model,
@@ -93,10 +93,13 @@ async def resolve_workspace_root(
 
     if not workspace_id:
         return Path(repository_root)
-    workspace = await workspace_registry(registry_root.resolve()).get(workspace_id)
-    if workspace is None:
+    workspace_path = await registered_workspace_path(
+        registry_root=registry_root.resolve(),
+        workspace_id=workspace_id,
+    )
+    if workspace_path is None:
         raise FastMcpToolError(f"workspace_id not found: {workspace_id}")
-    return Path(workspace.path)
+    return workspace_path
 
 
 def workspace_registry(registry_root: Path):

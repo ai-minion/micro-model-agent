@@ -8,24 +8,18 @@ import typer
 
 from micro_model_agent.application.promotion import (
     RunPromotionGateRequest,
-    RunPromotionGateWorkflow,
     RunPromotionListRequest,
-    RunPromotionListWorkflow,
     RunPromotionPackageOllamaRequest,
-    RunPromotionPackageOllamaWorkflow,
     RunPromotionRecordRequest,
-    RunPromotionRecordWorkflow,
     RunPromotionSelectRequest,
-    RunPromotionSelectWorkflow,
 )
-from micro_model_agent.infrastructure.promotion.gate import (
-    LocalPromotionGateStore,
-    MinimumScorePromotionPolicy,
+from micro_model_agent.infrastructure.composition import (
+    build_promotion_gate_workflow,
+    build_promotion_list_workflow,
+    build_promotion_package_ollama_workflow,
+    build_promotion_record_workflow,
+    build_promotion_select_workflow,
 )
-from micro_model_agent.infrastructure.repositories.metadata import (
-    LocalRepositoryModelConfigurationStore,
-)
-from micro_model_agent.infrastructure.training.ollama_packaging import LocalOllamaAdapterPackager
 from micro_model_agent.interfaces.cli.common import _fail, _run
 
 
@@ -55,13 +49,7 @@ def promote_gate(
 ) -> None:
     """Gate promotion on one or more persisted evaluation reports."""
 
-    store = LocalPromotionGateStore()
-    workflow = RunPromotionGateWorkflow(
-        artifact_reader=store,
-        evaluation_reader=store,
-        result_writer=store,
-        policy_factory=MinimumScorePromotionPolicy,
-    )
+    workflow = build_promotion_gate_workflow()
     try:
         result = _run(
             workflow.run(
@@ -127,11 +115,7 @@ def promote_record(
 ) -> None:
     """Record a gate-passing artifact in the local promotion registry."""
 
-    store = LocalPromotionGateStore()
-    workflow = RunPromotionRecordWorkflow(
-        artifact_reader=store,
-        registry_writer=store,
-    )
+    workflow = build_promotion_record_workflow()
     try:
         result = _run(
             workflow.run(
@@ -162,7 +146,7 @@ def promote_list(
 ) -> None:
     """List locally recorded promoted artifacts."""
 
-    workflow = RunPromotionListWorkflow(registry_reader=LocalPromotionGateStore())
+    workflow = build_promotion_list_workflow()
     result = _run(workflow.run(RunPromotionListRequest(registry_path=registry)))
     if not result.records:
         typer.echo(f"No promoted artifacts recorded in {registry}")
@@ -202,11 +186,7 @@ def promote_select(
     if not confirm:
         _fail("Selecting a promoted adapter changes local defaults; rerun with --confirm")
 
-    promotion_store = LocalPromotionGateStore()
-    workflow = RunPromotionSelectWorkflow(
-        registry_reader=promotion_store,
-        configuration_writer=LocalRepositoryModelConfigurationStore(),
-    )
+    workflow = build_promotion_select_workflow()
     try:
         result = _run(
             workflow.run(
@@ -260,11 +240,7 @@ def promote_package_ollama(
 ) -> None:
     """Package a recorded promoted adapter for Ollama with a generated Modelfile."""
 
-    promotion_store = LocalPromotionGateStore()
-    workflow = RunPromotionPackageOllamaWorkflow(
-        registry_reader=promotion_store,
-        packager=LocalOllamaAdapterPackager(),
-    )
+    workflow = build_promotion_package_ollama_workflow()
     try:
         result = _run(
             workflow.run(

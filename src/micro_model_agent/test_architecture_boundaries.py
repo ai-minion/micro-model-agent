@@ -13,12 +13,47 @@ APPLICATION_BANNED_PREFIXES = (
     "micro_model_agent.interfaces",
 )
 INTERFACE_BANNED_PREFIXES = ("micro_model_agent.agents",)
+INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES = (
+    "micro_model_agent.infrastructure.models",
+    "micro_model_agent.infrastructure.fake_model_provider",
+    "micro_model_agent.infrastructure.ollama_model_provider",
+    "micro_model_agent.infrastructure.transformers_model_provider",
+    "micro_model_agent.infrastructure.tools.executor",
+    "micro_model_agent.infrastructure.tool_executor",
+    "micro_model_agent.infrastructure.persistence.dataset_store",
+    "micro_model_agent.infrastructure.persistence.workspace_registry",
+    "micro_model_agent.infrastructure.promotion.gate",
+    "micro_model_agent.infrastructure.repositories.local_index",
+    "micro_model_agent.infrastructure.repositories.metadata",
+    "micro_model_agent.infrastructure.training.artifacts",
+    "micro_model_agent.infrastructure.training.local_finetuning",
+    "micro_model_agent.infrastructure.training.ollama_packaging",
+    "micro_model_agent.infrastructure.datasets",
+    "micro_model_agent.infrastructure.evaluation",
+    "micro_model_agent.infrastructure.traces",
+)
 APPLICATION_BANNED_EXTERNALS = ("typer", "mcp", "pydantic")
 DOMAIN_BANNED_EXTERNALS = (
     "pydantic",
     "typer",
     "mcp",
     "fastmcp",
+    "datasets",
+    "peft",
+    "torch",
+    "transformers",
+)
+PURE_RUBRIC_BANNED_PREFIXES = (
+    "micro_model_agent.agents",
+    "micro_model_agent.application",
+    "micro_model_agent.infrastructure",
+    "micro_model_agent.interfaces",
+)
+PURE_RUBRIC_BANNED_EXTERNALS = (
+    "mcp",
+    "fastmcp",
+    "pydantic",
+    "typer",
     "datasets",
     "peft",
     "torch",
@@ -72,6 +107,7 @@ FLAT_TRACE_MODULES = (
     "micro_model_agent.infrastructure.trace_export",
     "micro_model_agent.infrastructure.trace_review",
 )
+FLAT_FACADE_MODULES = ("micro_model_agent.infrastructure.training_artifacts",)
 RETIRED_CLI_COMPAT_NAMES = (
     "_load_dotenv",
     "_resolve_loop_model_options",
@@ -111,6 +147,7 @@ TRAINING_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "local_finetuning.py",
     PACKAGE_ROOT / "infrastructure" / "ollama_packaging.py",
 }
+TRAINING_ARTIFACTS_FACADE_PATH = PACKAGE_ROOT / "infrastructure" / "training_artifacts.py"
 PROMOTION_SHIM_PATHS = {PACKAGE_ROOT / "infrastructure" / "promotion_gate.py"}
 EVALUATION_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "artifact_evaluation.py",
@@ -137,6 +174,18 @@ TRACE_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "trace_export.py",
     PACKAGE_ROOT / "infrastructure" / "trace_review.py",
 }
+ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES = (
+    MODEL_PROVIDER_SHIM_PATHS
+    | REPOSITORY_SHIM_PATHS
+    | PERSISTENCE_SHIM_PATHS
+    | TRAINING_SHIM_PATHS
+    | PROMOTION_SHIM_PATHS
+    | EVALUATION_SHIM_PATHS
+    | TOOL_SHIM_PATHS
+    | DATASET_SHIM_PATHS
+    | TRACE_SHIM_PATHS
+    | {TRAINING_ARTIFACTS_FACADE_PATH, PACKAGE_ROOT / "infrastructure" / "composition.py"}
+)
 
 
 def _production_modules(package: str) -> list[Path]:
@@ -250,6 +299,17 @@ def test_interface_modules_do_not_import_concrete_agents() -> None:
     assert violations == []
 
 
+def test_interface_modules_do_not_import_low_level_concrete_adapters() -> None:
+    violations: list[str] = []
+    for path in _production_modules("interfaces"):
+        for imported in _imports(path):
+            if imported.startswith(INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES):
+                relative_path = path.relative_to(PACKAGE_ROOT)
+                violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
 def test_pure_rubrics_do_not_import_concrete_infrastructure() -> None:
     violations: list[str] = []
     for path in (
@@ -260,7 +320,8 @@ def test_pure_rubrics_do_not_import_concrete_infrastructure() -> None:
         violations.extend(
             f"{path.relative_to(PACKAGE_ROOT)}: {imported}"
             for imported in _imports(path)
-            if imported.startswith("micro_model_agent.infrastructure")
+            if imported.startswith(PURE_RUBRIC_BANNED_PREFIXES)
+            or imported in PURE_RUBRIC_BANNED_EXTERNALS
         )
 
     assert violations == []
@@ -392,6 +453,30 @@ def test_internal_production_imports_use_trace_package() -> None:
     assert violations == []
 
 
+def test_internal_production_imports_avoid_flat_facade_modules() -> None:
+    violations: list[str] = []
+    for package in ("infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path == TRAINING_ARTIFACTS_FACADE_PATH:
+                continue
+            for imported in _imports(path):
+                if imported in FLAT_FACADE_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_top_level_infrastructure_modules_are_composition_or_compatibility() -> None:
+    top_level_modules = {
+        path
+        for path in (PACKAGE_ROOT / "infrastructure").glob("*.py")
+        if not path.name.startswith("test_") and path.name != "__init__.py"
+    }
+
+    assert top_level_modules == ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES
+
+
 def test_flat_model_provider_modules_are_compatibility_shims() -> None:
     violations = _shim_violations(
         MODEL_PROVIDER_SHIM_PATHS,
@@ -423,6 +508,20 @@ def test_flat_training_modules_are_compatibility_shims() -> None:
     violations = _shim_violations(
         TRAINING_SHIM_PATHS,
         allowed_import_prefix="micro_model_agent.infrastructure.training",
+    )
+
+    assert violations == []
+
+
+def test_training_artifacts_module_is_a_compatibility_facade() -> None:
+    violations = _shim_violations(
+        {TRAINING_ARTIFACTS_FACADE_PATH},
+        allowed_import_prefix=(
+            "micro_model_agent.infrastructure.evaluation",
+            "micro_model_agent.infrastructure.persistence",
+            "micro_model_agent.infrastructure.promotion",
+            "micro_model_agent.infrastructure.training",
+        ),
     )
 
     assert violations == []
@@ -473,7 +572,11 @@ def test_flat_trace_modules_are_compatibility_shims() -> None:
     assert violations == []
 
 
-def _shim_violations(paths: set[Path], *, allowed_import_prefix: str) -> list[str]:
+def _shim_violations(
+    paths: set[Path],
+    *,
+    allowed_import_prefix: str | tuple[str, ...],
+) -> list[str]:
     violations: list[str] = []
     for path in paths:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))

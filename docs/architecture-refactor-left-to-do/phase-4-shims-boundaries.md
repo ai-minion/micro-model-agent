@@ -19,11 +19,23 @@ They currently check:
 - production `domain` modules do not import project modules or heavy adapter
   dependencies
 - pure rubric modules do not import concrete infrastructure adapters
+  or outward project/framework dependencies
 - internal production imports use grouped infrastructure packages instead of
   old flat compatibility modules
 - `interfaces.cli` and `interfaces.mcp_server` do not re-export private helper
   names
 - production `interfaces` modules do not import concrete `agents`
+- production `interfaces` modules do not import low-level concrete model
+  providers, tool executors, dataset stores, workspace registries, repository
+  metadata/index adapters, training runners, promotion stores, or Ollama
+  packagers directly
+- dataset, evaluation, training, promotion, and root repo CLI commands use
+  `infrastructure.composition` factories for concrete workflow assembly
+- MCP workspace registration and optional init-tool exposure use
+  `infrastructure.composition` helpers for repository metadata and workspace
+  registry access
+- top-level production `infrastructure/*.py` modules are limited to
+  composition and compatibility shims/facades
 
 Compatibility shims still exist:
 
@@ -78,7 +90,10 @@ Possible checks:
 - `interfaces/mcp/tools/*.py` should not import `agents`. **Done via the same
   package-wide `interfaces` boundary test.**
 - interface command modules should avoid direct low-level provider imports,
-  except composition modules explicitly allowed by name.
+  except composition modules explicitly allowed by name. **Done for concrete
+  model providers, tool executors, dataset stores, workspace registries,
+  repository metadata/index adapters, training runners, promotion stores, and
+  Ollama packagers.**
 
 ### Infrastructure Shape Checks
 
@@ -88,6 +103,8 @@ Possible checks:
 - new persistence adapters live under `infrastructure.persistence`.
 - no new top-level `infrastructure/*_evaluation.py` modules once evaluation is
   moved.
+- no new top-level production `infrastructure/*.py` adapter modules bypass the
+  grouped package shape. **Done via a top-level infrastructure module allowlist.**
 
 Avoid brittle tests that fail every time a module is renamed. Prefer simple
 rules that catch architectural direction mistakes.
@@ -98,7 +115,8 @@ Possible checks:
 
 - `domain` stays free of project imports.
 - pure rubric modules do not import model providers, filesystem stores, Typer,
-  FastMCP, or concrete infrastructure adapters.
+  FastMCP, or concrete infrastructure adapters. **Done with a stricter pure
+  rubric import boundary.**
 
 ## Documentation Updates
 
@@ -117,6 +135,9 @@ After each phase:
   - application importing outward
   - domain importing framework/adapters
   - interfaces importing concrete agents
+  - interfaces importing low-level concrete model/tool/dataset/workspace/
+    repository/training/promotion adapters directly
   - private helper exports returning to public compatibility shims
   - new infrastructure modules bypassing the agreed package shape
+  - internal code importing old flat facade modules instead of owner packages
 - Full ruff and pytest pass.

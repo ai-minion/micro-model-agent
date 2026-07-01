@@ -138,6 +138,8 @@ Adapters for external systems and local capabilities:
 - `persistence.JsonlComparisonTraceStore`
 - `persistence.JsonlDatasetExampleStore`
 - `persistence.JsonlWorkspaceRegistry`
+- `training.FakeTrainingRunner`
+- `training.JsonTrainingArtifactStore`
 - `training.LocalFineTuningRunner`
 - `training.LocalOllamaAdapterPackager`
 - `promotion.LocalPromotionGateStore`
@@ -208,7 +210,10 @@ composition module. Application services accept explicit dependencies through
 constructors. Domain objects remain plain contracts and policy.
 Concrete reference-agent assembly lives in `infrastructure.composition`, so
 interface modules can stay thin adapters over application workflows and public
-runtime helpers.
+runtime helpers. CLI commands also use that composition module for concrete
+dataset, evaluation, training, promotion, repository metadata, and repository
+index adapter wiring. MCP workspace and policy adapters use it for repository
+metadata and workspace registry wiring.
 
 ## Retrieval
 

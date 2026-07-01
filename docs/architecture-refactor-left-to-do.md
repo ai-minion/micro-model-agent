@@ -24,6 +24,10 @@ The largest visible moves are complete:
 - `application` and `domain` boundary tests are strict for inward imports.
 - Dataset, training, promotion, and evaluation CLI commands mostly delegate to
   application workflows.
+- Dataset, evaluation, training, promotion, and root repo CLI commands now use
+  shared composition factories for concrete adapter wiring.
+- MCP workspace registration and optional init-tool exposure now use shared
+  composition helpers for repository metadata and workspace registry access.
 - Large agent and infrastructure modules have already been split substantially.
 - Run-loop budget/tool policy now lives in `application/tool_loop.py`, with
   shared concrete loop assembly in `infrastructure/composition.py`.
@@ -43,7 +47,10 @@ The remaining mismatch is less about file count and more about ownership:
   `interfaces.cli` and `interfaces.mcp_server`; tests import owner modules
   directly.
 - Boundary tests now enforce private shim retirement, grouped infrastructure
-  imports, and that interface modules do not import concrete agents.
+  imports, and that interface modules do not import concrete agents or
+  low-level concrete model/tool adapters. They also guard top-level
+  `infrastructure/` against new non-compatibility adapter modules and keep
+  pure evaluation rubrics free of outward project/framework dependencies.
 
 ## Recommended Order
 
@@ -71,15 +78,23 @@ names, prompt names, and trace/evaluation schemas stable.
    executor now lives under `infrastructure/tools/`; dataset generation,
    validation, curation, prompting, and metadata helpers now live under
    `infrastructure/datasets/`; trace review and trace dataset export helpers
-   now live under `infrastructure/traces/`. Old flat modules are kept as
-   compatibility imports.**
+   now live under `infrastructure/traces/`; training artifact store/fake-runner
+   helpers now live under `infrastructure/training/artifacts.py`. Old flat
+   modules are kept as compatibility imports.**
    - Details: `docs/architecture-refactor-left-to-do/phase-3-folder-structure.md`
 
 4. Retire private compatibility shims and strengthen architecture tests.
    **Started: tests no longer import private helpers from
    `interfaces.cli` or `interfaces.mcp_server`; those compatibility modules no
    longer export underscore helpers; CLI task assembly no longer imports
-   concrete agents directly; architecture tests guard those constraints.**
+   concrete agents directly; dataset, evaluation, training, promotion, and root
+   repo CLI assembly and MCP workspace metadata/registry access now go through
+   composition helpers; architecture tests guard those constraints and block
+   direct interface imports of concrete model providers, tool executors,
+   concrete dataset stores, workspace registries, repository metadata/index
+   adapters, concrete training runners, promotion stores, and Ollama packagers;
+   top-level infrastructure modules must now be composition or compatibility
+   facades.**
    - Details: `docs/architecture-refactor-left-to-do/phase-4-shims-boundaries.md`
 
 ## Compatibility Invariants

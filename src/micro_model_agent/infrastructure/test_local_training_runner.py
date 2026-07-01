@@ -7,14 +7,14 @@ from pathlib import Path
 
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.training import TrainingConfig
+from micro_model_agent.infrastructure.persistence.training_records import (
+    load_artifact_from_training_run,
+)
 from micro_model_agent.infrastructure.promotion.gate import MinimumScorePromotionPolicy
 from micro_model_agent.infrastructure.training.local_finetuning import (
     LocalFineTuningResult,
     LocalFineTuningRunner,
     _model_load_kwargs,
-)
-from micro_model_agent.infrastructure.training_artifacts import (
-    load_artifact_from_training_run,
 )
 
 

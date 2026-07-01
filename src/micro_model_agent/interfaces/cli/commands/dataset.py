@@ -8,19 +8,12 @@ import typer
 
 from micro_model_agent.application.datasets import (
     RunDatasetExportRequest,
-    RunDatasetExportWorkflow,
     RunDatasetMergeRequest,
-    RunDatasetMergeWorkflow,
     RunDatasetRelabelRequest,
-    RunDatasetRelabelWorkflow,
     RunDatasetSynthesisRequest,
-    RunDatasetSynthesisWorkflow,
     RunDatasetValidationRequest,
-    RunDatasetValidationWorkflow,
     RunTraceDatasetExportRequest,
-    RunTraceDatasetExportWorkflow,
     RunTraceReviewRequest,
-    RunTraceReviewWorkflow,
 )
 from micro_model_agent.domain.contracts import WorkflowStatus
 from micro_model_agent.domain.datasets import (
@@ -29,27 +22,14 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.datasets.curation import (
-    LocalDatasetMerger,
-    LocalDatasetRelabeler,
-)
-from micro_model_agent.infrastructure.datasets.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.infrastructure.datasets.validation import (
-    LocalDatasetValidator,
-    SftJsonlDatasetExporter,
-)
-from micro_model_agent.infrastructure.persistence.dataset_store import (
-    LocalDatasetExampleReader,
-    LocalDatasetExampleWriter,
-)
-from micro_model_agent.infrastructure.persistence.trace_store import LocalWorkflowTraceReader
-from micro_model_agent.infrastructure.traces.export import (
-    LocalTraceDatasetExporter,
-    LocalTraceDatasetExportValidator,
-)
-from micro_model_agent.infrastructure.traces.review import (
-    LocalTraceReviewReader,
-    LocalTraceReviewWriter,
+from micro_model_agent.infrastructure.composition import (
+    build_dataset_export_workflow,
+    build_dataset_merge_workflow,
+    build_dataset_relabel_workflow,
+    build_dataset_synthesis_workflow,
+    build_dataset_validation_workflow,
+    build_trace_dataset_export_workflow,
+    build_trace_review_workflow,
 )
 from micro_model_agent.interfaces.cli.common import (
     DEFAULT_TRACE_DIR,
@@ -110,11 +90,7 @@ def synthesize(
 ) -> None:
     """Generate synthetic tool-use and workflow examples."""
 
-    workflow = RunDatasetSynthesisWorkflow(
-        generator=SyntheticTemplateGenerator(template_dir),
-        validator=LocalDatasetValidator(),
-        example_writer=LocalDatasetExampleWriter(),
-    )
+    workflow = build_dataset_synthesis_workflow(template_dir=template_dir)
     try:
         result = _run(
             workflow.run(
@@ -155,10 +131,7 @@ def validate(
 ) -> None:
     """Validate dataset records before training."""
 
-    workflow = RunDatasetValidationWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        validator=LocalDatasetValidator(),
-    )
+    workflow = build_dataset_validation_workflow()
     try:
         validation = _run(workflow.run(RunDatasetValidationRequest(path=path)))
     except ValueError as exc:
@@ -191,11 +164,7 @@ def export_dataset(
 ) -> None:
     """Export dataset records for a training backend."""
 
-    workflow = RunDatasetExportWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        validator=LocalDatasetValidator(),
-        exporter=SftJsonlDatasetExporter(),
-    )
+    workflow = build_dataset_export_workflow()
     try:
         result = _run(
             workflow.run(
@@ -268,12 +237,9 @@ def export_traces(
 ) -> None:
     """Export stored workflow traces as redacted dataset examples."""
 
-    workflow = RunTraceDatasetExportWorkflow(
-        trace_reader=LocalWorkflowTraceReader(trace_path),
-        review_reader=LocalTraceReviewReader(review_path),
-        trace_exporter=LocalTraceDatasetExporter(),
-        trace_export_validator=LocalTraceDatasetExportValidator(),
-        example_writer=LocalDatasetExampleWriter(),
+    workflow = build_trace_dataset_export_workflow(
+        trace_path=trace_path,
+        review_path=review_path,
     )
     try:
         result = _run(
@@ -350,7 +316,7 @@ def review_trace(
             _fail(f"corrected target file does not exist: {corrected_target_file}")
         raw_corrected_target = corrected_target_file.read_text(encoding="utf-8")
 
-    workflow = RunTraceReviewWorkflow(review_writer=LocalTraceReviewWriter())
+    workflow = build_trace_review_workflow()
     try:
         result = _run(
             workflow.run(
@@ -421,12 +387,7 @@ def relabel_dataset(
 ) -> None:
     """Relabel reviewed dataset examples and write a curated JSONL file."""
 
-    workflow = RunDatasetRelabelWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        relabeler=LocalDatasetRelabeler(),
-        example_writer=LocalDatasetExampleWriter(),
-        validator=LocalDatasetValidator(),
-    )
+    workflow = build_dataset_relabel_workflow()
     try:
         result = _run(
             workflow.run(
@@ -480,12 +441,7 @@ def merge_dataset(
 ) -> None:
     """Merge dataset JSONL files with simple deduplication."""
 
-    workflow = RunDatasetMergeWorkflow(
-        example_reader=LocalDatasetExampleReader(),
-        merger=LocalDatasetMerger(),
-        validator=LocalDatasetValidator(),
-        example_writer=LocalDatasetExampleWriter(),
-    )
+    workflow = build_dataset_merge_workflow()
     try:
         result = _run(
             workflow.run(

@@ -2,28 +2,81 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from pathlib import Path
 
+from micro_model_agent.application.datasets import (
+    RunDatasetExportWorkflow,
+    RunDatasetMergeWorkflow,
+    RunDatasetRelabelWorkflow,
+    RunDatasetSynthesisWorkflow,
+    RunDatasetValidationWorkflow,
+    RunTraceDatasetExportWorkflow,
+    RunTraceReviewWorkflow,
+)
+from micro_model_agent.application.evaluation import (
+    RunEvaluationComparisonWorkflow,
+    RunSyntheticEvaluationWorkflow,
+    RunTraceEvaluationWorkflow,
+    RunWorkspaceStagedEvaluationWorkflow,
+    RunWorkspaceStagedReviewWorkflow,
+)
+from micro_model_agent.application.promotion import (
+    RunPromotionGateWorkflow,
+    RunPromotionListWorkflow,
+    RunPromotionPackageOllamaWorkflow,
+    RunPromotionRecordWorkflow,
+    RunPromotionSelectWorkflow,
+)
 from micro_model_agent.infrastructure.composition import (
     allowed_test_commands,
     build_builtin_tool_executor,
+    build_dataset_export_workflow,
+    build_dataset_merge_workflow,
+    build_dataset_relabel_workflow,
+    build_dataset_synthesis_workflow,
+    build_dataset_validation_workflow,
+    build_evaluation_comparison_workflow,
+    build_jsonl_dataset_example_store,
+    build_promotion_gate_workflow,
+    build_promotion_list_workflow,
+    build_promotion_package_ollama_workflow,
+    build_promotion_record_workflow,
+    build_promotion_select_workflow,
+    build_synthetic_evaluation_workflow,
+    build_synthetic_training_workflow,
+    build_trace_dataset_export_workflow,
+    build_trace_evaluation_workflow,
+    build_trace_review_workflow,
+    build_workspace_staged_evaluation_workflow,
+    build_workspace_staged_review_workflow,
     comparison_trace_store,
+    default_evaluation_available_tools,
+    initialize_local_repository,
+    local_repository_initialized,
+    register_workspace_record,
+    registered_workspace_path,
     resolve_model_options,
     select_evaluation_model,
     workflow_trace_store,
     workspace_registry,
+    write_local_repository_index,
 )
 from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
 from micro_model_agent.infrastructure.models.ollama import OllamaModelProvider
 from micro_model_agent.infrastructure.models.transformers import (
     TransformersPeftModelProvider,
 )
+from micro_model_agent.infrastructure.persistence.dataset_store import JsonlDatasetExampleStore
+from micro_model_agent.infrastructure.repositories.local_index import LocalIndexResult
 from micro_model_agent.infrastructure.repositories.metadata import (
     initialize_repository,
     update_model_configuration,
 )
 from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
+from micro_model_agent.infrastructure.training.artifacts import FakeTrainingRunner
+from micro_model_agent.infrastructure.training.local_finetuning import LocalFineTuningRunner
 
 
 def test_resolve_model_options_uses_selected_repository_config(tmp_path: Path) -> None:
@@ -107,6 +160,116 @@ def test_runtime_factories_use_standard_repository_paths(tmp_path: Path) -> None
     assert workspace_registry(tmp_path).path == (
         tmp_path / ".micro_model_agent" / "workspaces.jsonl"
     )
+
+
+def test_repository_cli_factories_use_local_adapters(tmp_path: Path) -> None:
+    (tmp_path / "module.py").write_text("def run() -> None:\n    pass\n", encoding="utf-8")
+
+    init_result = initialize_local_repository(tmp_path, default_model="qwen:test")
+    index_result = write_local_repository_index(tmp_path, max_file_bytes=1_000_000)
+    dataset_store = build_jsonl_dataset_example_store(tmp_path / "datasets" / "tasks.jsonl")
+
+    assert init_result.ok
+    assert init_result.config["model"]["default_model"] == "qwen:test"
+    assert isinstance(index_result, LocalIndexResult)
+    assert index_result.indexed_file_count >= 1
+    assert isinstance(dataset_store, JsonlDatasetExampleStore)
+
+
+def test_workspace_factories_register_and_resolve_records(tmp_path: Path) -> None:
+    registry_root = tmp_path / "registry"
+    workspace_root = tmp_path / "workspace"
+
+    assert local_repository_initialized(workspace_root) is False
+
+    initialize_result = initialize_local_repository(workspace_root)
+    record = asyncio.run(
+        register_workspace_record(
+            registry_root=registry_root,
+            workspace_path=workspace_root,
+            name="chat-workspace",
+            metadata={"source": "test"},
+        )
+    )
+    resolved_path = asyncio.run(
+        registered_workspace_path(
+            registry_root=registry_root,
+            workspace_id=record["id"],
+        )
+    )
+
+    assert initialize_result.ok
+    assert local_repository_initialized(workspace_root) is True
+    assert record["path"] == str(workspace_root)
+    assert record["metadata"] == {"source": "test"}
+    assert resolved_path == workspace_root
+
+
+def test_build_synthetic_training_workflow_selects_runner_by_dry_run(
+    tmp_path: Path,
+) -> None:
+    dry_run_workflow = build_synthetic_training_workflow(
+        dry_run=True,
+        artifact_store_root=tmp_path / "artifacts",
+    )
+    real_workflow = build_synthetic_training_workflow(
+        dry_run=False,
+        artifact_store_root=tmp_path / "artifacts",
+    )
+
+    assert isinstance(dry_run_workflow.runner, FakeTrainingRunner)
+    assert isinstance(real_workflow.runner, LocalFineTuningRunner)
+
+
+def test_dataset_workflow_factories_return_standard_workflows(tmp_path: Path) -> None:
+    assert isinstance(
+        build_dataset_synthesis_workflow(template_dir=tmp_path),
+        RunDatasetSynthesisWorkflow,
+    )
+    assert isinstance(build_dataset_validation_workflow(), RunDatasetValidationWorkflow)
+    assert isinstance(build_dataset_export_workflow(), RunDatasetExportWorkflow)
+    assert isinstance(
+        build_trace_dataset_export_workflow(
+            trace_path=tmp_path / "workflows.jsonl",
+            review_path=tmp_path / "reviews.jsonl",
+        ),
+        RunTraceDatasetExportWorkflow,
+    )
+    assert isinstance(build_trace_review_workflow(), RunTraceReviewWorkflow)
+    assert isinstance(build_dataset_relabel_workflow(), RunDatasetRelabelWorkflow)
+    assert isinstance(build_dataset_merge_workflow(), RunDatasetMergeWorkflow)
+
+
+def test_promotion_workflow_factories_return_standard_workflows() -> None:
+    assert isinstance(build_promotion_gate_workflow(), RunPromotionGateWorkflow)
+    assert isinstance(build_promotion_record_workflow(), RunPromotionRecordWorkflow)
+    assert isinstance(build_promotion_list_workflow(), RunPromotionListWorkflow)
+    assert isinstance(build_promotion_select_workflow(), RunPromotionSelectWorkflow)
+    assert isinstance(
+        build_promotion_package_ollama_workflow(),
+        RunPromotionPackageOllamaWorkflow,
+    )
+
+
+def test_evaluation_workflow_factories_return_standard_workflows() -> None:
+    assert default_evaluation_available_tools()
+    assert isinstance(
+        build_synthetic_evaluation_workflow(pass_threshold=0.8),
+        RunSyntheticEvaluationWorkflow,
+    )
+    assert isinstance(
+        build_trace_evaluation_workflow(pass_threshold=0.8),
+        RunTraceEvaluationWorkflow,
+    )
+    assert isinstance(
+        build_workspace_staged_evaluation_workflow(
+            pass_threshold=0.8,
+            rubric_version="legacy",
+        ),
+        RunWorkspaceStagedEvaluationWorkflow,
+    )
+    assert isinstance(build_workspace_staged_review_workflow(), RunWorkspaceStagedReviewWorkflow)
+    assert isinstance(build_evaluation_comparison_workflow(), RunEvaluationComparisonWorkflow)
 
 
 def test_select_evaluation_model_prefers_scripted_responses(tmp_path: Path) -> None:

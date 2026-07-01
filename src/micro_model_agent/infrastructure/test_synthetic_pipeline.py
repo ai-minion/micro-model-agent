@@ -20,14 +20,16 @@ from micro_model_agent.infrastructure.datasets.validation import (
     LocalDatasetValidator,
     export_sft_jsonl,
 )
+from micro_model_agent.infrastructure.evaluation.artifact import SyntheticEvaluationSuite
 from micro_model_agent.infrastructure.persistence.dataset_store import (
     JsonlDatasetExampleStore,
     load_dataset_examples,
 )
-from micro_model_agent.infrastructure.training_artifacts import (
-    FakeTrainingRunner,
-    SyntheticEvaluationSuite,
+from micro_model_agent.infrastructure.persistence.training_records import (
     load_artifact_from_training_run,
+)
+from micro_model_agent.infrastructure.training.artifacts import (
+    FakeTrainingRunner,
 )
 
 

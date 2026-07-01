@@ -1,5 +1,9 @@
 """Training and model-packaging infrastructure adapters."""
 
+from micro_model_agent.infrastructure.training.artifacts import (
+    FakeTrainingRunner,
+    JsonTrainingArtifactStore,
+)
 from micro_model_agent.infrastructure.training.local_finetuning import (
     HuggingFacePeftFineTuningBackend,
     LocalFineTuningBackend,
@@ -12,7 +16,9 @@ from micro_model_agent.infrastructure.training.ollama_packaging import (
 )
 
 __all__ = [
+    "FakeTrainingRunner",
     "HuggingFacePeftFineTuningBackend",
+    "JsonTrainingArtifactStore",
     "LocalFineTuningBackend",
     "LocalFineTuningResult",
     "LocalFineTuningRunner",
