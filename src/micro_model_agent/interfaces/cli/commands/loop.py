@@ -2,22 +2,15 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
-from typing import cast
 
 import typer
 
-from micro_model_agent.infrastructure.composition import (
-    RuntimeModelOptions,
-    allowed_test_commands,
-    run_configured_tool_loop,
-)
+from micro_model_agent.infrastructure.composition import run_cli_tool_loop
 from micro_model_agent.interfaces.cli.common import (
     _fail,
     _load_dotenv,
     _read_scripted_responses,
-    _resolve_loop_model_options,
     _run,
 )
 
@@ -124,68 +117,33 @@ def loop(
 ) -> None:
     """Run a model-driven agent loop with typed tool calls."""
 
-    from micro_model_agent.application.tool_loop import DEFAULT_TOOL_NAMES
-
     _load_dotenv()
 
     responses = _read_scripted_responses(scripted_response, scripted_response_file)
 
-    model_options = _resolve_loop_model_options(
-        repository_root=repository_root,
-        model=model,
-        base_model=base_model,
-        adapter_path=adapter_path,
-        use_adapter=use_adapter,
-    )
-    if not responses and not (
-        model_options["adapter_path"] or model_options["base_model"] or model_options["model"]
-    ):
-        _fail(
-            "--model, MICRO_MODEL_AGENT_DEFAULT_MODEL, or configured model default is "
-            "required without scripted responses"
-        )
-
-    if verification_command and not test_command:
-        _fail("--test-command is required when --verification-command is set")
-    allowed_commands = allowed_test_commands(verification_command, test_command)
-
     try:
         configured = _run(
-            run_configured_tool_loop(
+            run_cli_tool_loop(
                 goal=prompt,
                 repository_root=repository_root,
-                model_options=RuntimeModelOptions(
-                    model=cast(str | None, model_options["model"]),
-                    base_model=cast(str | None, model_options["base_model"]),
-                    adapter_path=cast(Path | None, model_options["adapter_path"]),
-                ),
+                model=model,
+                base_model=base_model,
+                adapter_path=adapter_path,
+                use_adapter=use_adapter,
+                ollama_base_url=ollama_base_url,
                 max_new_tokens=max_new_tokens,
                 scripted_responses=responses,
-                ollama_base_url=ollama_base_url
-                or os.environ.get("MICRO_MODEL_AGENT_OLLAMA_BASE_URL"),
-                available_tools=tuple(available_tool or DEFAULT_TOOL_NAMES),
-                required_tools=tuple(required_tool or ()),
+                available_tools=available_tool,
+                required_tools=required_tool,
                 max_turns=max_turns,
                 max_tool_calls=max_tool_calls,
                 max_tool_result_prompt_chars=max_tool_result_prompt_chars,
                 context=context,
                 schema_prompt=schema_prompt,
-                require_tool_call=not allow_no_tool_final,
                 capture_prompts=capture_prompts,
-                allowed_commands=allowed_commands,
-                run_metadata={
-                    "interface": "cli.loop",
-                    "use_adapter": use_adapter,
-                    "model": {
-                        "model": str(model_options["model"])
-                        if model_options["model"]
-                        else None,
-                        "base_model": model_options["base_model"],
-                        "adapter_path": str(model_options["adapter_path"])
-                        if model_options["adapter_path"]
-                        else None,
-                    },
-                },
+                require_tool_call=not allow_no_tool_final,
+                verification_command=verification_command,
+                test_command=test_command,
             )
         )
     except (ValueError, FileNotFoundError) as exc:

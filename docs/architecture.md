@@ -160,6 +160,7 @@ Adapters for external systems and local capabilities:
 - `traces.LocalTraceReviewReader`
 - `traces.LocalTraceDatasetExporter`
 - `tools.BuiltinToolExecutor`
+- `tools.PatchPolicyToolExecutor`
 - `RepoSearchTool`
 - `RepoReadTool`
 - `RepoSemanticSearchTool`
@@ -187,6 +188,10 @@ The stable public compatibility imports are
 `micro_model_agent.interfaces.mcp_server`. Private helper behavior is tested
 through its owner modules under `interfaces/cli/*` and `interfaces/mcp/*`,
 rather than through compatibility re-exports.
+Production interface modules import infrastructure only through
+`infrastructure.composition`, keeping concrete adapter choices out of CLI and
+MCP request handlers. Private runtime-resolution helpers are not compatibility
+surface; tests target the application or composition owner instead.
 
 ### Agents
 
@@ -210,10 +215,20 @@ composition module. Application services accept explicit dependencies through
 constructors. Domain objects remain plain contracts and policy.
 Concrete reference-agent assembly lives in `infrastructure.composition`, so
 interface modules can stay thin adapters over application workflows and public
-runtime helpers. CLI commands also use that composition module for concrete
-dataset, evaluation, training, promotion, repository metadata, and repository
-index adapter wiring. MCP workspace and policy adapters use it for repository
-metadata and workspace registry wiring.
+runtime helpers. CLI commands also use that composition module as the facade for
+concrete static-agent, dataset, evaluation, training, promotion, repository metadata, and
+repository index adapter wiring; the concrete factories live in the relevant
+package-level `runtime.py` modules. CLI and MCP model-loop entrypoints use it as the facade
+for runtime model/provider/tool-executor assembly, patch-write policy, and
+compact response metadata. MCP workspace and policy adapters use it for
+repository metadata and workspace registry wiring, and MCP trace adapters use
+it for trace persistence and comparison-session record conversion. Model-loop
+runtime helpers live under `infrastructure.models.runtime`, trace/workspace
+persistence runtime helpers live under `infrastructure.persistence.runtime`,
+built-in tool execution helpers live under `infrastructure.tools.runtime`, and
+all are re-exported by the composition facade for interface adapters.
+The facade defines an explicit public `__all__`; owner modules carry behavior
+tests, while composition tests assert export identity.
 
 ## Retrieval
 

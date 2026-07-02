@@ -26,14 +26,46 @@ They currently check:
   names
 - production `interfaces` modules do not import concrete `agents`
 - production `interfaces` modules do not import low-level concrete model
-  providers, tool executors, dataset stores, workspace registries, repository
-  metadata/index adapters, training runners, promotion stores, or Ollama
-  packagers directly
+  providers, tool executors, dataset stores, trace stores, comparison trace
+  stores, workspace registries, repository metadata/index adapters, training
+  runners, promotion stores, or Ollama packagers directly
 - dataset, evaluation, training, promotion, and root repo CLI commands use
-  `infrastructure.composition` factories for concrete workflow assembly
+  `infrastructure.composition` facade exports for concrete workflow assembly
 - MCP workspace registration and optional init-tool exposure use
   `infrastructure.composition` helpers for repository metadata and workspace
   registry access
+- MCP trace read/comparison helpers use `infrastructure.composition` helpers for
+  trace persistence, comparison-session mutation, and record conversion
+- CLI loop, MCP run-loop, MCP debug built-in tool execution, and patch-write
+  safety policy use `infrastructure.composition` helpers for runtime assembly
+- stale private CLI runtime-resolution helpers and MCP policy helper modules are
+  retired and guarded by architecture tests
+- model runtime helpers, including model option resolution, provider
+  construction/caching, CLI/MCP loop execution, compact loop response metadata,
+  and evaluation provider selection, live under
+  `infrastructure/models/runtime.py`, while `infrastructure.composition`
+  remains the interface-facing facade; an architecture test now guards that
+  composition reexports those helpers rather than defining their bodies
+- workflow factory helpers live in package-level runtime modules under
+  `infrastructure/agents/`, `infrastructure/repositories/`,
+  `infrastructure/datasets/`,
+  `infrastructure/training/`, `infrastructure/evaluation/`, and
+  `infrastructure/promotion/`, while `infrastructure.composition` remains the
+  interface-facing facade; an architecture test now guards that composition
+  reexports those helpers rather than defining their bodies
+- trace/workspace persistence runtime helpers, including trace-store path
+  selection, comparison-session mutation, JSON-ready record conversion, and
+  workspace registry access, live under `infrastructure/persistence/runtime.py`,
+  while `infrastructure.composition` remains the interface-facing facade; an
+  architecture test now guards that composition reexports those helpers rather
+  than defining their bodies
+- built-in tool runtime helpers, including patch-write safety and direct
+  built-in tool execution, live under `infrastructure/tools/runtime.py`, while
+  `infrastructure.composition` remains the interface-facing facade
+- production interface modules import infrastructure only through
+  `infrastructure.composition`
+- `infrastructure.composition` defines an explicit public `__all__` facade and
+  facade tests assert exports point at their owner modules
 - top-level production `infrastructure/*.py` modules are limited to
   composition and compatibility shims/facades
 
@@ -72,7 +104,9 @@ Retire or explicitly bless private compatibility imports:
 - `_resolve_loop_model_options`
 - `_load_dotenv`
 
-Done for the compatibility modules above. If another helper is later made
+Done for the compatibility modules above. `_resolve_loop_model_options`,
+`_base_model_from_adapter`, MCP patch-policy, and MCP tool-name policy helpers
+are also retired from their owner modules. If another helper is later made
 genuinely public, rename it without a leading underscore and document it.
 Otherwise keep tests on the real module that owns the behavior.
 
@@ -91,9 +125,11 @@ Possible checks:
   package-wide `interfaces` boundary test.**
 - interface command modules should avoid direct low-level provider imports,
   except composition modules explicitly allowed by name. **Done for concrete
-  model providers, tool executors, dataset stores, workspace registries,
-  repository metadata/index adapters, training runners, promotion stores, and
-  Ollama packagers.**
+  model providers, tool executors, dataset stores, trace stores, comparison
+  trace stores, workspace registries, repository metadata/index adapters,
+  training runners, promotion stores, and Ollama packagers; now covered by a
+  broader composition-only infrastructure import guard for production
+  interfaces.**
 
 ### Infrastructure Shape Checks
 
@@ -135,7 +171,7 @@ After each phase:
   - application importing outward
   - domain importing framework/adapters
   - interfaces importing concrete agents
-  - interfaces importing low-level concrete model/tool/dataset/workspace/
+  - interfaces importing low-level concrete model/tool/dataset/trace/workspace/
     repository/training/promotion adapters directly
   - private helper exports returning to public compatibility shims
   - new infrastructure modules bypassing the agreed package shape

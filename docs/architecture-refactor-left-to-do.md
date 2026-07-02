@@ -25,12 +25,44 @@ The largest visible moves are complete:
 - Dataset, training, promotion, and evaluation CLI commands mostly delegate to
   application workflows.
 - Dataset, evaluation, training, promotion, and root repo CLI commands now use
-  shared composition factories for concrete adapter wiring.
+  shared composition facade exports for concrete adapter wiring.
 - MCP workspace registration and optional init-tool exposure now use shared
   composition helpers for repository metadata and workspace registry access.
+- MCP trace read/comparison helpers now use shared composition helpers for trace
+  persistence, comparison-session mutation, and record conversion.
+- CLI loop, MCP run-loop, MCP debug built-in tool execution, and patch-write
+  safety policy now use shared composition helpers for runtime assembly.
+- Model runtime helpers, including model option resolution, provider
+  construction/caching, CLI/MCP loop execution, loop response metadata, and
+  evaluation provider selection, now live under
+  `infrastructure/models/runtime.py`; `infrastructure.composition` re-exports
+  them for interface adapters.
+- Workflow factory helpers now live with their infrastructure package owners:
+  static coding-agent assembly in `infrastructure/agents/runtime.py`,
+  repository helpers in `infrastructure/repositories/runtime.py`, dataset and
+  trace-dataset helpers in `infrastructure/datasets/runtime.py`, training
+  helpers in `infrastructure/training/runtime.py`, evaluation helpers in
+  `infrastructure/evaluation/runtime.py`, and promotion helpers in
+  `infrastructure/promotion/runtime.py`; `infrastructure.composition`
+  re-exports them for interface adapters.
+- Trace/workspace persistence runtime helpers, including trace-store paths,
+  comparison-session mutation, JSON-ready record conversion, and workspace
+  registry access, now live under `infrastructure/persistence/runtime.py`;
+  `infrastructure.composition` re-exports them for interface adapters.
+- Built-in tool runtime helpers, including patch-write safety and direct
+  built-in tool execution, now live under `infrastructure/tools/runtime.py`;
+  `infrastructure.composition` re-exports them for interface adapters.
+- Stale private CLI runtime-resolution helpers and MCP policy helper modules
+  have been retired; architecture tests now guard against their return.
+- Production interface modules now import infrastructure only through
+  `infrastructure.composition`; tests still import concrete adapters when they
+  characterize adapter behavior directly.
+- `infrastructure.composition` is now an explicit, sorted `__all__` facade over
+  package-owned runtime helpers; its tests assert identity with owner modules
+  rather than re-testing owner behavior.
 - Large agent and infrastructure modules have already been split substantially.
 - Run-loop budget/tool policy now lives in `application/tool_loop.py`, with
-  shared concrete loop assembly in `infrastructure/composition.py`.
+  shared concrete loop assembly in `infrastructure/models/runtime.py`.
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
   loops now live in `application/evaluation.py`; their infrastructure modules
   are compatibility adapters around scoring/rubric wiring.
@@ -68,19 +100,26 @@ names, prompt names, and trace/evaluation schemas stable.
 
 3. Reshape folders, especially `infrastructure/`, behind compatibility imports.
    **Started: concrete model providers now live under
-   `infrastructure/models/`, and repository-local adapters now live under
-   `infrastructure/repositories/`; JSONL/filesystem persistence helpers now
+   `infrastructure/models/`, model runtime assembly now lives under
+   `infrastructure/models/runtime.py`, static agent runtime assembly now lives
+   under `infrastructure/agents/runtime.py`, and repository-local adapters/runtime
+   helpers now live under `infrastructure/repositories/`; JSONL/filesystem
+   persistence helpers now
    live under `infrastructure/persistence/`; training/packaging adapters now
-   live under `infrastructure/training/`; promotion gate adapters now live
-   under `infrastructure/promotion/`; evaluation report/comparison/artifact
-   helpers, behavior adapters, and rubrics now live under
+   live under `infrastructure/training/`; dataset workflow runtime helpers now
+   live under `infrastructure/datasets/runtime.py`; promotion gate adapters and
+   runtime helpers now live under `infrastructure/promotion/`; evaluation
+   report/comparison/artifact helpers, behavior adapters, rubrics, and runtime
+   helpers now live under
    `infrastructure/evaluation/`; the built-in tool
    executor now lives under `infrastructure/tools/`; dataset generation,
    validation, curation, prompting, and metadata helpers now live under
    `infrastructure/datasets/`; trace review and trace dataset export helpers
-   now live under `infrastructure/traces/`; training artifact store/fake-runner
-   helpers now live under `infrastructure/training/artifacts.py`. Old flat
-   modules are kept as compatibility imports.**
+   now live under `infrastructure/traces/`; trace/workspace persistence
+   runtime helpers now live under `infrastructure/persistence/runtime.py`;
+   training artifact store/fake-runner helpers now live under
+   `infrastructure/training/artifacts.py`. Old flat modules are kept as
+   compatibility imports.**
    - Details: `docs/architecture-refactor-left-to-do/phase-3-folder-structure.md`
 
 4. Retire private compatibility shims and strengthen architecture tests.
@@ -88,13 +127,23 @@ names, prompt names, and trace/evaluation schemas stable.
    `interfaces.cli` or `interfaces.mcp_server`; those compatibility modules no
    longer export underscore helpers; CLI task assembly no longer imports
    concrete agents directly; dataset, evaluation, training, promotion, and root
-   repo CLI assembly and MCP workspace metadata/registry access now go through
-   composition helpers; architecture tests guard those constraints and block
-   direct interface imports of concrete model providers, tool executors,
-   concrete dataset stores, workspace registries, repository metadata/index
-   adapters, concrete training runners, promotion stores, and Ollama packagers;
+   repo CLI assembly, CLI loop assembly, MCP run-loop/debug-tool assembly, MCP
+   workspace metadata/registry access, and MCP trace persistence access now go
+   through composition helpers; architecture tests guard those constraints and
+   block direct interface imports of concrete model providers, tool executors,
+   concrete dataset stores, trace stores, comparison trace stores, workspace
+   registries, repository metadata/index adapters, concrete training runners,
+   promotion stores, and Ollama packagers; production interface modules are now
+   guarded to import infrastructure only through `infrastructure.composition`;
    top-level infrastructure modules must now be composition or compatibility
-   facades.**
+   facades; model runtime helpers now live under
+   `infrastructure/models/runtime.py`; workflow factory helpers now live in
+   their package-level `runtime.py` modules, including static coding-agent
+   assembly under `infrastructure/agents/runtime.py`; trace/workspace persistence
+   runtime helpers now live under `infrastructure/persistence/runtime.py`;
+   built-in tool runtime helpers now live under `infrastructure/tools/runtime.py`;
+   stale private CLI common helpers and MCP policy helper modules are guarded as
+   retired.**
    - Details: `docs/architecture-refactor-left-to-do/phase-4-shims-boundaries.md`
 
 ## Compatibility Invariants

@@ -1,0 +1,67 @@
+"""Runtime promotion workflow composition helpers."""
+
+from __future__ import annotations
+
+from micro_model_agent.application.promotion import (
+    RunPromotionGateWorkflow,
+    RunPromotionListWorkflow,
+    RunPromotionPackageOllamaWorkflow,
+    RunPromotionRecordWorkflow,
+    RunPromotionSelectWorkflow,
+)
+from micro_model_agent.infrastructure.promotion.gate import (
+    LocalPromotionGateStore,
+    MinimumScorePromotionPolicy,
+)
+from micro_model_agent.infrastructure.repositories.metadata import (
+    LocalRepositoryModelConfigurationStore,
+)
+from micro_model_agent.infrastructure.training.ollama_packaging import (
+    LocalOllamaAdapterPackager,
+)
+
+
+def build_promotion_gate_workflow() -> RunPromotionGateWorkflow:
+    """Build the standard promotion gate workflow."""
+
+    store = LocalPromotionGateStore()
+    return RunPromotionGateWorkflow(
+        artifact_reader=store,
+        evaluation_reader=store,
+        result_writer=store,
+        policy_factory=MinimumScorePromotionPolicy,
+    )
+
+
+def build_promotion_record_workflow() -> RunPromotionRecordWorkflow:
+    """Build the standard promotion registry record workflow."""
+
+    store = LocalPromotionGateStore()
+    return RunPromotionRecordWorkflow(
+        artifact_reader=store,
+        registry_writer=store,
+    )
+
+
+def build_promotion_list_workflow() -> RunPromotionListWorkflow:
+    """Build the standard promotion registry listing workflow."""
+
+    return RunPromotionListWorkflow(registry_reader=LocalPromotionGateStore())
+
+
+def build_promotion_select_workflow() -> RunPromotionSelectWorkflow:
+    """Build the standard repository model selection workflow."""
+
+    return RunPromotionSelectWorkflow(
+        registry_reader=LocalPromotionGateStore(),
+        configuration_writer=LocalRepositoryModelConfigurationStore(),
+    )
+
+
+def build_promotion_package_ollama_workflow() -> RunPromotionPackageOllamaWorkflow:
+    """Build the standard Ollama packaging workflow for promoted adapters."""
+
+    return RunPromotionPackageOllamaWorkflow(
+        registry_reader=LocalPromotionGateStore(),
+        packager=LocalOllamaAdapterPackager(),
+    )

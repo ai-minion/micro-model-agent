@@ -13,14 +13,21 @@ APPLICATION_BANNED_PREFIXES = (
     "micro_model_agent.interfaces",
 )
 INTERFACE_BANNED_PREFIXES = ("micro_model_agent.agents",)
+INTERFACE_ALLOWED_INFRASTRUCTURE_PREFIXES = (
+    "micro_model_agent.infrastructure.composition",
+)
 INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES = (
     "micro_model_agent.infrastructure.models",
     "micro_model_agent.infrastructure.fake_model_provider",
     "micro_model_agent.infrastructure.ollama_model_provider",
     "micro_model_agent.infrastructure.transformers_model_provider",
+    "micro_model_agent.infrastructure.tools.catalog",
+    "micro_model_agent.infrastructure.tools.command_runner",
     "micro_model_agent.infrastructure.tools.executor",
     "micro_model_agent.infrastructure.tool_executor",
+    "micro_model_agent.infrastructure.persistence.comparison_trace",
     "micro_model_agent.infrastructure.persistence.dataset_store",
+    "micro_model_agent.infrastructure.persistence.trace_store",
     "micro_model_agent.infrastructure.persistence.workspace_registry",
     "micro_model_agent.infrastructure.promotion.gate",
     "micro_model_agent.infrastructure.repositories.local_index",
@@ -112,6 +119,10 @@ RETIRED_CLI_COMPAT_NAMES = (
     "_load_dotenv",
     "_resolve_loop_model_options",
 )
+RETIRED_CLI_COMMON_NAMES = (
+    "_base_model_from_adapter",
+    "_resolve_loop_model_options",
+)
 RETIRED_MCP_SERVER_COMPAT_NAMES = (
     "_allowed_test_commands",
     "_allowed_tool_names",
@@ -124,6 +135,75 @@ RETIRED_MCP_SERVER_COMPAT_NAMES = (
     "_string_config_value",
     "_tool_prompt_schemas",
     "_workflow_trace_store",
+)
+RETIRED_MCP_POLICY_PATHS = {
+    PACKAGE_ROOT / "interfaces" / "mcp" / "policy" / "patch_policy.py",
+    PACKAGE_ROOT / "interfaces" / "mcp" / "policy" / "tool_names.py",
+}
+RETIRED_MCP_TRACE_HELPER_NAMES = (
+    "comparison_trace_store",
+    "trace_dir",
+    "workflow_trace_store",
+)
+PERSISTENCE_RUNTIME_HELPER_NAMES = (
+    "append_comparison_trace_event",
+    "comparison_trace_store",
+    "register_workspace_record",
+    "registered_workspace_path",
+    "review_comparison_trace_session",
+    "start_comparison_trace_session",
+    "stop_comparison_trace_session",
+    "trace_dir",
+    "workflow_trace_record",
+    "workflow_trace_store",
+    "workspace_registry",
+)
+MODEL_RUNTIME_HELPER_NAMES = (
+    "ConfiguredToolLoopResult",
+    "EvaluationModelSelection",
+    "RuntimeModelOptions",
+    "base_model_from_adapter",
+    "build_loop_model_provider",
+    "build_model_provider",
+    "loop_budget_response",
+    "path_config_value",
+    "path_env",
+    "path_or_none",
+    "resolve_mcp_model_settings",
+    "resolve_model_options",
+    "run_cli_tool_loop",
+    "run_configured_tool_loop",
+    "run_mcp_agent_loop",
+    "runtime_model_metadata",
+    "select_evaluation_model",
+    "string_config_value",
+    "tool_prompt_schemas",
+)
+INFRASTRUCTURE_RUNTIME_FACTORY_NAMES = (
+    "build_static_coding_workflow",
+    "build_dataset_export_workflow",
+    "build_dataset_merge_workflow",
+    "build_dataset_relabel_workflow",
+    "build_dataset_synthesis_workflow",
+    "build_dataset_validation_workflow",
+    "build_evaluation_comparison_workflow",
+    "build_jsonl_dataset_example_store",
+    "build_promotion_gate_workflow",
+    "build_promotion_list_workflow",
+    "build_promotion_package_ollama_workflow",
+    "build_promotion_record_workflow",
+    "build_promotion_select_workflow",
+    "build_synthetic_evaluation_workflow",
+    "build_synthetic_training_workflow",
+    "build_trace_dataset_export_workflow",
+    "build_trace_evaluation_workflow",
+    "build_trace_review_workflow",
+    "build_workspace_staged_evaluation_workflow",
+    "build_workspace_staged_review_workflow",
+    "default_evaluation_available_tools",
+    "initialize_local_repository",
+    "local_repository_initialized",
+    "write_local_repository_index",
 )
 MODEL_PROVIDER_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "fake_model_provider.py",
@@ -227,6 +307,15 @@ def _top_level_names(path: Path) -> set[str]:
     return names
 
 
+def _top_level_definition_names(path: Path) -> set[str]:
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    return {
+        node.name
+        for node in tree.body
+        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+
+
 def _all_exports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in tree.body:
@@ -280,12 +369,58 @@ def test_cli_package_exports_only_public_app() -> None:
     assert set(RETIRED_CLI_COMPAT_NAMES).isdisjoint(_top_level_names(path))
 
 
+def test_cli_common_does_not_own_runtime_resolution_helpers() -> None:
+    path = PACKAGE_ROOT / "interfaces" / "cli" / "common.py"
+
+    assert set(RETIRED_CLI_COMMON_NAMES).isdisjoint(_top_level_names(path))
+
+
 def test_mcp_server_compatibility_module_does_not_export_private_helpers() -> None:
     path = PACKAGE_ROOT / "interfaces" / "mcp_server.py"
     exports = _all_exports(path)
 
     assert all(not name.startswith("_") for name in exports)
     assert set(RETIRED_MCP_SERVER_COMPAT_NAMES).isdisjoint(_top_level_names(path))
+
+
+def test_mcp_policy_runtime_modules_stay_retired() -> None:
+    assert [path for path in RETIRED_MCP_POLICY_PATHS if path.exists()] == []
+
+
+def test_mcp_trace_module_does_not_own_store_factories() -> None:
+    path = PACKAGE_ROOT / "interfaces" / "mcp" / "traces.py"
+
+    assert set(RETIRED_MCP_TRACE_HELPER_NAMES).isdisjoint(_top_level_names(path))
+
+
+def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+
+    assert set(PERSISTENCE_RUNTIME_HELPER_NAMES).isdisjoint(
+        _top_level_definition_names(path)
+    )
+
+
+def test_model_runtime_helpers_are_not_defined_in_composition() -> None:
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+
+    assert set(MODEL_RUNTIME_HELPER_NAMES).isdisjoint(_top_level_definition_names(path))
+
+
+def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> None:
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+
+    assert set(INFRASTRUCTURE_RUNTIME_FACTORY_NAMES).isdisjoint(
+        _top_level_definition_names(path)
+    )
+
+
+def test_composition_facade_exports_are_explicit_and_public() -> None:
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    exports = _all_exports(path)
+
+    assert all(not name.startswith("_") for name in exports)
+    assert exports.issubset(_top_level_names(path))
 
 
 def test_interface_modules_do_not_import_concrete_agents() -> None:
@@ -304,6 +439,19 @@ def test_interface_modules_do_not_import_low_level_concrete_adapters() -> None:
     for path in _production_modules("interfaces"):
         for imported in _imports(path):
             if imported.startswith(INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES):
+                relative_path = path.relative_to(PACKAGE_ROOT)
+                violations.append(f"{relative_path}: {imported}")
+
+    assert violations == []
+
+
+def test_interface_modules_import_infrastructure_only_through_composition() -> None:
+    violations: list[str] = []
+    for path in _production_modules("interfaces"):
+        for imported in _imports(path):
+            if imported.startswith("micro_model_agent.infrastructure") and not imported.startswith(
+                INTERFACE_ALLOWED_INFRASTRUCTURE_PREFIXES
+            ):
                 relative_path = path.relative_to(PACKAGE_ROOT)
                 violations.append(f"{relative_path}: {imported}")
 

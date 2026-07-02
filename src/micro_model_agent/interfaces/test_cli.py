@@ -17,6 +17,7 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.infrastructure.composition import resolve_model_options
 from micro_model_agent.infrastructure.persistence.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
@@ -26,7 +27,7 @@ from micro_model_agent.infrastructure.repositories.metadata import (
     update_model_configuration,
 )
 from micro_model_agent.interfaces.cli import app
-from micro_model_agent.interfaces.cli.common import _load_dotenv, _resolve_loop_model_options
+from micro_model_agent.interfaces.cli.common import _load_dotenv
 
 
 def _registered_command_names(typer_app: typer.Typer) -> set[str]:
@@ -145,15 +146,15 @@ def test_cli_loop_model_options_use_selected_repository_config(tmp_path: Path) -
         selected_promotion={"artifact_id": "00000000-0000-4000-8000-000000000001"},
     )
 
-    options = _resolve_loop_model_options(
+    options = resolve_model_options(
         repository_root=tmp_path,
         model=None,
         base_model=None,
         adapter_path=None,
     )
 
-    assert options["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
-    assert options["adapter_path"] == tmp_path / "training" / "runs" / "proof" / "adapter"
+    assert options.base_model == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert options.adapter_path == tmp_path / "training" / "runs" / "proof" / "adapter"
 
 
 def test_cli_loop_model_options_prefer_args_over_repository_config(tmp_path: Path) -> None:
@@ -164,18 +165,16 @@ def test_cli_loop_model_options_prefer_args_over_repository_config(tmp_path: Pat
         adapter_path="configured-adapter",
     )
 
-    options = _resolve_loop_model_options(
+    options = resolve_model_options(
         repository_root=tmp_path,
         model="explicit-ollama",
         base_model="explicit-base",
         adapter_path=Path("explicit-adapter"),
     )
 
-    assert options == {
-        "model": "explicit-ollama",
-        "base_model": "explicit-base",
-        "adapter_path": Path("explicit-adapter"),
-    }
+    assert options.model == "explicit-ollama"
+    assert options.base_model == "explicit-base"
+    assert options.adapter_path == Path("explicit-adapter")
 
 
 def test_cli_index_writes_local_lexical_index(tmp_path: Path) -> None:

@@ -12,11 +12,7 @@ import typer
 
 from micro_model_agent.infrastructure.composition import (
     EvaluationModelSelection,
-    resolve_model_options,
     select_evaluation_model,
-)
-from micro_model_agent.infrastructure.composition import (
-    base_model_from_adapter as read_base_model_from_adapter,
 )
 
 DEFAULT_TRACE_DIR = Path(".traces")
@@ -76,41 +72,6 @@ def _format_tool_profile(profile: object) -> str:
     tools = ", ".join(available_tools) if isinstance(available_tools, list) else "none"
     versions = ", ".join(schema_versions) if isinstance(schema_versions, list) else "none"
     return f"available_tools=[{tools}]; schema_versions=[{versions}]"
-
-
-def _base_model_from_adapter(adapter_path: Path | None) -> str:
-    """Read the base model name from a PEFT adapter config file."""
-
-    try:
-        return read_base_model_from_adapter(adapter_path)
-    except ValueError:
-        _fail("--base-model is required when no --adapter-path is provided")
-    except FileNotFoundError as exc:
-        _fail(str(exc))
-
-
-def _resolve_loop_model_options(
-    *,
-    repository_root: Path,
-    model: str | None,
-    base_model: str | None,
-    adapter_path: Path | None,
-    use_adapter: bool = True,
-) -> dict[str, str | Path | None]:
-    """Resolve CLI loop model settings from args, env vars, and local config."""
-
-    options = resolve_model_options(
-        repository_root=repository_root,
-        model=model,
-        base_model=base_model,
-        adapter_path=adapter_path,
-        use_adapter=use_adapter,
-    )
-    return {
-        "adapter_path": options.adapter_path,
-        "base_model": options.base_model,
-        "model": options.model,
-    }
 
 
 def _read_scripted_responses(

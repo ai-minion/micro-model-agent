@@ -7,11 +7,11 @@ import json
 import subprocess
 from pathlib import Path
 
+from micro_model_agent.application.tool_loop import run_profile_settings
 from micro_model_agent.infrastructure.repositories.metadata import (
     initialize_repository,
     update_model_configuration,
 )
-from micro_model_agent.interfaces.mcp.policy.tool_names import run_profile_settings
 from micro_model_agent.interfaces.mcp.tools.run_loop import resolve_model_settings
 from micro_model_agent.interfaces.mcp.workspace import path_from_user_input
 from micro_model_agent.interfaces.mcp_server import (

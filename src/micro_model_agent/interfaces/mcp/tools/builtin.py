@@ -4,12 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from micro_model_agent.domain.contracts import ToolCall
-from micro_model_agent.infrastructure.composition import build_builtin_tool_executor
-from micro_model_agent.infrastructure.tools.catalog import BUILTIN_TOOL_SPECS
+from micro_model_agent.infrastructure.composition import (
+    builtin_tools_response,
+    execute_builtin_tool_request,
+)
 from micro_model_agent.interfaces.mcp.compat import DEFAULT_MCP_AVAILABLE_TOOLS
-from micro_model_agent.interfaces.mcp.policy.patch_policy import PatchPolicyToolExecutor
-from micro_model_agent.interfaces.mcp.policy.tool_names import allowed_test_commands
 
 
 async def call_builtin_tool(
@@ -23,37 +22,17 @@ async def call_builtin_tool(
 ) -> dict[str, Any]:
     """Execute one built-in tool through MCP."""
 
-    if tool_name not in BUILTIN_TOOL_SPECS:
-        return {"ok": False, "error": f"unknown tool: {tool_name}"}
-
-    # Direct tool execution uses the same validation and patch policy as the agent loop.
-    executor = PatchPolicyToolExecutor(
-        build_builtin_tool_executor(
-            repository_root,
-            allowed_test_commands(test_command_name, test_command_args),
-        ),
+    return await execute_builtin_tool_request(
+        tool_name=tool_name,
+        arguments=arguments,
+        repository_root=repository_root,
         apply_patches=apply_patches,
+        test_command_name=test_command_name,
+        test_command_args=test_command_args,
     )
-    result = await executor.execute(ToolCall(tool_name=tool_name, arguments=arguments))
-    return {
-        "ok": result.ok,
-        "tool_name": result.tool_name,
-        "output": result.output,
-        "error": result.error,
-    }
 
 
 def list_builtin_tools() -> dict[str, Any]:
     """Return built-in tool names and descriptions."""
 
-    return {
-        "tools": [
-            {
-                "name": spec.name,
-                "description": spec.description,
-                "default_enabled_for_mcp": spec.name in DEFAULT_MCP_AVAILABLE_TOOLS,
-            }
-            for spec in BUILTIN_TOOL_SPECS.values()
-        ],
-        "default_agent_tools": list(DEFAULT_MCP_AVAILABLE_TOOLS),
-    }
+    return builtin_tools_response(default_enabled_tool_names=DEFAULT_MCP_AVAILABLE_TOOLS)

@@ -1,8 +1,8 @@
 # Architecture Refactor Follow-Up
 
-This is the short continuation handoff for finishing the architecture refactor.
-Use it instead of carrying the full assessment in
-`docs/architecture-refactor-plan.md` unless deeper historical context is needed.
+This is an older continuation handoff for the architecture refactor. The current
+handoff lives in `docs/architecture-refactor-left-to-do.md`; use that document
+first unless deeper historical context is needed.
 
 ## Current State
 
@@ -14,10 +14,24 @@ command-module split, and the first CLI-orchestration move:
 - The production `application -> agents` dependency has been removed.
 - `interfaces/mcp_server.py` is now a compatibility shim over
   `interfaces/mcp/*`.
-- Shared runtime assembly lives in `infrastructure/composition.py`.
+- Shared runtime assembly remains available through
+  `infrastructure.composition`.
+- Model runtime helpers live in `infrastructure/models/runtime.py` and remain
+  available to interface adapters through `infrastructure.composition`.
+- Workflow factory helpers live in package-level runtime modules under
+  `infrastructure/agents/`, `infrastructure/repositories/`,
+  `infrastructure/datasets/`,
+  `infrastructure/training/`, `infrastructure/evaluation/`, and
+  `infrastructure/promotion/`; they remain available to interface adapters
+  through `infrastructure.composition`.
+- Trace/workspace persistence runtime helpers live in
+  `infrastructure/persistence/runtime.py` and remain available to interface
+  adapters through `infrastructure.composition`.
+- Built-in tool runtime helpers live in `infrastructure/tools/runtime.py` and
+  remain available to interface adapters through `infrastructure.composition`.
 - MCP runtime assembly uses composition helpers.
-- CLI `loop` uses composition helpers for model, trace, tool executor, and
-  model option resolution.
+- CLI `loop` uses composition helpers for model, trace, tool executor, model
+  option resolution, and runtime response assembly.
 - CLI eval commands use composition helpers for provider selection:
   `eval synthetic`, `eval traces`, and `eval workspace-staged`.
 - `application/tool_loop.py` owns the protocol-neutral tool-loop request/result
@@ -32,10 +46,9 @@ command-module split, and the first CLI-orchestration move:
 - `interfaces/cli/app.py` owns Typer app and command-group construction, then
   registers command modules.
 - `interfaces/cli/common.py` owns shared CLI helpers such as `_run`, `_fail`,
-  `.env` loading, scripted-response loading, and model option selection.
-- `interfaces/cli/__init__.py` re-exports `app`, `_load_dotenv`, and
-  `_resolve_loop_model_options` for compatibility with the console script and
-  existing tests.
+  `.env` loading, and scripted-response loading. Private loop model-resolution
+  helpers have been retired; tests now target the composition owner.
+- `interfaces/cli/__init__.py` re-exports only `app` for the console script.
 - `interfaces/cli/commands/repo.py` owns root `init`, `index`, and `task`
   command handlers.
 - `interfaces/cli/commands/loop.py` owns the root `loop` command handler.
@@ -126,7 +139,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-254 passed
+308 passed
 ```
 
 ## Compatibility Invariants
@@ -158,8 +171,8 @@ Keep these stable unless a separate migration is explicitly requested:
 
 ## Next Slice: Larger Structural Cleanup
 
-Goal: keep the completed CLI/application boundaries intact while reducing the
-size and coupling of the remaining large modules.
+Goal: keep the completed CLI/application/MCP boundaries intact while reducing
+the size and coupling of the remaining large modules.
 
 Suggested implementation:
 
