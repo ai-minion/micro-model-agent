@@ -42,7 +42,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -m pytest'
 ```
 
-Both passed; the full test suite reported 315 passing tests.
+Both passed; the full test suite reported 316 passing tests.
 
 ## Goal
 

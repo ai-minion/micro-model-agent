@@ -75,6 +75,8 @@ They currently check:
   compatibility facades
 - internal production imports use application owner modules instead of the old
   application compatibility facades
+- application compatibility facades define explicit sorted public `__all__`
+  exports
 
 Compatibility shims still exist:
 
@@ -186,4 +188,6 @@ After each phase:
   - internal code importing old flat facade modules instead of owner packages
   - internal code importing application compatibility facades instead of owner
     modules
+  - application compatibility facade exports becoming private, dynamic, or
+    unsorted
 - Full ruff and pytest pass.

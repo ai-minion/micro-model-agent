@@ -36,8 +36,6 @@ from micro_model_agent.application.evaluation.workflows import (
 )
 
 __all__ = [
-    "WORKSPACE_STAGED_STAGE_NAMES",
-    "WORKSPACE_STAGED_SYSTEM_PROMPT",
     "EvaluationComparisonResult",
     "EvaluationMetricDelta",
     "RunEvaluationComparisonRequest",
@@ -63,6 +61,8 @@ __all__ = [
     "TraceBehaviorEvaluationSuite",
     "TraceBehaviorExampleScore",
     "TraceExampleScorer",
+    "WORKSPACE_STAGED_STAGE_NAMES",
+    "WORKSPACE_STAGED_SYSTEM_PROMPT",
     "WorkspaceStagedEvaluationSuite",
     "WorkspaceStagedExampleScore",
     "WorkspaceStagedExampleScorer",

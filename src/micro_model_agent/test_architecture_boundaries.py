@@ -589,6 +589,14 @@ def test_application_use_case_modules_are_compatibility_facades() -> None:
     assert violations == []
 
 
+def test_application_compatibility_facade_exports_are_sorted_public() -> None:
+    violations: list[str] = []
+    for path in APPLICATION_FACADE_PATHS:
+        violations.extend(_public_export_violations(path, require_sorted=True))
+
+    assert violations == []
+
+
 def test_flat_application_rubric_modules_are_compatibility_shims() -> None:
     violations = _shim_violations(
         APPLICATION_RUBRIC_SHIM_PATHS,
