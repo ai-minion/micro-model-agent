@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from micro_model_agent.agents.coding_agent import CodingAgent
-from micro_model_agent.application.agent_workflows import RunAgentWorkflow
+from micro_model_agent.application.agent.workflows import RunAgentWorkflow
 from micro_model_agent.application.ports import DatasetExampleStore
 from micro_model_agent.infrastructure.models.fake import StaticModelProvider
 from micro_model_agent.infrastructure.persistence.runtime import workflow_trace_store

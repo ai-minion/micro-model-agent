@@ -1,6 +1,6 @@
 """Compatibility facade for application evaluation workflows."""
 
-from micro_model_agent.application.evaluation_workflows import (
+from micro_model_agent.application.evaluation.workflows import (
     WORKSPACE_STAGED_STAGE_NAMES,
     WORKSPACE_STAGED_SYSTEM_PROMPT,
     EvaluationComparisonResult,

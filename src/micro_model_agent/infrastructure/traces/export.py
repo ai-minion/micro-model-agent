@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, cast
 
-from micro_model_agent.application.agent_workflows import TraceDatasetBuilder
+from micro_model_agent.application.agent.workflows import TraceDatasetBuilder
 from micro_model_agent.domain.contracts import WorkflowStatus, WorkflowTrace
 from micro_model_agent.domain.datasets import (
     DatasetExample,

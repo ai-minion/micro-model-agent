@@ -73,8 +73,9 @@ The largest visible moves are complete:
   cases now live under grouped owner modules/packages, with the old application
   import paths kept as explicit compatibility facades.
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
-  loops now live in `application/evaluation_workflows.py`; `application/evaluation.py`
-  is a compatibility facade, and the infrastructure modules are compatibility
+  loops now live in `application/evaluation/workflows.py`; `application/evaluation`
+  and `application/evaluation_workflows.py` are compatibility facades, and the
+  infrastructure modules are compatibility
   adapters around scoring/rubric wiring.
 - Synthetic, trace-derived, and workspace-staged pure scoring/rubric modules now
   live under `application/evaluation_rubrics/`; old application and
@@ -119,8 +120,8 @@ names, prompt names, and trace/evaluation schemas stable.
    helpers now live under `infrastructure/repositories/`; application use-case
    owners now live in `application/datasets/workflows.py`,
    `application/promotion/workflows.py`, `application/training/workflows.py`,
-   `application/tool_loop/workflows.py`, `application/agent_workflows.py`,
-   and `application/evaluation_workflows.py`; pure evaluation rubrics now live
+   `application/tool_loop/workflows.py`, `application/agent/workflows.py`,
+   and `application/evaluation/workflows.py`; pure evaluation rubrics now live
    under `application/evaluation_rubrics/`;
    JSONL/filesystem
    persistence helpers now
@@ -200,9 +201,9 @@ These files are the most important starting points:
 - `src/micro_model_agent/application/datasets/workflows.py`
 - `src/micro_model_agent/application/promotion/workflows.py`
 - `src/micro_model_agent/application/training/workflows.py`
-- `src/micro_model_agent/application/agent_workflows.py`
-- `src/micro_model_agent/application/evaluation_workflows.py`
-- `src/micro_model_agent/application/evaluation.py`
+- `src/micro_model_agent/application/agent/workflows.py`
+- `src/micro_model_agent/application/evaluation/workflows.py`
+- `src/micro_model_agent/application/evaluation/`
 - `src/micro_model_agent/application/evaluation_rubrics/`
 - `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
 - `src/micro_model_agent/infrastructure/trace_evaluation.py`

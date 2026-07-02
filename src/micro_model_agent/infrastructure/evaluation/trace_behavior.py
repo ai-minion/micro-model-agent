@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import cast
 
+from micro_model_agent.application.evaluation.workflows import (
+    TraceBehaviorEvaluationSuite as ApplicationTraceBehaviorEvaluationSuite,
+)
+from micro_model_agent.application.evaluation.workflows import TraceExampleScorer
 from micro_model_agent.application.evaluation_rubrics.trace import (
     TraceExampleScore,
     TraceRubric,
@@ -20,10 +24,6 @@ from micro_model_agent.application.evaluation_rubrics.trace import (
     trace_tool_history_match,
     trace_tool_names_from_response,
 )
-from micro_model_agent.application.evaluation_workflows import (
-    TraceBehaviorEvaluationSuite as ApplicationTraceBehaviorEvaluationSuite,
-)
-from micro_model_agent.application.evaluation_workflows import TraceExampleScorer
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
 __all__ = [

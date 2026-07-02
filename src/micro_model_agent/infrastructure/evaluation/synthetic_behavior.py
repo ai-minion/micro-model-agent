@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import cast
 
+from micro_model_agent.application.evaluation.workflows import (
+    SyntheticBehaviorEvaluationSuite as ApplicationSyntheticBehaviorEvaluationSuite,
+)
+from micro_model_agent.application.evaluation.workflows import (
+    SyntheticExampleScorer,
+)
 from micro_model_agent.application.evaluation_rubrics.synthetic import (
     SyntheticExampleScore,
     SyntheticRubric,
-)
-from micro_model_agent.application.evaluation_workflows import (
-    SyntheticBehaviorEvaluationSuite as ApplicationSyntheticBehaviorEvaluationSuite,
-)
-from micro_model_agent.application.evaluation_workflows import (
-    SyntheticExampleScorer,
 )
 from micro_model_agent.infrastructure.evaluation.trace_behavior import (
     TraceBehaviorEvaluationSuite,

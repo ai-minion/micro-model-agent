@@ -1,6 +1,6 @@
-"""Compatibility facade for static agent application workflows."""
+"""Application-owned static agent workflows."""
 
-from micro_model_agent.application.agent import (
+from micro_model_agent.application.agent.workflows import (
     DefaultWorkflowEvaluator,
     RunAgentWorkflow,
     TraceDatasetBuilder,

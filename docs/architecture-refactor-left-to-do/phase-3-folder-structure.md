@@ -207,11 +207,14 @@ The application layer is no longer a single flat set of use-case files:
 
 ```text
 application/
-  agent_workflows.py
+  agent/
+    workflows.py
+  agent_workflows.py         # compatibility facade
   datasets/
     workflows.py
-  evaluation.py              # compatibility facade
-  evaluation_workflows.py
+  evaluation/
+    workflows.py
+  evaluation_workflows.py    # compatibility facade
   evaluation_rubrics/
   promotion/
     workflows.py
@@ -222,9 +225,8 @@ application/
   workflows.py               # compatibility facade
 ```
 
-The remaining target direction is to decide whether
-`evaluation_workflows.py` and `agent_workflows.py` should become subpackages too
-or stay as named owner modules:
+The application target direction is now represented in-package; remaining work
+is mostly about deciding when compatibility facades can be retired:
 
 ```text
 application/

@@ -276,11 +276,26 @@ RUNTIME_MODULE_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "tools" / "runtime.py",
     PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
 }
-APPLICATION_EVALUATION_FACADE_PATH = PACKAGE_ROOT / "application" / "evaluation.py"
 APPLICATION_USE_CASE_FACADES = (
+    (
+        PACKAGE_ROOT / "application" / "agent" / "__init__.py",
+        "micro_model_agent.application.agent.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "agent_workflows.py",
+        "micro_model_agent.application.agent",
+    ),
     (
         PACKAGE_ROOT / "application" / "datasets" / "__init__.py",
         "micro_model_agent.application.datasets.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "evaluation" / "__init__.py",
+        "micro_model_agent.application.evaluation.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "evaluation_workflows.py",
+        "micro_model_agent.application.evaluation",
     ),
     (
         PACKAGE_ROOT / "application" / "promotion" / "__init__.py",
@@ -296,7 +311,7 @@ APPLICATION_USE_CASE_FACADES = (
     ),
     (
         PACKAGE_ROOT / "application" / "workflows.py",
-        "micro_model_agent.application.agent_workflows",
+        "micro_model_agent.application.agent",
     ),
 )
 APPLICATION_RUBRIC_PATHS = {
@@ -535,15 +550,6 @@ def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
     violations: list[str] = []
     for path in APPLICATION_RUBRIC_PATHS:
         violations.extend(_public_export_violations(path, require_sorted=True))
-
-    assert violations == []
-
-
-def test_application_evaluation_module_is_a_compatibility_facade() -> None:
-    violations = _shim_violations(
-        {APPLICATION_EVALUATION_FACADE_PATH},
-        allowed_import_prefix="micro_model_agent.application.evaluation_workflows",
-    )
 
     assert violations == []
 

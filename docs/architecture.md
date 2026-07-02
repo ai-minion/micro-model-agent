@@ -119,8 +119,8 @@ pure synthetic/trace/workspace-staged scoring rubrics, dataset loading,
 evaluation execution, report metadata, score/metric comparison, review queue
 build/write orchestration, and report persistence through ports.
 Evaluation workflow orchestration lives in
-`application.evaluation_workflows`; `application.evaluation` remains a
-compatibility facade. Pure evaluation rubrics live under
+`application.evaluation.workflows`; `application.evaluation` and
+`application.evaluation_workflows` remain compatibility facades. Pure evaluation rubrics live under
 `application.evaluation_rubrics`, with old flat rubric imports kept as
 compatibility shims.
 
@@ -134,8 +134,9 @@ and the application coordinates promotion policy, registry orchestration,
 repository-local model selection, and packaging requests.
 Promotion use-case orchestration lives in `application.promotion.workflows`; the
 `application.promotion` package remains as a compatibility facade. Static
-coding-agent workflow orchestration lives in `application.agent_workflows`;
-`application.workflows` remains as a compatibility facade.
+coding-agent workflow orchestration lives in `application.agent.workflows`;
+`application.agent`, `application.agent_workflows`, and `application.workflows`
+remain as compatibility facades.
 
 ### Infrastructure
 

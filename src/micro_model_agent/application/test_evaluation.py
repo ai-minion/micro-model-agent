@@ -9,7 +9,7 @@ from typing import cast
 
 import pytest
 
-from micro_model_agent.application.evaluation_workflows import (
+from micro_model_agent.application.evaluation.workflows import (
     RunEvaluationComparisonRequest,
     RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationRequest,

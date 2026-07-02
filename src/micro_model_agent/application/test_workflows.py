@@ -7,7 +7,7 @@ import subprocess
 from pathlib import Path
 
 from micro_model_agent.agents.coding_agent import CodingAgent, CodingAgentTask
-from micro_model_agent.application.agent_workflows import (
+from micro_model_agent.application.agent.workflows import (
     RunAgentWorkflow,
     TraceDatasetBuilder,
     label_from_workflow_result,

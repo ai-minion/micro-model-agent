@@ -7,15 +7,15 @@ Complete.
 Completed:
 
 - Added application-owned synthetic behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation_workflows.py`.
+  `src/micro_model_agent/application/evaluation/workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/synthetic_evaluation.py` into
   a compatibility adapter that wires infrastructure scoring/tool contracts.
 - Added application-owned trace-derived behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation_workflows.py`.
+  `src/micro_model_agent/application/evaluation/workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/trace_evaluation.py` into a
   compatibility adapter plus extracted trace scoring helpers.
 - Added application-owned workspace-staged behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation_workflows.py`.
+  `src/micro_model_agent/application/evaluation/workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
   into a compatibility adapter that wires the staged workspace rubric.
 - Added application tests that exercise synthetic and trace model-call loops
@@ -42,7 +42,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -m pytest'
 ```
 
-Both passed; the full test suite reported 314 passing tests.
+Both passed; the full test suite reported 313 passing tests.
 
 ## Goal
 
@@ -52,7 +52,7 @@ testable without model providers or filesystem setup.
 
 ## Current Mismatch
 
-`src/micro_model_agent/application/evaluation_workflows.py` coordinates dataset
+`src/micro_model_agent/application/evaluation/workflows.py` coordinates dataset
 loading, metadata, and report writing through ports. That is good.
 
 The model-call loops for synthetic, trace-derived, and workspace-staged
