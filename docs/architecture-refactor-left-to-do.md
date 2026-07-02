@@ -72,6 +72,8 @@ The largest visible moves are complete:
 - Dataset, promotion, training, tool-loop, and static-agent application use
   cases now live under grouped owner modules/packages, with the old application
   import paths kept as explicit compatibility facades.
+- Application port contracts now live in `application/ports/contracts.py`, with
+  `application.ports` kept as an explicit compatibility facade.
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
   loops now live in `application/evaluation/workflows.py`; `application/evaluation`
   and `application/evaluation_workflows.py` are compatibility facades, and the
@@ -121,7 +123,8 @@ names, prompt names, and trace/evaluation schemas stable.
    owners now live in `application/datasets/workflows.py`,
    `application/promotion/workflows.py`, `application/training/workflows.py`,
    `application/tool_loop/workflows.py`, `application/agent/workflows.py`,
-   and `application/evaluation/workflows.py`; pure evaluation rubrics now live
+   and `application/evaluation/workflows.py`; application port contracts now
+   live in `application/ports/contracts.py`; pure evaluation rubrics now live
    under `application/evaluation_rubrics/`;
    JSONL/filesystem
    persistence helpers now
@@ -204,6 +207,7 @@ These files are the most important starting points:
 - `src/micro_model_agent/application/agent/workflows.py`
 - `src/micro_model_agent/application/evaluation/workflows.py`
 - `src/micro_model_agent/application/evaluation/`
+- `src/micro_model_agent/application/ports/contracts.py`
 - `src/micro_model_agent/application/evaluation_rubrics/`
 - `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
 - `src/micro_model_agent/infrastructure/trace_evaluation.py`

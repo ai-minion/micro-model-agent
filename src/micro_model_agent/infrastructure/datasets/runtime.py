@@ -13,7 +13,7 @@ from micro_model_agent.application.datasets.workflows import (
     RunTraceDatasetExportWorkflow,
     RunTraceReviewWorkflow,
 )
-from micro_model_agent.application.ports import DatasetExampleStore
+from micro_model_agent.application.ports.contracts import DatasetExampleStore
 from micro_model_agent.infrastructure.datasets.curation import (
     LocalDatasetMerger,
     LocalDatasetRelabeler,

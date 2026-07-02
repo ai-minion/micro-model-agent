@@ -216,6 +216,8 @@ application/
     workflows.py
   evaluation_workflows.py    # compatibility facade
   evaluation_rubrics/
+  ports/
+    contracts.py
   promotion/
     workflows.py
   tool_loop/
@@ -236,6 +238,7 @@ application/
   tool_loop/
   evaluation/
   evaluation_rubrics/
+  ports/
   promotion/
 ```
 

@@ -6,7 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from micro_model_agent.application.ports import (
+from micro_model_agent.application.ports.contracts import (
     CodingAgentResult,
     CodingAgentTask,
     CodingWorkflowRunner,

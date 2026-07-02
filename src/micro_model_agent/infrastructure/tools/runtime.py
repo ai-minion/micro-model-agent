@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.application.ports import ToolExecutor
+from micro_model_agent.application.ports.contracts import ToolExecutor
 from micro_model_agent.domain.contracts import ToolCall, ToolResult
 from micro_model_agent.infrastructure.tools.catalog import BUILTIN_TOOL_SPECS
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand

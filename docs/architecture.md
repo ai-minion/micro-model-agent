@@ -71,6 +71,8 @@ Application-owned ports include `CodingWorkflowRunner`, `ModelProvider`,
 `ToolExecutor`, `TraceStore`, and dataset/training/evaluation storage and runner
 contracts. The reference `CodingAgent` implements `CodingWorkflowRunner`; the
 application layer depends on that port rather than importing the concrete agent.
+Port contracts live in `application.ports.contracts`; `application.ports`
+remains as a compatibility facade.
 
 The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
 `RunToolLoopRequest`, and `RunToolLoopResult`. The reference

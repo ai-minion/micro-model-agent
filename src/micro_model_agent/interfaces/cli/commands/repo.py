@@ -7,7 +7,7 @@ from pathlib import Path
 import typer
 
 from micro_model_agent.application.agent.workflows import label_from_workflow_result
-from micro_model_agent.application.ports import CodingAgentTask
+from micro_model_agent.application.ports.contracts import CodingAgentTask
 from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
 from micro_model_agent.infrastructure.composition import (
     build_jsonl_dataset_example_store,

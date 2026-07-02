@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from micro_model_agent.application.ports import ModelConfigurationUpdate
+from micro_model_agent.application.ports.contracts import ModelConfigurationUpdate
 
 METADATA_DIR_NAME = ".micro_model_agent"
 CONFIG_FILE_NAME = "config.json"

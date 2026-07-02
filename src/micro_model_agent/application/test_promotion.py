@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from micro_model_agent.application.ports import (
+from micro_model_agent.application.ports.contracts import (
     ModelConfigurationUpdate,
     OllamaPackageRecord,
     PromotedArtifactRecord,

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
-from micro_model_agent.application.ports import (
+from micro_model_agent.application.ports.contracts import (
     EvaluationResultReader,
     ModelPromotionPolicy,
     OllamaPackageRecord,

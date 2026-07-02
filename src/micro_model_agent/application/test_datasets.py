@@ -21,7 +21,7 @@ from micro_model_agent.application.datasets.workflows import (
     RunTraceReviewRequest,
     RunTraceReviewWorkflow,
 )
-from micro_model_agent.application.ports import TraceReviewRecord
+from micro_model_agent.application.ports.contracts import TraceReviewRecord
 from micro_model_agent.domain.contracts import EvaluationResult, WorkflowStatus, WorkflowTrace
 from micro_model_agent.domain.datasets import (
     DatasetExample,

@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
-from micro_model_agent.application.ports import ModelProvider, ToolExecutor
+from micro_model_agent.application.ports.contracts import ModelProvider, ToolExecutor
 from micro_model_agent.application.tool_loop.workflows import (
     DEFAULT_TOOL_NAMES,
     PrepareToolLoopRequest,

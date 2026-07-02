@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
-from micro_model_agent.application.ports import PromotedArtifactRecord
+from micro_model_agent.application.ports.contracts import PromotedArtifactRecord
 from micro_model_agent.domain.contracts import EvaluationResult
 from micro_model_agent.domain.training import ModelArtifact
 from micro_model_agent.infrastructure.evaluation.reports import load_evaluation_result

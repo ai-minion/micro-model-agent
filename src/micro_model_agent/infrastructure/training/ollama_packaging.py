@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from micro_model_agent.application.ports import OllamaPackageRecord, PromotedArtifactRecord
+from micro_model_agent.application.ports.contracts import (
+    OllamaPackageRecord,
+    PromotedArtifactRecord,
+)
 from micro_model_agent.infrastructure.promotion.gate import PromotionRegistryEntry
 
 

@@ -302,6 +302,10 @@ APPLICATION_USE_CASE_FACADES = (
         "micro_model_agent.application.promotion.workflows",
     ),
     (
+        PACKAGE_ROOT / "application" / "ports" / "__init__.py",
+        "micro_model_agent.application.ports.contracts",
+    ),
+    (
         PACKAGE_ROOT / "application" / "training" / "__init__.py",
         "micro_model_agent.application.training.workflows",
     ),

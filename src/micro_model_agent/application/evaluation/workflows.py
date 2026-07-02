@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 
-from micro_model_agent.application.ports import (
+from micro_model_agent.application.ports.contracts import (
     DatasetExampleReader,
     DatasetToolProfileSummarizer,
     EvaluationComparisonReportWriter,

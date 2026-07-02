@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
-from micro_model_agent.application.ports import TraceReviewRecord
+from micro_model_agent.application.ports.contracts import TraceReviewRecord
 from micro_model_agent.domain.datasets import (
     DatasetLabel,
     FailureMode,
