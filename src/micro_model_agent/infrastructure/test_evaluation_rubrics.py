@@ -5,17 +5,17 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from micro_model_agent.application.evaluation_synthetic_rubric import SyntheticRubric
+from micro_model_agent.application.evaluation_trace_rubric import TraceRubric
+from micro_model_agent.application.evaluation_workspace_staged_rubric import (
+    WorkspaceStagedRubric,
+)
 from micro_model_agent.domain.datasets import (
     DatasetExample,
     DatasetExampleKind,
     DatasetLabel,
     OutcomeLabel,
     QualityLabel,
-)
-from micro_model_agent.infrastructure.evaluation.synthetic_rubric import SyntheticRubric
-from micro_model_agent.infrastructure.evaluation.trace_rubric import TraceRubric
-from micro_model_agent.infrastructure.evaluation.workspace_staged_rubric import (
-    WorkspaceStagedRubric,
 )
 
 

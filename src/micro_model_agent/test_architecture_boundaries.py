@@ -52,7 +52,6 @@ DOMAIN_BANNED_EXTERNALS = (
 )
 PURE_RUBRIC_BANNED_PREFIXES = (
     "micro_model_agent.agents",
-    "micro_model_agent.application",
     "micro_model_agent.infrastructure",
     "micro_model_agent.interfaces",
 )
@@ -277,6 +276,16 @@ RUNTIME_MODULE_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "tools" / "runtime.py",
     PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
 }
+APPLICATION_RUBRIC_PATHS = {
+    PACKAGE_ROOT / "application" / "evaluation_synthetic_rubric.py",
+    PACKAGE_ROOT / "application" / "evaluation_trace_rubric.py",
+    PACKAGE_ROOT / "application" / "evaluation_workspace_staged_rubric.py",
+}
+INFRASTRUCTURE_RUBRIC_SHIM_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "evaluation" / "synthetic_rubric.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation" / "trace_rubric.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation" / "workspace_staged_rubric.py",
+}
 
 
 def _production_modules(package: str) -> list[Path]:
@@ -483,17 +492,30 @@ def test_interface_modules_import_infrastructure_only_through_composition() -> N
 
 def test_pure_rubrics_do_not_import_concrete_infrastructure() -> None:
     violations: list[str] = []
-    for path in (
-        PACKAGE_ROOT / "infrastructure" / "evaluation" / "synthetic_rubric.py",
-        PACKAGE_ROOT / "infrastructure" / "evaluation" / "trace_rubric.py",
-        PACKAGE_ROOT / "infrastructure" / "evaluation" / "workspace_staged_rubric.py",
-    ):
+    for path in APPLICATION_RUBRIC_PATHS:
         violations.extend(
             f"{path.relative_to(PACKAGE_ROOT)}: {imported}"
             for imported in _imports(path)
             if imported.startswith(PURE_RUBRIC_BANNED_PREFIXES)
             or imported in PURE_RUBRIC_BANNED_EXTERNALS
         )
+
+    assert violations == []
+
+
+def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
+    violations: list[str] = []
+    for path in APPLICATION_RUBRIC_PATHS:
+        violations.extend(_public_export_violations(path, require_sorted=True))
+
+    assert violations == []
+
+
+def test_infrastructure_rubric_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        INFRASTRUCTURE_RUBRIC_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.application",
+    )
 
     assert violations == []
 

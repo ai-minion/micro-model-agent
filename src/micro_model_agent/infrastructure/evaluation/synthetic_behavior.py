@@ -10,7 +10,7 @@ from micro_model_agent.application.evaluation import (
 from micro_model_agent.application.evaluation import (
     SyntheticExampleScorer,
 )
-from micro_model_agent.infrastructure.evaluation.synthetic_rubric import (
+from micro_model_agent.application.evaluation_synthetic_rubric import (
     SyntheticExampleScore,
     SyntheticRubric,
 )

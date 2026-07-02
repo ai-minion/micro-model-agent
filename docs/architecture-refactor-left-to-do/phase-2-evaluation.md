@@ -2,7 +2,7 @@
 
 ## Status
 
-Partially complete.
+Complete.
 
 Completed:
 
@@ -24,15 +24,14 @@ Completed:
   fake scorers/providers and no infrastructure imports.
 - Removed concrete infrastructure imports from the pure synthetic, trace, and
   workspace-staged rubric modules.
+- Moved pure synthetic, trace-derived, and workspace-staged scoring/rubric
+  modules into `src/micro_model_agent/application/`.
 - Added direct rubric tests that run without model providers or filesystem
   fixtures.
 - Added architecture coverage to prevent pure rubric modules from importing
   concrete infrastructure helpers.
-
-Still remaining:
-
-- Decide whether scoring helpers stay in `application/evaluation.py`, move into
-  smaller application modules, or become domain vocabulary.
+- Added architecture coverage that keeps the old infrastructure rubric paths as
+  compatibility shims over the application-owned modules.
 
 Verification at the latest update:
 
@@ -41,7 +40,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -m pytest'
 ```
 
-Both passed; the full test suite reported 263 passing tests.
+Both passed; the full test suite reported 311 passing tests.
 
 ## Goal
 
@@ -59,14 +58,15 @@ behavior now live in application code. Their infrastructure modules remain as
 compatibility adapters that wire concrete scoring/rubric helpers and tool
 contract defaults.
 
-The immediate purity gap in rubric modules has been closed:
+The rubric ownership gap has been closed:
 
-- `workspace_staged_rubrics.py` no longer imports `dataset_metadata`,
-  `evaluation_response_parsing`, or `tools.catalog`.
-- `synthetic_rubrics.py` accepts tool contracts from its adapter instead of
-  importing `tools.catalog`.
-- Trace scoring now lives in `trace_rubrics.py`; `trace_evaluation.py` is a
-  compatibility adapter around that pure scoring module.
+- `application/evaluation_workspace_staged_rubric.py` owns staged workspace
+  scoring without importing dataset metadata, response parsing, or tool catalog
+  adapters.
+- `application/evaluation_synthetic_rubric.py` owns synthetic scoring and
+  accepts tool contracts from its adapter instead of importing `tools.catalog`.
+- `application/evaluation_trace_rubric.py` owns trace-derived scoring.
+- Old `infrastructure/evaluation/*_rubric.py` paths remain compatibility shims.
 
 ## Suggested Shape
 
@@ -105,7 +105,7 @@ Compatibility re-exports are fine while tests migrate.
    - Keep `ModelProvider` as an application port.
    - Keep concrete providers in infrastructure.
 
-3. Move or wrap scoring into pure functions/classes.
+3. Move or wrap scoring into pure functions/classes. **Completed.**
    - If scoring needs only `DatasetExample` and raw response, it can live in
      application or domain.
    - If scoring needs tool-contract catalogs, pass those contracts in rather
@@ -113,11 +113,11 @@ Compatibility re-exports are fine while tests migrate.
    - **Current status:** completed for synthetic, trace-derived, and
      workspace-staged behavior scoring while preserving compatibility imports.
 
-4. Split report IO from evaluation behavior.
+4. Split report IO from evaluation behavior. **Completed for behavior
+   evaluation: report readers/writers remain infrastructure adapters.**
    - Report readers/writers should remain infrastructure adapters.
 
-5. Repeat for trace-derived and workspace-staged evaluation. **Completed for
-   model-call orchestration and immediate rubric purity cleanup.**
+5. Repeat for trace-derived and workspace-staged evaluation. **Completed.**
 
 ## Acceptance Criteria
 

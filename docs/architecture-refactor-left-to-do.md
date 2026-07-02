@@ -70,15 +70,18 @@ The largest visible moves are complete:
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
   loops now live in `application/evaluation.py`; their infrastructure modules
   are compatibility adapters around scoring/rubric wiring.
+- Synthetic, trace-derived, and workspace-staged pure scoring/rubric modules now
+  live in `application/evaluation_*_rubric.py`; old infrastructure rubric paths
+  are compatibility shims.
 
 The remaining mismatch is less about file count and more about ownership:
 
 - Some use-case orchestration still lives in adapters or infrastructure.
 - Most `infrastructure/` adapters are grouped by mechanism, with old flat
   compatibility modules still present for external callers.
-- Synthetic, trace, and workspace-staged scoring/rubric code is now separated
-  from concrete infrastructure helpers, though broader module-shape cleanup
-  remains.
+- Synthetic, trace, and workspace-staged scoring/rubric ownership has moved into
+  application, with infrastructure retaining only adapter wiring and
+  compatibility imports.
 - Private helper compatibility exports have been retired from
   `interfaces.cli`, `interfaces.mcp_server`, and flat infrastructure shims;
   tests import owner modules directly.
@@ -97,9 +100,9 @@ names, prompt names, and trace/evaluation schemas stable.
    - Details: `docs/architecture-refactor-left-to-do/phase-1-run-loop.md`
 
 2. Move evaluation model-call orchestration inward and make rubrics cleaner.
-   **Mostly complete: behavior model-call loops moved and pure rubric modules
-   no longer import concrete infrastructure helpers. Evaluation module/package
-   shape remains a follow-up decision.**
+   **Completed: behavior model-call loops and pure scoring/rubric modules are
+   application-owned; infrastructure retains adapters, report IO, and
+   compatibility imports.**
    - Details: `docs/architecture-refactor-left-to-do/phase-2-evaluation.md`
 
 3. Reshape folders, especially `infrastructure/`, behind compatibility imports.
@@ -183,9 +186,10 @@ These files are the most important starting points:
 
 - `src/micro_model_agent/application/tool_loop.py`
 - `src/micro_model_agent/application/evaluation.py`
+- `src/micro_model_agent/application/evaluation_synthetic_rubric.py`
+- `src/micro_model_agent/application/evaluation_trace_rubric.py`
+- `src/micro_model_agent/application/evaluation_workspace_staged_rubric.py`
 - `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
-- `src/micro_model_agent/infrastructure/workspace_staged_rubrics.py`
-- `src/micro_model_agent/infrastructure/synthetic_rubrics.py`
 - `src/micro_model_agent/infrastructure/trace_evaluation.py`
 - `src/micro_model_agent/infrastructure/models/`
 - `src/micro_model_agent/infrastructure/repositories/`

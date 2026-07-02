@@ -8,7 +8,7 @@ from micro_model_agent.application.evaluation import (
     TraceBehaviorEvaluationSuite as ApplicationTraceBehaviorEvaluationSuite,
 )
 from micro_model_agent.application.evaluation import TraceExampleScorer
-from micro_model_agent.infrastructure.evaluation.trace_rubric import (
+from micro_model_agent.application.evaluation_trace_rubric import (
     TraceExampleScore,
     TraceRubric,
     expected_trace_final_response,

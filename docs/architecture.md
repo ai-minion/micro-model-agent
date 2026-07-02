@@ -109,8 +109,9 @@ parsing, output formatting, and exit behavior. Infrastructure owns persisted
 report loading, JSON/JSONL report writing, scoring/rubric adapters, artifact
 evaluators, model providers, staged review record construction, and dataset
 metadata helpers, while the application coordinates behavior model-call loops,
-dataset loading, evaluation execution, report metadata, score/metric comparison,
-review queue build/write orchestration, and report persistence through ports.
+pure synthetic/trace/workspace-staged scoring rubrics, dataset loading,
+evaluation execution, report metadata, score/metric comparison, review queue
+build/write orchestration, and report persistence through ports.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,
@@ -150,9 +151,6 @@ Adapters for external systems and local capabilities:
 - `evaluation.SyntheticBehaviorEvaluationSuite`
 - `evaluation.TraceBehaviorEvaluationSuite`
 - `evaluation.WorkspaceStagedEvaluationSuite`
-- `evaluation.SyntheticRubric`
-- `evaluation.TraceRubric`
-- `evaluation.WorkspaceStagedRubric`
 - `datasets.SyntheticTemplateGenerator`
 - `datasets.LocalDatasetValidator`
 - `datasets.LocalDatasetMerger`
