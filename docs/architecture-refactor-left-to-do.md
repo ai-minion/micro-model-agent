@@ -54,12 +54,16 @@ The largest visible moves are complete:
   `infrastructure.composition` re-exports them for interface adapters.
 - Stale private CLI runtime-resolution helpers and MCP policy helper modules
   have been retired; architecture tests now guard against their return.
+- Private helper exports have also been removed from the remaining flat
+  infrastructure compatibility shims; shim and runtime modules now define
+  explicit public `__all__` surfaces guarded by architecture tests.
 - Production interface modules now import infrastructure only through
   `infrastructure.composition`; tests still import concrete adapters when they
   characterize adapter behavior directly.
 - `infrastructure.composition` is now an explicit, sorted `__all__` facade over
   package-owned runtime helpers; its tests assert identity with owner modules
-  rather than re-testing owner behavior.
+  rather than re-testing owner behavior; package-owned runtime modules also
+  define explicit sorted `__all__` exports.
 - Large agent and infrastructure modules have already been split substantially.
 - Run-loop budget/tool policy now lives in `application/tool_loop.py`, with
   shared concrete loop assembly in `infrastructure/models/runtime.py`.
@@ -76,8 +80,8 @@ The remaining mismatch is less about file count and more about ownership:
   from concrete infrastructure helpers, though broader module-shape cleanup
   remains.
 - Private helper compatibility exports have been retired from
-  `interfaces.cli` and `interfaces.mcp_server`; tests import owner modules
-  directly.
+  `interfaces.cli`, `interfaces.mcp_server`, and flat infrastructure shims;
+  tests import owner modules directly.
 - Boundary tests now enforce private shim retirement, grouped infrastructure
   imports, and that interface modules do not import concrete agents or
   low-level concrete model/tool adapters. They also guard top-level

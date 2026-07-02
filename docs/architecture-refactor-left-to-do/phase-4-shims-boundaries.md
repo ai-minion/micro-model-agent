@@ -66,6 +66,9 @@ They currently check:
   `infrastructure.composition`
 - `infrastructure.composition` defines an explicit public `__all__` facade and
   facade tests assert exports point at their owner modules
+- package-owned runtime modules define explicit sorted public `__all__` exports,
+  and flat compatibility shims define explicit public `__all__` exports without
+  private helper names
 - top-level production `infrastructure/*.py` modules are limited to
   composition and compatibility shims/facades
 

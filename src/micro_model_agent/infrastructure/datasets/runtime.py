@@ -38,6 +38,17 @@ from micro_model_agent.infrastructure.traces.review import (
     LocalTraceReviewWriter,
 )
 
+__all__ = [
+    "build_dataset_export_workflow",
+    "build_dataset_merge_workflow",
+    "build_dataset_relabel_workflow",
+    "build_dataset_synthesis_workflow",
+    "build_dataset_validation_workflow",
+    "build_jsonl_dataset_example_store",
+    "build_trace_dataset_export_workflow",
+    "build_trace_review_workflow",
+]
+
 
 def build_jsonl_dataset_example_store(path: str | Path) -> DatasetExampleStore:
     """Build the local JSONL dataset store used by coding task capture."""

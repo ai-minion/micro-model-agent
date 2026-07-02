@@ -23,6 +23,21 @@ from micro_model_agent.infrastructure.persistence.workspace_registry import (
     workspace_record_to_dict,
 )
 
+__all__ = [
+    "DEFAULT_TRACE_DIR",
+    "append_comparison_trace_event",
+    "comparison_trace_store",
+    "register_workspace_record",
+    "registered_workspace_path",
+    "review_comparison_trace_session",
+    "start_comparison_trace_session",
+    "stop_comparison_trace_session",
+    "trace_dir",
+    "workflow_trace_record",
+    "workflow_trace_store",
+    "workspace_registry",
+]
+
 DEFAULT_TRACE_DIR = Path(".traces")
 
 

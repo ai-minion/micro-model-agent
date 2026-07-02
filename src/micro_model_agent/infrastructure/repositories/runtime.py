@@ -14,6 +14,12 @@ from micro_model_agent.infrastructure.repositories.metadata import (
     is_repository_initialized,
 )
 
+__all__ = [
+    "initialize_local_repository",
+    "local_repository_initialized",
+    "write_local_repository_index",
+]
+
 
 def initialize_local_repository(
     repository_root: str | Path,

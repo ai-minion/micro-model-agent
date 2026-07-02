@@ -36,6 +36,15 @@ from micro_model_agent.infrastructure.evaluation.workspace_staged_review import 
 from micro_model_agent.infrastructure.persistence.dataset_store import LocalDatasetExampleReader
 from micro_model_agent.infrastructure.tools.catalog import TOOL_ARGUMENT_CONTRACTS
 
+__all__ = [
+    "build_evaluation_comparison_workflow",
+    "build_synthetic_evaluation_workflow",
+    "build_trace_evaluation_workflow",
+    "build_workspace_staged_evaluation_workflow",
+    "build_workspace_staged_review_workflow",
+    "default_evaluation_available_tools",
+]
+
 
 def default_evaluation_available_tools() -> tuple[str, ...]:
     """Return the default tool names used in behavior evaluation prompts."""

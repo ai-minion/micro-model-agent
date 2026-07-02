@@ -20,6 +20,8 @@ from micro_model_agent.infrastructure.training.artifacts import (
 )
 from micro_model_agent.infrastructure.training.local_finetuning import LocalFineTuningRunner
 
+__all__ = ["build_synthetic_training_workflow"]
+
 
 def build_synthetic_training_workflow(
     *,

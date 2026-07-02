@@ -266,6 +266,17 @@ ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES = (
     | TRACE_SHIM_PATHS
     | {TRAINING_ARTIFACTS_FACADE_PATH, PACKAGE_ROOT / "infrastructure" / "composition.py"}
 )
+RUNTIME_MODULE_PATHS = {
+    PACKAGE_ROOT / "infrastructure" / "agents" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "datasets" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "evaluation" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "models" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "persistence" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "promotion" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "repositories" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "tools" / "runtime.py",
+    PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
+}
 
 
 def _production_modules(package: str) -> list[Path]:
@@ -316,7 +327,7 @@ def _top_level_definition_names(path: Path) -> set[str]:
     }
 
 
-def _all_exports(path: Path) -> set[str]:
+def _all_export_values(path: Path) -> list[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     for node in tree.body:
         if not isinstance(node, ast.Assign):
@@ -329,13 +340,17 @@ def _all_exports(path: Path) -> set[str]:
             continue
         if not isinstance(node.value, (ast.List, ast.Tuple)):
             raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} has dynamic __all__")
-        exports: set[str] = set()
+        exports: list[str] = []
         for element in node.value.elts:
             if not isinstance(element, ast.Constant) or not isinstance(element.value, str):
                 raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} has dynamic __all__")
-            exports.add(element.value)
+            exports.append(element.value)
         return exports
     raise AssertionError(f"{path.relative_to(PACKAGE_ROOT)} does not define __all__")
+
+
+def _all_exports(path: Path) -> set[str]:
+    return set(_all_export_values(path))
 
 
 def test_application_layer_does_not_import_outer_layers() -> None:
@@ -421,6 +436,14 @@ def test_composition_facade_exports_are_explicit_and_public() -> None:
 
     assert all(not name.startswith("_") for name in exports)
     assert exports.issubset(_top_level_names(path))
+
+
+def test_runtime_modules_define_explicit_sorted_public_exports() -> None:
+    violations: list[str] = []
+    for path in RUNTIME_MODULE_PATHS:
+        violations.extend(_public_export_violations(path, require_sorted=True))
+
+    assert violations == []
 
 
 def test_interface_modules_do_not_import_concrete_agents() -> None:
@@ -727,6 +750,7 @@ def _shim_violations(
 ) -> list[str]:
     violations: list[str] = []
     for path in paths:
+        violations.extend(_public_export_violations(path))
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         definitions = (
             node.name
@@ -738,4 +762,26 @@ def _shim_violations(
         for imported in _imports(path):
             if not imported.startswith(allowed_import_prefix):
                 violations.append(f"{path.relative_to(PACKAGE_ROOT)} imports {imported}")
+    return violations
+
+
+def _public_export_violations(path: Path, *, require_sorted: bool = False) -> list[str]:
+    violations: list[str] = []
+    try:
+        exports = _all_export_values(path)
+    except AssertionError as exc:
+        return [str(exc)]
+
+    relative_path = path.relative_to(PACKAGE_ROOT)
+    if not exports:
+        violations.append(f"{relative_path} exports nothing")
+    if any(name.startswith("_") for name in exports):
+        violations.append(f"{relative_path} exports private names")
+    if len(exports) != len(set(exports)):
+        violations.append(f"{relative_path} has duplicate __all__ names")
+    if require_sorted and exports != sorted(exports):
+        violations.append(f"{relative_path} has unsorted __all__")
+    missing_exports = set(exports) - _top_level_names(path)
+    if missing_exports:
+        violations.append(f"{relative_path} exports missing names: {sorted(missing_exports)}")
     return violations

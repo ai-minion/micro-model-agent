@@ -20,6 +20,14 @@ from micro_model_agent.infrastructure.training.ollama_packaging import (
     LocalOllamaAdapterPackager,
 )
 
+__all__ = [
+    "build_promotion_gate_workflow",
+    "build_promotion_list_workflow",
+    "build_promotion_package_ollama_workflow",
+    "build_promotion_record_workflow",
+    "build_promotion_select_workflow",
+]
+
 
 def build_promotion_gate_workflow() -> RunPromotionGateWorkflow:
     """Build the standard promotion gate workflow."""

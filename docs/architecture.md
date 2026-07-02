@@ -229,6 +229,9 @@ built-in tool execution helpers live under `infrastructure.tools.runtime`, and
 all are re-exported by the composition facade for interface adapters.
 The facade defines an explicit public `__all__`; owner modules carry behavior
 tests, while composition tests assert export identity.
+Package-owned runtime modules and flat compatibility shims also define explicit
+public export surfaces, with private helper exports kept out of compatibility
+facades.
 
 ## Retrieval
 

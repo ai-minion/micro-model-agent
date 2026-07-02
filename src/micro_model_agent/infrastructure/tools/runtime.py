@@ -13,6 +13,17 @@ from micro_model_agent.infrastructure.tools.catalog import BUILTIN_TOOL_SPECS
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
 from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
 
+__all__ = [
+    "PatchPolicyToolExecutor",
+    "allowed_test_commands",
+    "build_builtin_tool_executor",
+    "builtin_tool_exists",
+    "builtin_tool_names",
+    "builtin_tool_summaries",
+    "builtin_tools_response",
+    "execute_builtin_tool_request",
+]
+
 
 class PatchPolicyToolExecutor:
     """Tool executor wrapper that keeps repository writes dry-run unless enabled."""

@@ -13,6 +13,8 @@ from micro_model_agent.infrastructure.persistence.runtime import workflow_trace_
 from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
 from micro_model_agent.infrastructure.tools.runtime import build_builtin_tool_executor
 
+__all__ = ["build_static_coding_workflow"]
+
 
 def build_static_coding_workflow(
     *,
