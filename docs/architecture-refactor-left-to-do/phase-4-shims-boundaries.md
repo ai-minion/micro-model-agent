@@ -71,6 +71,8 @@ They currently check:
   private helper names
 - top-level production `infrastructure/*.py` modules are limited to
   composition and compatibility shims/facades
+- top-level production `application/*.py` modules are limited to explicit
+  compatibility facades
 - internal production imports use application owner modules instead of the old
   application compatibility facades
 
@@ -180,6 +182,7 @@ After each phase:
     repository/training/promotion adapters directly
   - private helper exports returning to public compatibility shims
   - new infrastructure modules bypassing the agreed package shape
+  - new application owner modules bypassing the agreed package shape
   - internal code importing old flat facade modules instead of owner packages
   - internal code importing application compatibility facades instead of owner
     modules

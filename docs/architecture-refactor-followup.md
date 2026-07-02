@@ -141,7 +141,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-314 passed
+315 passed
 ```
 
 ## Compatibility Invariants

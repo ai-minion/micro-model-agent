@@ -99,10 +99,11 @@ The remaining mismatch is less about file count and more about ownership:
 - Boundary tests now enforce private shim retirement, grouped infrastructure
   imports, and that interface modules do not import concrete agents or
   low-level concrete model/tool adapters. They also guard top-level
-  `infrastructure/` against new non-compatibility adapter modules, keep
-  pure evaluation rubrics free of outward project/framework dependencies, and
-  keep internal imports on application owner modules instead of application
-  compatibility facades.
+  `infrastructure/` against new non-compatibility adapter modules, guard
+  top-level `application/` against new flat owner modules, keep pure evaluation
+  rubrics free of outward project/framework dependencies, and keep internal
+  imports on application owner modules instead of application compatibility
+  facades.
 
 ## Recommended Order
 
@@ -163,7 +164,8 @@ names, prompt names, and trace/evaluation schemas stable.
    promotion stores, and Ollama packagers; production interface modules are now
    guarded to import infrastructure only through `infrastructure.composition`;
    top-level infrastructure modules must now be composition or compatibility
-   facades; model runtime helpers now live under
+   facades, and top-level application modules must now be explicit
+   compatibility facades; model runtime helpers now live under
    `infrastructure/models/runtime.py`; workflow factory helpers now live in
    their package-level `runtime.py` modules, including static coding-agent
    assembly under `infrastructure/agents/runtime.py`; trace/workspace persistence

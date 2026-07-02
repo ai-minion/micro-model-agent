@@ -346,6 +346,9 @@ APPLICATION_RUBRIC_SHIM_PATHS = {
 APPLICATION_FACADE_PATHS = {
     path for path, _owner_prefix in APPLICATION_USE_CASE_FACADES
 } | APPLICATION_RUBRIC_SHIM_PATHS
+ALLOWED_TOP_LEVEL_APPLICATION_MODULES = {
+    path for path in APPLICATION_FACADE_PATHS if path.parent == PACKAGE_ROOT / "application"
+}
 INFRASTRUCTURE_RUBRIC_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "evaluation" / "synthetic_rubric.py",
     PACKAGE_ROOT / "infrastructure" / "evaluation" / "trace_rubric.py",
@@ -766,6 +769,16 @@ def test_top_level_infrastructure_modules_are_composition_or_compatibility() -> 
     }
 
     assert top_level_modules == ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES
+
+
+def test_top_level_application_modules_are_compatibility_facades() -> None:
+    top_level_modules = {
+        path
+        for path in (PACKAGE_ROOT / "application").glob("*.py")
+        if not path.name.startswith("test_") and path.name != "__init__.py"
+    }
+
+    assert top_level_modules == ALLOWED_TOP_LEVEL_APPLICATION_MODULES
 
 
 def test_flat_model_provider_modules_are_compatibility_shims() -> None:
