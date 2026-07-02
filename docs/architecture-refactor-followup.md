@@ -104,9 +104,10 @@ command-module split, and the first CLI-orchestration move:
   CLI output formatting, and exit behavior in the adapter.
 - `LocalDatasetFileHasher` and `LocalDatasetToolProfileSummarizer` adapt
   existing dataset metadata helpers to the synthetic training application ports.
-- `application/evaluation.py` owns `RunSyntheticEvaluationWorkflow`,
+- `application/evaluation_workflows.py` owns `RunSyntheticEvaluationWorkflow`,
   `RunTraceEvaluationWorkflow`, `RunWorkspaceStagedEvaluationWorkflow`,
   `RunWorkspaceStagedReviewWorkflow`, and `RunEvaluationComparisonWorkflow`;
+  `application/evaluation.py` remains as a compatibility facade.
   `eval synthetic` now delegates dataset loading, behavior/artifact evaluation,
   report metadata construction, and evaluation report writing through
   application ports while keeping environment loading, model selection, CLI
@@ -139,7 +140,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-309 passed
+313 passed
 ```
 
 ## Compatibility Invariants

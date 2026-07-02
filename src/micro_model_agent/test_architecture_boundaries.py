@@ -276,7 +276,13 @@ RUNTIME_MODULE_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "tools" / "runtime.py",
     PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
 }
+APPLICATION_EVALUATION_FACADE_PATH = PACKAGE_ROOT / "application" / "evaluation.py"
 APPLICATION_RUBRIC_PATHS = {
+    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "synthetic.py",
+    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "trace.py",
+    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "workspace_staged.py",
+}
+APPLICATION_RUBRIC_SHIM_PATHS = {
     PACKAGE_ROOT / "application" / "evaluation_synthetic_rubric.py",
     PACKAGE_ROOT / "application" / "evaluation_trace_rubric.py",
     PACKAGE_ROOT / "application" / "evaluation_workspace_staged_rubric.py",
@@ -507,6 +513,24 @@ def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
     violations: list[str] = []
     for path in APPLICATION_RUBRIC_PATHS:
         violations.extend(_public_export_violations(path, require_sorted=True))
+
+    assert violations == []
+
+
+def test_application_evaluation_module_is_a_compatibility_facade() -> None:
+    violations = _shim_violations(
+        {APPLICATION_EVALUATION_FACADE_PATH},
+        allowed_import_prefix="micro_model_agent.application.evaluation_workflows",
+    )
+
+    assert violations == []
+
+
+def test_flat_application_rubric_modules_are_compatibility_shims() -> None:
+    violations = _shim_violations(
+        APPLICATION_RUBRIC_SHIM_PATHS,
+        allowed_import_prefix="micro_model_agent.application.evaluation_rubrics",
+    )
 
     assert violations == []
 

@@ -1,6 +1,6 @@
 """Compatibility imports for application-owned workspace-staged rubrics."""
 
-from micro_model_agent.application.evaluation_workspace_staged_rubric import (
+from micro_model_agent.application.evaluation_rubrics.workspace_staged import (
     STAGE_NAMES,
     WorkspaceStagedExampleScore,
     WorkspaceStagedRubric,

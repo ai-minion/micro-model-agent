@@ -1,6 +1,6 @@
 """Compatibility imports for application-owned trace evaluation rubrics."""
 
-from micro_model_agent.application.evaluation_trace_rubric import (
+from micro_model_agent.application.evaluation_rubrics.trace import (
     TraceExampleScore,
     TraceRubric,
     expected_trace_final_response,

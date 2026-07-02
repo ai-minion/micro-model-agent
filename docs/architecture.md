@@ -112,6 +112,11 @@ metadata helpers, while the application coordinates behavior model-call loops,
 pure synthetic/trace/workspace-staged scoring rubrics, dataset loading,
 evaluation execution, report metadata, score/metric comparison, review queue
 build/write orchestration, and report persistence through ports.
+Evaluation workflow orchestration lives in
+`application.evaluation_workflows`; `application.evaluation` remains a
+compatibility facade. Pure evaluation rubrics live under
+`application.evaluation_rubrics`, with old flat rubric imports kept as
+compatibility shims.
 
 Promotion gate, registry-record, registry-list, model-selection, and Ollama
 packaging use cases are represented by `RunPromotionGateWorkflow`,

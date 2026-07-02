@@ -1,6 +1,6 @@
 """Compatibility imports for application-owned synthetic evaluation rubrics."""
 
-from micro_model_agent.application.evaluation_synthetic_rubric import (
+from micro_model_agent.application.evaluation_rubrics.synthetic import (
     SyntheticExampleScore,
     SyntheticRubric,
     exact_arguments_match,

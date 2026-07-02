@@ -178,14 +178,16 @@ Move after Phase 2, not before:
 - `workspace_staged_review.py` ->
   `infrastructure/evaluation/workspace_staged_review.py` **done**
 - `synthetic_rubrics.py` ->
-  `application/evaluation_synthetic_rubric.py`, with
-  `infrastructure/evaluation/synthetic_rubric.py` kept as a shim **done**
-- `trace_rubrics.py` -> `application/evaluation_trace_rubric.py`, with
-  `infrastructure/evaluation/trace_rubric.py` kept as a shim **done**
-- `workspace_staged_rubrics.py` ->
-  `application/evaluation_workspace_staged_rubric.py`, with
-  `infrastructure/evaluation/workspace_staged_rubric.py` kept as a shim
+  `application/evaluation_rubrics/synthetic.py`, with flat application and
+  `infrastructure/evaluation/synthetic_rubric.py` imports kept as shims
   **done**
+- `trace_rubrics.py` -> `application/evaluation_rubrics/trace.py`, with flat
+  application and `infrastructure/evaluation/trace_rubric.py` imports kept as
+  shims **done**
+- `workspace_staged_rubrics.py` ->
+  `application/evaluation_rubrics/workspace_staged.py`, with flat application
+  and `infrastructure/evaluation/workspace_staged_rubric.py` imports kept as
+  shims **done**
 
 Do not move model-call orchestration deeper into infrastructure if Phase 2 is
 going to move it to application.
@@ -220,7 +222,8 @@ application/
   tool_loop/
   datasets/
   training/
-  evaluation/
+  evaluation/                 # represented today by evaluation_workflows.py
+  evaluation_rubrics/         # done
   promotion/
 ```
 

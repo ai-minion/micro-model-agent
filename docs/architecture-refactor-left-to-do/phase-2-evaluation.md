@@ -7,15 +7,15 @@ Complete.
 Completed:
 
 - Added application-owned synthetic behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation.py`.
+  `src/micro_model_agent/application/evaluation_workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/synthetic_evaluation.py` into
   a compatibility adapter that wires infrastructure scoring/tool contracts.
 - Added application-owned trace-derived behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation.py`.
+  `src/micro_model_agent/application/evaluation_workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/trace_evaluation.py` into a
   compatibility adapter plus extracted trace scoring helpers.
 - Added application-owned workspace-staged behavior evaluation orchestration in
-  `src/micro_model_agent/application/evaluation.py`.
+  `src/micro_model_agent/application/evaluation_workflows.py`.
 - Converted `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
   into a compatibility adapter that wires the staged workspace rubric.
 - Added application tests that exercise synthetic and trace model-call loops
@@ -25,7 +25,9 @@ Completed:
 - Removed concrete infrastructure imports from the pure synthetic, trace, and
   workspace-staged rubric modules.
 - Moved pure synthetic, trace-derived, and workspace-staged scoring/rubric
-  modules into `src/micro_model_agent/application/`.
+  modules into `src/micro_model_agent/application/evaluation_rubrics/`.
+- Kept the old flat application evaluation and rubric imports as compatibility
+  facades with explicit public exports.
 - Added direct rubric tests that run without model providers or filesystem
   fixtures.
 - Added architecture coverage to prevent pure rubric modules from importing
@@ -40,7 +42,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -m pytest'
 ```
 
-Both passed; the full test suite reported 311 passing tests.
+Both passed; the full test suite reported 313 passing tests.
 
 ## Goal
 
@@ -50,8 +52,8 @@ testable without model providers or filesystem setup.
 
 ## Current Mismatch
 
-`src/micro_model_agent/application/evaluation.py` coordinates dataset loading,
-metadata, and report writing through ports. That is good.
+`src/micro_model_agent/application/evaluation_workflows.py` coordinates dataset
+loading, metadata, and report writing through ports. That is good.
 
 The model-call loops for synthetic, trace-derived, and workspace-staged
 behavior now live in application code. Their infrastructure modules remain as
@@ -60,13 +62,14 @@ contract defaults.
 
 The rubric ownership gap has been closed:
 
-- `application/evaluation_workspace_staged_rubric.py` owns staged workspace
+- `application/evaluation_rubrics/workspace_staged.py` owns staged workspace
   scoring without importing dataset metadata, response parsing, or tool catalog
   adapters.
-- `application/evaluation_synthetic_rubric.py` owns synthetic scoring and
+- `application/evaluation_rubrics/synthetic.py` owns synthetic scoring and
   accepts tool contracts from its adapter instead of importing `tools.catalog`.
-- `application/evaluation_trace_rubric.py` owns trace-derived scoring.
-- Old `infrastructure/evaluation/*_rubric.py` paths remain compatibility shims.
+- `application/evaluation_rubrics/trace.py` owns trace-derived scoring.
+- Old flat application and `infrastructure/evaluation/*_rubric.py` paths remain
+  compatibility shims.
 
 ## Suggested Shape
 

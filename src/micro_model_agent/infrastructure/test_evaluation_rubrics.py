@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from micro_model_agent.application.evaluation_synthetic_rubric import SyntheticRubric
-from micro_model_agent.application.evaluation_trace_rubric import TraceRubric
-from micro_model_agent.application.evaluation_workspace_staged_rubric import (
+from micro_model_agent.application.evaluation_rubrics.synthetic import SyntheticRubric
+from micro_model_agent.application.evaluation_rubrics.trace import TraceRubric
+from micro_model_agent.application.evaluation_rubrics.workspace_staged import (
     WorkspaceStagedRubric,
 )
 from micro_model_agent.domain.datasets import (

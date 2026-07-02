@@ -68,11 +68,12 @@ The largest visible moves are complete:
 - Run-loop budget/tool policy now lives in `application/tool_loop.py`, with
   shared concrete loop assembly in `infrastructure/models/runtime.py`.
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
-  loops now live in `application/evaluation.py`; their infrastructure modules
-  are compatibility adapters around scoring/rubric wiring.
+  loops now live in `application/evaluation_workflows.py`; `application/evaluation.py`
+  is a compatibility facade, and the infrastructure modules are compatibility
+  adapters around scoring/rubric wiring.
 - Synthetic, trace-derived, and workspace-staged pure scoring/rubric modules now
-  live in `application/evaluation_*_rubric.py`; old infrastructure rubric paths
-  are compatibility shims.
+  live under `application/evaluation_rubrics/`; old application and
+  infrastructure rubric paths are compatibility shims.
 
 The remaining mismatch is less about file count and more about ownership:
 
@@ -101,8 +102,8 @@ names, prompt names, and trace/evaluation schemas stable.
 
 2. Move evaluation model-call orchestration inward and make rubrics cleaner.
    **Completed: behavior model-call loops and pure scoring/rubric modules are
-   application-owned; infrastructure retains adapters, report IO, and
-   compatibility imports.**
+   application-owned and grouped behind compatibility facades; infrastructure
+   retains adapters, report IO, and compatibility imports.**
    - Details: `docs/architecture-refactor-left-to-do/phase-2-evaluation.md`
 
 3. Reshape folders, especially `infrastructure/`, behind compatibility imports.
@@ -110,7 +111,10 @@ names, prompt names, and trace/evaluation schemas stable.
    `infrastructure/models/`, model runtime assembly now lives under
    `infrastructure/models/runtime.py`, static agent runtime assembly now lives
    under `infrastructure/agents/runtime.py`, and repository-local adapters/runtime
-   helpers now live under `infrastructure/repositories/`; JSONL/filesystem
+   helpers now live under `infrastructure/repositories/`; evaluation workflow
+   orchestration now lives in `application/evaluation_workflows.py`; pure
+   evaluation rubrics now live under `application/evaluation_rubrics/`;
+   JSONL/filesystem
    persistence helpers now
    live under `infrastructure/persistence/`; training/packaging adapters now
    live under `infrastructure/training/`; dataset workflow runtime helpers now
@@ -185,10 +189,9 @@ Do not change these unless the task explicitly asks for a migration:
 These files are the most important starting points:
 
 - `src/micro_model_agent/application/tool_loop.py`
+- `src/micro_model_agent/application/evaluation_workflows.py`
 - `src/micro_model_agent/application/evaluation.py`
-- `src/micro_model_agent/application/evaluation_synthetic_rubric.py`
-- `src/micro_model_agent/application/evaluation_trace_rubric.py`
-- `src/micro_model_agent/application/evaluation_workspace_staged_rubric.py`
+- `src/micro_model_agent/application/evaluation_rubrics/`
 - `src/micro_model_agent/infrastructure/workspace_staged_evaluation.py`
 - `src/micro_model_agent/infrastructure/trace_evaluation.py`
 - `src/micro_model_agent/infrastructure/models/`

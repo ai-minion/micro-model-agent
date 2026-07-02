@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.application.evaluation import (
+from micro_model_agent.application.evaluation_workflows import (
     EvaluationComparisonResult,
     EvaluationMetricDelta,
     compare_evaluation_results,

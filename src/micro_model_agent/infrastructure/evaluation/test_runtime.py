@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from micro_model_agent.application.evaluation import (
+from micro_model_agent.application.evaluation_workflows import (
     RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationWorkflow,
     RunTraceEvaluationWorkflow,
