@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 
-from micro_model_agent.application.tool_loop import (
+from micro_model_agent.application.tool_loop.workflows import (
     PrepareToolLoopRequest,
     RunToolLoopRequest,
     RunToolLoopWorkflow,

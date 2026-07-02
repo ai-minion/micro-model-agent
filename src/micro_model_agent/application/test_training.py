@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from micro_model_agent.application.training import (
+from micro_model_agent.application.training.workflows import (
     RunSyntheticTrainingRequest,
     RunSyntheticTrainingWorkflow,
 )

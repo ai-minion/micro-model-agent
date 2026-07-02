@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.application.datasets import (
+from micro_model_agent.application.datasets.workflows import (
     RunDatasetExportWorkflow,
     RunDatasetMergeWorkflow,
     RunDatasetRelabelWorkflow,

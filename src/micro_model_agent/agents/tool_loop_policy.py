@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from micro_model_agent.application.tool_loop import ToolLoopAgentTask
+from micro_model_agent.application.tool_loop.workflows import ToolLoopAgentTask
 from micro_model_agent.domain.contracts import ToolCall, WorkflowStep
 
 

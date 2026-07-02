@@ -65,8 +65,13 @@ The largest visible moves are complete:
   rather than re-testing owner behavior; package-owned runtime modules also
   define explicit sorted `__all__` exports.
 - Large agent and infrastructure modules have already been split substantially.
-- Run-loop budget/tool policy now lives in `application/tool_loop.py`, with
-  shared concrete loop assembly in `infrastructure/models/runtime.py`.
+- Run-loop budget/tool policy now lives in
+  `application/tool_loop/workflows.py`; `application/tool_loop` is a
+  compatibility facade, and shared concrete loop assembly lives in
+  `infrastructure/models/runtime.py`.
+- Dataset, promotion, training, tool-loop, and static-agent application use
+  cases now live under grouped owner modules/packages, with the old application
+  import paths kept as explicit compatibility facades.
 - Synthetic, trace-derived, and workspace-staged behavior evaluation model-call
   loops now live in `application/evaluation_workflows.py`; `application/evaluation.py`
   is a compatibility facade, and the infrastructure modules are compatibility
@@ -111,9 +116,12 @@ names, prompt names, and trace/evaluation schemas stable.
    `infrastructure/models/`, model runtime assembly now lives under
    `infrastructure/models/runtime.py`, static agent runtime assembly now lives
    under `infrastructure/agents/runtime.py`, and repository-local adapters/runtime
-   helpers now live under `infrastructure/repositories/`; evaluation workflow
-   orchestration now lives in `application/evaluation_workflows.py`; pure
-   evaluation rubrics now live under `application/evaluation_rubrics/`;
+   helpers now live under `infrastructure/repositories/`; application use-case
+   owners now live in `application/datasets/workflows.py`,
+   `application/promotion/workflows.py`, `application/training/workflows.py`,
+   `application/tool_loop/workflows.py`, `application/agent_workflows.py`,
+   and `application/evaluation_workflows.py`; pure evaluation rubrics now live
+   under `application/evaluation_rubrics/`;
    JSONL/filesystem
    persistence helpers now
    live under `infrastructure/persistence/`; training/packaging adapters now
@@ -188,7 +196,11 @@ Do not change these unless the task explicitly asks for a migration:
 
 These files are the most important starting points:
 
-- `src/micro_model_agent/application/tool_loop.py`
+- `src/micro_model_agent/application/tool_loop/workflows.py`
+- `src/micro_model_agent/application/datasets/workflows.py`
+- `src/micro_model_agent/application/promotion/workflows.py`
+- `src/micro_model_agent/application/training/workflows.py`
+- `src/micro_model_agent/application/agent_workflows.py`
 - `src/micro_model_agent/application/evaluation_workflows.py`
 - `src/micro_model_agent/application/evaluation.py`
 - `src/micro_model_agent/application/evaluation_rubrics/`

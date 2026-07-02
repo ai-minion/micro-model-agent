@@ -24,7 +24,7 @@ from micro_model_agent.agents.tool_loop_policy import (
 )
 from micro_model_agent.agents.tool_loop_prompting import build_prompt
 from micro_model_agent.application.ports import ModelProvider, ToolExecutor, TraceStore
-from micro_model_agent.application.tool_loop import (
+from micro_model_agent.application.tool_loop.workflows import (
     DEFAULT_TOOL_NAMES,
     ToolLoopAgentResult,
     ToolLoopAgentTask,

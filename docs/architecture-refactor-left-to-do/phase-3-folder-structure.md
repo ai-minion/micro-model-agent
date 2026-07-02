@@ -203,27 +203,37 @@ instead of burying it in infrastructure.
 
 ## Application Folder Shape
 
-The application layer is also flat today:
+The application layer is no longer a single flat set of use-case files:
 
 ```text
 application/
-  datasets.py
-  evaluation.py
-  promotion.py
-  tool_loop.py
-  training.py
-  workflows.py
+  agent_workflows.py
+  datasets/
+    workflows.py
+  evaluation.py              # compatibility facade
+  evaluation_workflows.py
+  evaluation_rubrics/
+  promotion/
+    workflows.py
+  tool_loop/
+    workflows.py
+  training/
+    workflows.py
+  workflows.py               # compatibility facade
 ```
 
-This is acceptable while files are moderate, but the target shape is:
+The remaining target direction is to decide whether
+`evaluation_workflows.py` and `agent_workflows.py` should become subpackages too
+or stay as named owner modules:
 
 ```text
 application/
-  tool_loop/
+  agent/
   datasets/
   training/
-  evaluation/                 # represented today by evaluation_workflows.py
-  evaluation_rubrics/         # done
+  tool_loop/
+  evaluation/
+  evaluation_rubrics/
   promotion/
 ```
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.application.promotion import (
+from micro_model_agent.application.promotion.workflows import (
     RunPromotionGateRequest,
     RunPromotionListRequest,
     RunPromotionPackageOllamaRequest,

@@ -34,7 +34,7 @@ command-module split, and the first CLI-orchestration move:
   option resolution, and runtime response assembly.
 - CLI eval commands use composition helpers for provider selection:
   `eval synthetic`, `eval traces`, and `eval workspace-staged`.
-- `application/tool_loop.py` owns the protocol-neutral tool-loop request/result
+- `application/tool_loop/workflows.py` owns the protocol-neutral tool-loop request/result
   contracts and `RunToolLoopWorkflow`.
 - `ToolLoopAgent` consumes the application-owned task/result contract and
   remains available through the old `agents.tool_loop_agent` import path.
@@ -57,7 +57,7 @@ command-module split, and the first CLI-orchestration move:
 - `interfaces/cli/commands/train.py` owns the `train synthetic` command.
 - `interfaces/cli/commands/eval.py` owns the `eval` command group.
 - `interfaces/cli/commands/promote.py` owns the `promote` command group.
-- `application/promotion.py` owns `RunPromotionGateWorkflow`,
+- `application/promotion/workflows.py` owns `RunPromotionGateWorkflow`,
   `RunPromotionRecordWorkflow`, `RunPromotionListWorkflow`,
   `RunPromotionSelectWorkflow`, and `RunPromotionPackageOllamaWorkflow`; the
   full `promote` CLI group now delegates artifact loading, evaluation report
@@ -71,7 +71,7 @@ command-module split, and the first CLI-orchestration move:
 - `LocalOllamaAdapterPackager` adapts Ollama Modelfile/manifest generation and
   optional `ollama create` execution to the promotion packaging application
   port.
-- `application/datasets.py` owns `RunDatasetSynthesisWorkflow`,
+- `application/datasets/workflows.py` owns `RunDatasetSynthesisWorkflow`,
   `RunDatasetValidationWorkflow`, `RunDatasetExportWorkflow`,
   `RunDatasetMergeWorkflow`, `RunDatasetRelabelWorkflow`, and
   `RunTraceDatasetExportWorkflow`, and `RunTraceReviewWorkflow`; `dataset
@@ -97,7 +97,7 @@ command-module split, and the first CLI-orchestration move:
   loading/writing, trace export, and trace export validation helpers to the
   trace dataset export and review application ports.
 - `SyntheticTemplateGenerator` implements the dataset synthesis generator port.
-- `application/training.py` owns `RunSyntheticTrainingWorkflow`; `train
+- `application/training/workflows.py` owns `RunSyntheticTrainingWorkflow`; `train
   synthetic` now delegates dataset loading, validation, run-local SFT export,
   training config construction, backend execution, and artifact recording
   through application ports while keeping dotenv loading, backend selection,
@@ -140,7 +140,7 @@ wsl -e bash -lc 'cd /mnt/d/Projects/code/micro-model-agent && .venv/bin/python -
 Result:
 
 ```text
-313 passed
+314 passed
 ```
 
 ## Compatibility Invariants

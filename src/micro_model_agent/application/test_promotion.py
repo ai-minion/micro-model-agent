@@ -11,7 +11,7 @@ from micro_model_agent.application.ports import (
     OllamaPackageRecord,
     PromotedArtifactRecord,
 )
-from micro_model_agent.application.promotion import (
+from micro_model_agent.application.promotion.workflows import (
     RunPromotionGateRequest,
     RunPromotionGateWorkflow,
     RunPromotionListRequest,

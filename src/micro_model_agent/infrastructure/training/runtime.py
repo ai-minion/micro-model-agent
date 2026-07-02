@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.application.training import RunSyntheticTrainingWorkflow
+from micro_model_agent.application.training.workflows import RunSyntheticTrainingWorkflow
 from micro_model_agent.infrastructure.datasets.metadata import (
     LocalDatasetFileHasher,
     LocalDatasetToolProfileSummarizer,

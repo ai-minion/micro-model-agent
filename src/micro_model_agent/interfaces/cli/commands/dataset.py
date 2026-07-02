@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.application.datasets import (
+from micro_model_agent.application.datasets.workflows import (
     RunDatasetExportRequest,
     RunDatasetMergeRequest,
     RunDatasetRelabelRequest,

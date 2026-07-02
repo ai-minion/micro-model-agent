@@ -5,9 +5,11 @@
 Completed.
 
 The run-loop policy and preparation work now lives in
-`src/micro_model_agent/application/tool_loop.py`, including run-profile budget
-application, tool-name normalization, tool selection, schema selection, and
-metadata assembly. Concrete model/tool/trace wiring is shared through
+`src/micro_model_agent/application/tool_loop/workflows.py`, with
+`src/micro_model_agent/application/tool_loop/` kept as a compatibility facade.
+This includes run-profile budget application, tool-name normalization, tool
+selection, schema selection, and metadata assembly. Concrete model/tool/trace
+wiring is shared through
 `src/micro_model_agent/infrastructure/composition.py`.
 
 `src/micro_model_agent/interfaces/cli/commands/loop.py` and
@@ -33,9 +35,9 @@ the CLI and MCP adapters.
 
 ## Current Mismatch
 
-`src/micro_model_agent/application/tool_loop.py` owns request/result dataclasses
-and a `RunToolLoopWorkflow`, but the workflow mostly translates a request into a
-`ToolLoopAgentTask` and calls the injected runner.
+`src/micro_model_agent/application/tool_loop/workflows.py` owns request/result
+dataclasses and a `RunToolLoopWorkflow`, but the workflow mostly translates a
+request into a `ToolLoopAgentTask` and calls the injected runner.
 
 The adapter still owns too much:
 
@@ -63,7 +65,7 @@ workflow policy and orchestration should move inward.
 
 Keep application contracts protocol-neutral. One possible direction:
 
-- `application/tool_loop.py` remains the compatibility module for now.
+- `application/tool_loop/` remains the compatibility package for now.
 - Add smaller request/config dataclasses if needed:
   - `RunToolLoopRequest`
   - `ToolLoopRuntime`

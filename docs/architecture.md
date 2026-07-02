@@ -77,6 +77,8 @@ The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
 `agents.ToolLoopAgent` implements the application `ToolLoopRunner` port, while
 safe tool execution is exposed through the `ToolExecutor` application port and
 implemented by `BuiltinToolExecutor`.
+Tool-loop workflow policy lives in `application.tool_loop.workflows`; the
+`application.tool_loop` package remains as a compatibility facade.
 
 Dataset synthesis, validation, export, merge, and relabel use cases are
 represented by `RunDatasetSynthesisWorkflow`, `RunDatasetValidationWorkflow`,
@@ -89,6 +91,8 @@ trace/review JSONL loading, trace-example export, review persistence, concrete
 validation rules, merge/deduplication and relabel policies, and SFT JSONL
 writing, and the application coordinates the generator, reader, writer,
 validator, merger, relabeler, trace exporter, review writer, and exporter ports.
+Dataset use-case orchestration lives in `application.datasets.workflows`; the
+`application.datasets` package remains as a compatibility facade.
 
 Synthetic fine-tuning is represented by `RunSyntheticTrainingWorkflow`.
 Interfaces supply CLI options, environment loading, backend selection, output
@@ -97,6 +101,8 @@ validation rules, SFT JSONL rendering, dataset metadata hashing/profile
 summaries, concrete training backends, and artifact persistence. The
 application coordinates validation, run-local export, training config assembly,
 runner execution, and artifact recording through ports.
+Training use-case orchestration lives in `application.training.workflows`; the
+`application.training` package remains as a compatibility facade.
 
 Synthetic behavior and metadata-only artifact evaluation are represented by
 `RunSyntheticEvaluationWorkflow`; trace-derived behavior evaluation is
@@ -126,6 +132,10 @@ Interfaces supply CLI options and output formatting, infrastructure owns JSON
 artifact/report, registry, repository configuration, and Ollama package storage,
 and the application coordinates promotion policy, registry orchestration,
 repository-local model selection, and packaging requests.
+Promotion use-case orchestration lives in `application.promotion.workflows`; the
+`application.promotion` package remains as a compatibility facade. Static
+coding-agent workflow orchestration lives in `application.agent_workflows`;
+`application.workflows` remains as a compatibility facade.
 
 ### Infrastructure
 

@@ -277,6 +277,28 @@ RUNTIME_MODULE_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
 }
 APPLICATION_EVALUATION_FACADE_PATH = PACKAGE_ROOT / "application" / "evaluation.py"
+APPLICATION_USE_CASE_FACADES = (
+    (
+        PACKAGE_ROOT / "application" / "datasets" / "__init__.py",
+        "micro_model_agent.application.datasets.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "promotion" / "__init__.py",
+        "micro_model_agent.application.promotion.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "training" / "__init__.py",
+        "micro_model_agent.application.training.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "tool_loop" / "__init__.py",
+        "micro_model_agent.application.tool_loop.workflows",
+    ),
+    (
+        PACKAGE_ROOT / "application" / "workflows.py",
+        "micro_model_agent.application.agent_workflows",
+    ),
+)
 APPLICATION_RUBRIC_PATHS = {
     PACKAGE_ROOT / "application" / "evaluation_rubrics" / "synthetic.py",
     PACKAGE_ROOT / "application" / "evaluation_rubrics" / "trace.py",
@@ -522,6 +544,16 @@ def test_application_evaluation_module_is_a_compatibility_facade() -> None:
         {APPLICATION_EVALUATION_FACADE_PATH},
         allowed_import_prefix="micro_model_agent.application.evaluation_workflows",
     )
+
+    assert violations == []
+
+
+def test_application_use_case_modules_are_compatibility_facades() -> None:
+    violations: list[str] = []
+    for path, owner_prefix in APPLICATION_USE_CASE_FACADES:
+        violations.extend(
+            _shim_violations({path}, allowed_import_prefix=owner_prefix)
+        )
 
     assert violations == []
 
