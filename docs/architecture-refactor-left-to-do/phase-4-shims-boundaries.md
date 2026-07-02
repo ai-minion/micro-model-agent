@@ -71,6 +71,8 @@ They currently check:
   private helper names
 - top-level production `infrastructure/*.py` modules are limited to
   composition and compatibility shims/facades
+- internal production imports use application owner modules instead of the old
+  application compatibility facades
 
 Compatibility shims still exist:
 
@@ -179,4 +181,6 @@ After each phase:
   - private helper exports returning to public compatibility shims
   - new infrastructure modules bypassing the agreed package shape
   - internal code importing old flat facade modules instead of owner packages
+  - internal code importing application compatibility facades instead of owner
+    modules
 - Full ruff and pytest pass.

@@ -57,6 +57,8 @@ The largest visible moves are complete:
 - Private helper exports have also been removed from the remaining flat
   infrastructure compatibility shims; shim and runtime modules now define
   explicit public `__all__` surfaces guarded by architecture tests.
+- Application compatibility facades are also guarded: internal production code
+  must import the application owner modules rather than the old facade paths.
 - Production interface modules now import infrastructure only through
   `infrastructure.composition`; tests still import concrete adapters when they
   characterize adapter behavior directly.
@@ -97,8 +99,10 @@ The remaining mismatch is less about file count and more about ownership:
 - Boundary tests now enforce private shim retirement, grouped infrastructure
   imports, and that interface modules do not import concrete agents or
   low-level concrete model/tool adapters. They also guard top-level
-  `infrastructure/` against new non-compatibility adapter modules and keep
-  pure evaluation rubrics free of outward project/framework dependencies.
+  `infrastructure/` against new non-compatibility adapter modules, keep
+  pure evaluation rubrics free of outward project/framework dependencies, and
+  keep internal imports on application owner modules instead of application
+  compatibility facades.
 
 ## Recommended Order
 
@@ -166,7 +170,8 @@ names, prompt names, and trace/evaluation schemas stable.
    runtime helpers now live under `infrastructure/persistence/runtime.py`;
    built-in tool runtime helpers now live under `infrastructure/tools/runtime.py`;
    stale private CLI common helpers and MCP policy helper modules are guarded as
-   retired.**
+   retired; internal production imports are guarded to use application owner
+   modules instead of application compatibility facades.**
    - Details: `docs/architecture-refactor-left-to-do/phase-4-shims-boundaries.md`
 
 ## Compatibility Invariants

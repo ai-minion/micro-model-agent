@@ -318,6 +318,21 @@ APPLICATION_USE_CASE_FACADES = (
         "micro_model_agent.application.agent",
     ),
 )
+APPLICATION_FACADE_MODULES = (
+    "micro_model_agent.application.agent",
+    "micro_model_agent.application.agent_workflows",
+    "micro_model_agent.application.datasets",
+    "micro_model_agent.application.evaluation",
+    "micro_model_agent.application.evaluation_synthetic_rubric",
+    "micro_model_agent.application.evaluation_trace_rubric",
+    "micro_model_agent.application.evaluation_workspace_staged_rubric",
+    "micro_model_agent.application.evaluation_workflows",
+    "micro_model_agent.application.ports",
+    "micro_model_agent.application.promotion",
+    "micro_model_agent.application.tool_loop",
+    "micro_model_agent.application.training",
+    "micro_model_agent.application.workflows",
+)
 APPLICATION_RUBRIC_PATHS = {
     PACKAGE_ROOT / "application" / "evaluation_rubrics" / "synthetic.py",
     PACKAGE_ROOT / "application" / "evaluation_rubrics" / "trace.py",
@@ -328,6 +343,9 @@ APPLICATION_RUBRIC_SHIM_PATHS = {
     PACKAGE_ROOT / "application" / "evaluation_trace_rubric.py",
     PACKAGE_ROOT / "application" / "evaluation_workspace_staged_rubric.py",
 }
+APPLICATION_FACADE_PATHS = {
+    path for path, _owner_prefix in APPLICATION_USE_CASE_FACADES
+} | APPLICATION_RUBRIC_SHIM_PATHS
 INFRASTRUCTURE_RUBRIC_SHIM_PATHS = {
     PACKAGE_ROOT / "infrastructure" / "evaluation" / "synthetic_rubric.py",
     PACKAGE_ROOT / "infrastructure" / "evaluation" / "trace_rubric.py",
@@ -573,6 +591,20 @@ def test_flat_application_rubric_modules_are_compatibility_shims() -> None:
         APPLICATION_RUBRIC_SHIM_PATHS,
         allowed_import_prefix="micro_model_agent.application.evaluation_rubrics",
     )
+
+    assert violations == []
+
+
+def test_internal_production_imports_use_application_owner_modules() -> None:
+    violations: list[str] = []
+    for package in ("agents", "application", "infrastructure", "interfaces"):
+        for path in _production_modules(package):
+            if path in APPLICATION_FACADE_PATHS:
+                continue
+            for imported in _imports(path):
+                if imported in APPLICATION_FACADE_MODULES:
+                    relative_path = path.relative_to(PACKAGE_ROOT)
+                    violations.append(f"{relative_path}: {imported}")
 
     assert violations == []
 
