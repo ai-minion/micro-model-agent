@@ -120,9 +120,11 @@ metadata helpers, while the application coordinates behavior model-call loops,
 pure synthetic/trace/workspace-staged scoring rubrics, dataset loading,
 evaluation execution, report metadata, score/metric comparison, review queue
 build/write orchestration, and report persistence through ports.
-Evaluation workflow orchestration lives in
-`application.evaluation.workflows`; `application.evaluation` and
-`application.evaluation_workflows` remain compatibility facades. Pure evaluation rubrics live under
+Evaluation workflow orchestration is split by concern into
+`application.evaluation.compare`, `application.evaluation.synthetic`,
+`application.evaluation.traces`, and `application.evaluation.workspace_staged`;
+`application.evaluation.workflows` and `application.evaluation` remain
+compatibility facades. Pure evaluation rubrics live under
 `application.evaluation_rubrics`, with old flat rubric imports kept as
 compatibility shims.
 
@@ -281,9 +283,6 @@ and approval workflows.
 
 The implementation roadmap, milestones, tool plan, testing strategy, and MVP
 acceptance criteria live in [project-plan.md](project-plan.md).
-
-The current architecture refactor handoff and migration slices live in
-[architecture-refactor-plan.md](architecture-refactor-plan.md).
 
 Contributor-facing boundary guidance lives in
 [../CONTRIBUTING.md](../CONTRIBUTING.md).
