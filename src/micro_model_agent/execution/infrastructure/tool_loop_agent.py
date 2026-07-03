@@ -12,8 +12,8 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from micro_model_agent.agents.tool_loop_decisions import parse_model_response
-from micro_model_agent.agents.tool_loop_policy import (
+from micro_model_agent.execution.infrastructure.tool_loop_decisions import parse_model_response
+from micro_model_agent.execution.infrastructure.tool_loop_policy import (
     has_unresolved_failed_tool_step,
     is_duplicate_successful_write,
     missing_required_tools,
@@ -22,7 +22,7 @@ from micro_model_agent.agents.tool_loop_policy import (
     should_allow_extra_finalization_turn,
     tool_budget_exhausted,
 )
-from micro_model_agent.agents.tool_loop_prompting import build_prompt
+from micro_model_agent.execution.infrastructure.tool_loop_prompting import build_prompt
 from micro_model_agent.execution.application.ports import ModelProvider, ToolExecutor, TraceStore
 from micro_model_agent.execution.application.tool_loop import (
     DEFAULT_TOOL_NAMES,

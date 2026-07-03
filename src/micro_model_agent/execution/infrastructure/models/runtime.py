@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent
+from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent
 from micro_model_agent.execution.application.ports import ModelProvider, ToolExecutor
 from micro_model_agent.execution.application.tool_loop import (
     DEFAULT_TOOL_NAMES,

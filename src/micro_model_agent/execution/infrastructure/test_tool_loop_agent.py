@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.agents.tool_loop_agent import ToolLoopAgent, ToolLoopAgentTask
+from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent, ToolLoopAgentTask
 from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
 from micro_model_agent.execution.infrastructure.trace_store import JsonlTraceStore

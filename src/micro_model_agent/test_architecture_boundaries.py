@@ -8,11 +8,9 @@ from pathlib import Path
 PACKAGE_ROOT = Path(__file__).parent
 PROJECT_IMPORT_PREFIX = "micro_model_agent."
 APPLICATION_BANNED_PREFIXES = (
-    "micro_model_agent.agents",
     "micro_model_agent.infrastructure",
     "micro_model_agent.interfaces",
 )
-INTERFACE_BANNED_PREFIXES = ("micro_model_agent.agents",)
 INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES = (
     "micro_model_agent.infrastructure.models",
     "micro_model_agent.infrastructure.tools.catalog",
@@ -44,7 +42,6 @@ DOMAIN_BANNED_EXTERNALS = (
     "transformers",
 )
 PURE_RUBRIC_BANNED_PREFIXES = (
-    "micro_model_agent.agents",
     "micro_model_agent.infrastructure",
     "micro_model_agent.interfaces",
 )
@@ -311,7 +308,7 @@ def test_mcp_trace_module_does_not_own_store_factories() -> None:
 
 
 def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "interfaces" / "composition.py"
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
 
     assert set(PERSISTENCE_RUNTIME_HELPER_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -319,13 +316,13 @@ def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
 
 
 def test_model_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "interfaces" / "composition.py"
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
 
     assert set(MODEL_RUNTIME_HELPER_NAMES).isdisjoint(_top_level_definition_names(path))
 
 
 def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "interfaces" / "composition.py"
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
 
     assert set(INFRASTRUCTURE_RUNTIME_FACTORY_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -333,7 +330,7 @@ def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> No
 
 
 def test_composition_facade_exports_are_explicit_and_public() -> None:
-    path = PACKAGE_ROOT / "interfaces" / "composition.py"
+    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
     exports = _all_exports(path)
 
     assert all(not name.startswith("_") for name in exports)
@@ -348,17 +345,6 @@ def test_runtime_modules_define_explicit_sorted_public_exports() -> None:
         if _is_compat_stub(path):
             continue
         violations.extend(_public_export_violations(path, require_sorted=True))
-
-    assert violations == []
-
-
-def test_interface_modules_do_not_import_concrete_agents() -> None:
-    violations: list[str] = []
-    for path in _production_modules("interfaces"):
-        for imported in _imports(path):
-            if imported.startswith(INTERFACE_BANNED_PREFIXES):
-                relative_path = path.relative_to(PACKAGE_ROOT)
-                violations.append(f"{relative_path}: {imported}")
 
     assert violations == []
 
@@ -600,9 +586,8 @@ def test_bounded_context_domains_have_no_banned_framework_imports() -> None:
 # Bounded-context application layer purity
 # ---------------------------------------------------------------------------
 
-# Application layers must not reach into infrastructure or agents directly.
+# Application layers must not reach into infrastructure or interfaces directly.
 BOUNDED_CONTEXT_APP_BANNED_PREFIXES = (
-    "micro_model_agent.agents",
     "micro_model_agent.infrastructure",
     "micro_model_agent.interfaces",
 )

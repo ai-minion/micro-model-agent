@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from micro_model_agent.agents.coding_agent import CodingAgent
+from micro_model_agent.execution.infrastructure.coding_agent import CodingAgent
 from micro_model_agent.execution.application.workflows import RunAgentWorkflow
 from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.execution.infrastructure.models.fake import StaticModelProvider

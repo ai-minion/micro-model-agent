@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from micro_model_agent.agents.tool_loop_history import tool_history
+from micro_model_agent.execution.infrastructure.tool_loop_history import tool_history
 from micro_model_agent.execution.application.tool_loop import PromptContext, ToolLoopAgentTask
 from micro_model_agent.execution.domain.value_objects import WorkflowStep
 

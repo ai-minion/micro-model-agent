@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.agents.coding_agent import CodingAgent
+from micro_model_agent.execution.infrastructure.coding_agent import CodingAgent
 from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.dataset.application.event_handlers import OnWorkflowCompleted
 from micro_model_agent.dataset.infrastructure.repository import JsonlDatasetRepository
