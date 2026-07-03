@@ -22,7 +22,7 @@ from micro_model_agent.dataset.infrastructure.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
 )
-from micro_model_agent.infrastructure.repositories.metadata import (
+from micro_model_agent.repository_ops.infrastructure.metadata import (
     initialize_repository,
     update_model_configuration,
 )

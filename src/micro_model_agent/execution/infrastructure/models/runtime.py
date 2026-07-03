@@ -23,10 +23,18 @@ from micro_model_agent.execution.application.tool_loop import (
 )
 from micro_model_agent.training.domain.value_objects import ModelArtifact
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
-from micro_model_agent.execution.infrastructure.models.ollama import OllamaModelProvider
-from micro_model_agent.execution.infrastructure.models.transformers import (
-    TransformersPeftModelProvider,
-)
+
+try:
+    from micro_model_agent.execution.infrastructure.models.ollama import OllamaModelProvider
+except ImportError:
+    OllamaModelProvider = None  # type: ignore[assignment,misc]
+
+try:
+    from micro_model_agent.execution.infrastructure.models.transformers import (
+        TransformersPeftModelProvider,
+    )
+except ImportError:
+    TransformersPeftModelProvider = None  # type: ignore[assignment,misc]
 from micro_model_agent.execution.infrastructure.persistence_runtime import (
     append_comparison_trace_event,
     workflow_trace_store,
@@ -40,7 +48,7 @@ from micro_model_agent.repository_ops.infrastructure.catalog import (
     builtin_tool_prompt_schemas,
 )
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
-from micro_model_agent.repository_ops.infrastructure.runtime import (
+from micro_model_agent.repository_ops.infrastructure.tools_runtime import (
     PatchPolicyToolExecutor,
     allowed_test_commands,
     build_builtin_tool_executor,
