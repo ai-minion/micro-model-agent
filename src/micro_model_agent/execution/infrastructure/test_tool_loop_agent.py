@@ -235,7 +235,6 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
             ToolLoopAgentTask(
                 goal="Read app.py and tell me what value() returns.",
                 available_tools=("repo.read",),
-                capture_prompts=True,
                 run_metadata={"interface": "test", "schema_prompt": True},
             )
         )
@@ -243,11 +242,20 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
     loaded_trace = asyncio.run(trace_store.get(str(result.trace_id)))
 
     assert loaded_trace is not None
+    # Prompts are always captured to per-step request.txt files.
     assert loaded_trace.steps[0].output["prompt"].startswith("<|system|>")
     assert loaded_trace.final_output["run_metadata"] == {
         "interface": "test",
         "schema_prompt": True,
     }
+    # run_metadata is also on the trace itself.
+    assert loaded_trace.run_metadata == {"interface": "test", "schema_prompt": True}
+    # Per-step files exist on disk.
+    step_dir = (
+        tmp_path / ".traces" / str(result.trace_id) / str(loaded_trace.steps[0].id)
+    )
+    assert (step_dir / "request.txt").exists()
+    assert (step_dir / "workflow.json").exists()
 
 
 def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(

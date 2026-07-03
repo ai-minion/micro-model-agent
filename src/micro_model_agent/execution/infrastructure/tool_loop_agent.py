@@ -62,7 +62,7 @@ class ToolLoopAgent:
         if task.max_turns < 1:
             raise ValueError("max_turns must be at least 1")
 
-        trace = WorkflowTrace(goal=task.goal, status=WorkflowStatus.RUNNING)
+        trace = WorkflowTrace(goal=task.goal, status=WorkflowStatus.RUNNING, run_metadata=task.run_metadata)
         await self.trace_store.save(trace)
         # transcript is the compact prompt history fed back to the model; steps
         # is the richer audit trail saved for users.
@@ -111,7 +111,6 @@ class ToolLoopAgent:
                                     "timeout_seconds": task.model_timeout_seconds,
                                 },
                                 prompt=prompt,
-                                capture_prompt=task.capture_prompts,
                             ),
                         )
                     )
@@ -129,12 +128,13 @@ class ToolLoopAgent:
 
                 if decision.kind == "final_response":
                     if task.require_tool_call and tool_calls_made == 0:
-                        output: dict[str, Any] = {
-                            "raw_response": decision.raw_response,
-                            "error": "final_response_before_tool_call",
-                        }
-                        if task.capture_prompts:
-                            output["prompt"] = prompt
+                        output: dict[str, Any] = self._step_output(
+                            {
+                                "raw_response": decision.raw_response,
+                                "error": "final_response_before_tool_call",
+                            },
+                            prompt=prompt,
+                        )
                         steps.append(
                             WorkflowStep(
                                 name=f"model_turn_{turn_number}",
@@ -159,13 +159,14 @@ class ToolLoopAgent:
                         continue
                     missing_required = missing_required_tools(task, steps)
                     if missing_required:
-                        output = {
-                            "raw_response": decision.raw_response,
-                            "error": "final_response_before_required_tools",
-                            "missing_required_tools": list(missing_required),
-                        }
-                        if task.capture_prompts:
-                            output["prompt"] = prompt
+                        output = self._step_output(
+                            {
+                                "raw_response": decision.raw_response,
+                                "error": "final_response_before_required_tools",
+                                "missing_required_tools": list(missing_required),
+                            },
+                            prompt=prompt,
+                        )
                         steps.append(
                             WorkflowStep(
                                 name=f"model_turn_{turn_number}",
@@ -190,12 +191,13 @@ class ToolLoopAgent:
                         continue
                     verification_needed = missing_verification_after_write(task, steps)
                     if verification_needed:
-                        output = {
-                            "raw_response": decision.raw_response,
-                            "error": "final_response_before_verification",
-                        }
-                        if task.capture_prompts:
-                            output["prompt"] = prompt
+                        output = self._step_output(
+                            {
+                                "raw_response": decision.raw_response,
+                                "error": "final_response_before_verification",
+                            },
+                            prompt=prompt,
+                        )
                         steps.append(
                             WorkflowStep(
                                 name=f"model_turn_{turn_number}",
@@ -236,7 +238,6 @@ class ToolLoopAgent:
                                         "ok": final_ok,
                                     },
                                     prompt=prompt,
-                                    capture_prompt=task.capture_prompts,
                                 ),
                             ),
                         ],
@@ -247,12 +248,13 @@ class ToolLoopAgent:
                     )
 
                 if decision.kind == "parse_error":
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": decision.error,
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
+                    output = self._step_output(
+                        {
+                            "raw_response": decision.raw_response,
+                            "error": decision.error,
+                        },
+                        prompt=prompt,
+                    )
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
@@ -278,12 +280,13 @@ class ToolLoopAgent:
                     tool_calls_made,
                     steps,
                 ):
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": "tool_call_after_budget_exhausted",
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
+                    output = self._step_output(
+                        {
+                            "raw_response": decision.raw_response,
+                            "error": "tool_call_after_budget_exhausted",
+                        },
+                        prompt=prompt,
+                    )
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
@@ -319,12 +322,13 @@ class ToolLoopAgent:
                         error=f"tool is not available: {tool_call.tool_name}",
                     )
                 elif is_duplicate_successful_write(tool_call, steps):
-                    output = {
-                        "raw_response": decision.raw_response,
-                        "error": "duplicate_successful_write",
-                    }
-                    if task.capture_prompts:
-                        output["prompt"] = prompt
+                    output = self._step_output(
+                        {
+                            "raw_response": decision.raw_response,
+                            "error": "duplicate_successful_write",
+                        },
+                        prompt=prompt,
+                    )
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
@@ -355,7 +359,6 @@ class ToolLoopAgent:
                                 "reason": decision.reason,
                             },
                             prompt=prompt,
-                            capture_prompt=task.capture_prompts,
                         ),
                     )
                 )
@@ -453,10 +456,7 @@ class ToolLoopAgent:
         output: dict[str, Any],
         *,
         prompt: str,
-        capture_prompt: bool,
     ) -> dict[str, Any]:
-        """Attach the exact prompt to a trace step when collection asks for it."""
+        """Attach the exact prompt and (if present) raw_response to a trace step."""
 
-        if not capture_prompt:
-            return output
         return {**output, "prompt": prompt}

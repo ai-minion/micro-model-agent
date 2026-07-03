@@ -95,6 +95,7 @@ class WorkflowTrace:
     status: WorkflowStatus = WorkflowStatus.PENDING
     steps: list[WorkflowStep] = field(default_factory=list)
     final_output: dict[str, Any] = field(default_factory=dict)
+    run_metadata: dict[str, Any] = field(default_factory=dict)
     id: UUID = field(default_factory=uuid4)
     created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))

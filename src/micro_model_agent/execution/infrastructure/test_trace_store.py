@@ -82,7 +82,7 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
         status=WorkflowStatus.SUCCEEDED,
         steps=[
             WorkflowStep(
-                name="model_turn_1",
+                name="final_response",
                 status=WorkflowStatus.SUCCEEDED,
                 output={
                     "prompt": "<|system|>\nrequest\n",
@@ -92,33 +92,48 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
             )
         ],
         final_output={"ok": True, "response": "done"},
+        run_metadata={"interface": "test"},
     )
 
     asyncio.run(store.save(trace))
 
     trace_dir = tmp_path / "traces" / str(trace.id)
-    trace_file = trace_dir / "trace.json"
-    raw_dir = trace_dir / "raw_io" / str(trace.steps[0].id)
-    stored_trace = json.loads(trace_file.read_text(encoding="utf-8"))
+    step_dir = trace_dir / str(trace.steps[0].id)
+    metadata_file = trace_dir / "metadata.json"
+    stored_meta = json.loads(metadata_file.read_text(encoding="utf-8"))
+    step_meta = json.loads((step_dir / "metadata.json").read_text(encoding="utf-8"))
+    workflow = json.loads((step_dir / "workflow.json").read_text(encoding="utf-8"))
     index_record = json.loads((tmp_path / "traces" / "workflows.jsonl").read_text())
 
-    assert trace_file.exists()
-    assert (raw_dir / "request").read_text(encoding="utf-8") == "<|system|>\nrequest\n"
-    assert (raw_dir / "response").read_text(encoding="utf-8") == (
+    assert metadata_file.exists()
+    assert (step_dir / "request.txt").read_text(encoding="utf-8") == "<|system|>\nrequest\n"
+    assert (step_dir / "response.txt").read_text(encoding="utf-8") == (
         '{"final_response":"done","ok":true}'
     )
-    assert stored_trace["steps"][0]["output"]["raw_io"] == {
-        "id": str(trace.steps[0].id),
-        "request_path": f"{trace.id}/raw_io/{trace.steps[0].id}/request",
-        "response_path": f"{trace.id}/raw_io/{trace.steps[0].id}/response",
-    }
-    assert "prompt" not in stored_trace["steps"][0]["output"]
-    assert "raw_response" not in stored_trace["steps"][0]["output"]
-    assert "prompt" not in index_record["steps"][0]["output"]
-    assert "raw_response" not in index_record["steps"][0]["output"]
+
+    # Metadata files must not embed raw blobs.
+    assert "prompt" not in stored_meta["steps"][0].get("output", {})
+    assert "raw_response" not in stored_meta["steps"][0].get("output", {})
+    assert "prompt" not in index_record["steps"][0].get("output", {})
+    assert "raw_response" not in index_record["steps"][0].get("output", {})
+
+    # run_metadata is preserved.
+    assert stored_meta["run_metadata"] == {"interface": "test"}
+    assert index_record["run_metadata"] == {"interface": "test"}
+
+    # Step metadata.
+    assert step_meta["name"] == "final_response"
+    assert step_meta["turn_index"] == 0
+
+    # Workflow events.
+    events = workflow["events"]
+    assert events[0] == {"type": "prompt", "content": "<|system|>\nrequest\n"}
+    assert events[1]["type"] == "model_response"
+    assert events[1]["parsed_kind"] == "final_response"
 
     loaded = asyncio.run(store.get(str(trace.id)))
 
     assert loaded is not None
     assert loaded.steps[0].output["prompt"] == "<|system|>\nrequest\n"
     assert loaded.steps[0].output["raw_response"] == '{"final_response":"done","ok":true}'
+    assert loaded.run_metadata == {"interface": "test"}

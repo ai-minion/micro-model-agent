@@ -1,7 +1,19 @@
-"""Local JSONL workflow trace storage.
+"""Local workflow trace storage.
 
-Workflow traces are append-only audit records. Saving the same trace ID again
-adds a newer line, and loading returns the last matching record.
+Each trace is stored as a directory tree under the store's root:
+
+    <root>/
+      workflows.jsonl               # append-only index (no prompt/response blobs)
+      <trace-id>/
+        metadata.json               # trace-level: id, goal, status, run_metadata, timestamps
+        <step-id>/                  # one folder per model turn
+          metadata.json             # step-level: id, name, status, turn_index, tool_name
+          request.txt               # raw prompt sent to the model
+          response.txt              # raw model response
+          workflow.json             # ordered event sequence for this turn
+
+Saving the same trace ID again overwrites the per-trace files and appends a
+new line to workflows.jsonl so the index always reflects the latest state.
 """
 
 from __future__ import annotations
@@ -32,6 +44,7 @@ def workflow_trace_to_record(trace: WorkflowTrace) -> dict[str, Any]:
         "status": trace.status.value,
         "steps": [_workflow_step_to_record(step) for step in trace.steps],
         "final_output": trace.final_output,
+        "run_metadata": trace.run_metadata,
         "created_at": trace.created_at.isoformat(),
         "updated_at": trace.updated_at.isoformat(),
     }
@@ -47,6 +60,7 @@ def workflow_trace_from_record(record: dict[str, Any]) -> WorkflowTrace:
         status=WorkflowStatus(record["status"]),
         steps=[_workflow_step_from_record(step) for step in record.get("steps", [])],
         final_output=dict(record.get("final_output", {})),
+        run_metadata=dict(record.get("run_metadata", {})),
         created_at=datetime.fromisoformat(record["created_at"]),
         updated_at=datetime.fromisoformat(record["updated_at"]),
     )
@@ -127,7 +141,20 @@ def _tool_result_from_record(record: dict[str, Any]) -> ToolResult:
 
 
 class JsonlTraceStore:
-    """Append-only JSONL workflow trace store with per-trace artifacts."""
+    """Workflow trace store that writes a structured directory tree per trace.
+
+    Layout::
+
+        <root>/
+          workflows.jsonl               # append-only index, no prompt/response blobs
+          <trace-id>/
+            metadata.json               # trace-level: id, goal, status, run_metadata, timestamps
+            <step-id>/                  # one folder per model turn
+              metadata.json             # step-level: id, name, status, turn_index, tool_name
+              request.txt               # raw prompt sent to the model (if captured)
+              response.txt              # raw model response (if captured)
+              workflow.json             # ordered event sequence for this turn
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
@@ -135,40 +162,37 @@ class JsonlTraceStore:
 
     async def save(self, trace: WorkflowTrace) -> None:
         self.root.mkdir(parents=True, exist_ok=True)
-        record = self._externalized_record(trace)
         trace_dir = self._trace_dir(str(trace.id))
         trace_dir.mkdir(parents=True, exist_ok=True)
-        (trace_dir / "trace.json").write_text(
-            json.dumps(record, sort_keys=True, indent=2),
-            encoding="utf-8",
-        )
-        # Append instead of overwriting so trace history is preserved.
+
+        self._write_trace_artifacts(trace, trace_dir)
+
+        index_record = self._index_record(trace)
         with self.path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(record, sort_keys=True))
+            file.write(json.dumps(index_record, sort_keys=True))
             file.write("\n")
 
     async def get(self, trace_id: str) -> WorkflowTrace | None:
-        trace_file = self._trace_dir(trace_id) / "trace.json"
-        if trace_file.exists():
-            return workflow_trace_from_record(
-                self._hydrated_record(json.loads(trace_file.read_text(encoding="utf-8")))
-            )
+        meta_file = self._trace_dir(trace_id) / "metadata.json"
+        if meta_file.exists():
+            record = json.loads(meta_file.read_text(encoding="utf-8"))
+            self._hydrate_steps(record, trace_id)
+            return workflow_trace_from_record(record)
 
         if not self.path.exists():
             return None
 
         found: WorkflowTrace | None = None
-        # Keep scanning after a match so the newest saved version wins.
         for line in self.path.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue
             record = json.loads(line)
             if record.get("id") == trace_id:
-                found = workflow_trace_from_record(self._hydrated_record(record))
+                found = workflow_trace_from_record(record)
         return found
 
     async def list(self) -> list[WorkflowTrace]:
-        """List the newest saved version of each trace in file order."""
+        """List the newest saved version of each trace in first-seen order."""
 
         if not self.path.exists():
             return []
@@ -182,69 +206,196 @@ class JsonlTraceStore:
             trace_id = str(record["id"])
             if trace_id not in traces_by_id:
                 order.append(trace_id)
-            traces_by_id[trace_id] = workflow_trace_from_record(self._hydrated_record(record))
+            # Prefer per-trace folder if available for the latest entry.
+            meta_file = self._trace_dir(trace_id) / "metadata.json"
+            if meta_file.exists():
+                full_record = json.loads(meta_file.read_text(encoding="utf-8"))
+                self._hydrate_steps(full_record, trace_id)
+                traces_by_id[trace_id] = workflow_trace_from_record(full_record)
+            else:
+                traces_by_id[trace_id] = workflow_trace_from_record(record)
         return [traces_by_id[trace_id] for trace_id in order]
 
-    def _trace_dir(self, trace_id: str) -> Path:
-        """Return the artifact directory for one trace."""
+    # ------------------------------------------------------------------
+    # Private helpers
+    # ------------------------------------------------------------------
 
+    def _trace_dir(self, trace_id: str) -> Path:
         return self.root / trace_id
 
-    def _externalized_record(self, trace: WorkflowTrace) -> dict[str, Any]:
-        """Move bulky raw model I/O from the trace record into sidecar files."""
+    def _write_trace_artifacts(self, trace: WorkflowTrace, trace_dir: Path) -> None:
+        """Write (or overwrite) all per-trace artifact files for one save."""
 
         record = workflow_trace_to_record(trace)
-        trace_id = str(trace.id)
+
+        # Trace-level metadata — everything except the bulky steps list.
+        metadata: dict[str, Any] = {
+            "id": record["id"],
+            "goal": record["goal"],
+            "status": record["status"],
+            "run_metadata": record.get("run_metadata", {}),
+            "final_output": record.get("final_output", {}),
+            "created_at": record["created_at"],
+            "updated_at": record["updated_at"],
+            "steps": [],  # filled with lightweight step summaries below
+        }
+
+        for turn_index, step in enumerate(record.get("steps", [])):
+            if not isinstance(step, dict):
+                continue
+            step_id = str(step["id"])
+            step_dir = trace_dir / step_id
+            step_dir.mkdir(parents=True, exist_ok=True)
+
+            output = dict(step.get("output") or {})
+            prompt = output.pop("prompt", None)
+            raw_response = output.pop("raw_response", None)
+
+            # request.txt / response.txt
+            if isinstance(prompt, str):
+                (step_dir / "request.txt").write_text(prompt, encoding="utf-8")
+            if isinstance(raw_response, str):
+                (step_dir / "response.txt").write_text(raw_response, encoding="utf-8")
+
+            # workflow.json — ordered event sequence for this turn
+            workflow_events = _build_workflow_events(
+                step_name=step.get("name", ""),
+                output=output,
+                prompt=prompt,
+                raw_response=raw_response,
+                tool_call=step.get("tool_call"),
+                tool_result=step.get("tool_result"),
+            )
+            (step_dir / "workflow.json").write_text(
+                json.dumps({"events": workflow_events}, sort_keys=True, indent=2),
+                encoding="utf-8",
+            )
+
+            # step metadata.json
+            step_meta: dict[str, Any] = {
+                "id": step_id,
+                "name": step.get("name"),
+                "status": step.get("status"),
+                "turn_index": turn_index,
+            }
+            tool_call = step.get("tool_call")
+            if isinstance(tool_call, dict):
+                step_meta["tool_name"] = tool_call.get("tool_name")
+                step_meta["tool_call_id"] = tool_call.get("id")
+            (step_dir / "metadata.json").write_text(
+                json.dumps(step_meta, sort_keys=True, indent=2),
+                encoding="utf-8",
+            )
+
+            # Collect lightweight step summary for trace metadata.json
+            summary: dict[str, Any] = {
+                "id": step_id,
+                "name": step.get("name"),
+                "status": step.get("status"),
+                "turn_index": turn_index,
+            }
+            if isinstance(tool_call, dict):
+                summary["tool_name"] = tool_call.get("tool_name")
+            metadata["steps"].append(summary)
+
+        # Write full record (with lightweight steps) as the canonical source.
+        full_meta = {**metadata, "steps": record.get("steps", [])}
+        _strip_prompt_fields(full_meta)
+        (trace_dir / "metadata.json").write_text(
+            json.dumps(full_meta, sort_keys=True, indent=2),
+            encoding="utf-8",
+        )
+
+    def _index_record(self, trace: WorkflowTrace) -> dict[str, Any]:
+        """Build a lean JSONL index line: no prompt/response blobs."""
+
+        record = workflow_trace_to_record(trace)
+        _strip_prompt_fields(record)
+        return record
+
+    def _hydrate_steps(self, record: dict[str, Any], trace_id: str) -> None:
+        """Re-inject prompt and raw_response from sidecar files into a record."""
+
         for step in record.get("steps", []):
             if not isinstance(step, dict):
                 continue
-            output = step.get("output")
+            step_id = str(step.get("id", ""))
+            if not step_id:
+                continue
+            step_dir = self._trace_dir(trace_id) / step_id
+            request_file = step_dir / "request.txt"
+            response_file = step_dir / "response.txt"
+            output = step.setdefault("output", {})
             if not isinstance(output, dict):
                 continue
-            request = output.pop("prompt", None)
-            response = output.pop("raw_response", None)
-            if request is None and response is None:
-                continue
+            if request_file.exists():
+                output["prompt"] = request_file.read_text(encoding="utf-8")
+            if response_file.exists():
+                output["raw_response"] = response_file.read_text(encoding="utf-8")
 
-            request_id = str(step["id"])
-            raw_dir = self._trace_dir(trace_id) / "raw_io" / request_id
-            raw_dir.mkdir(parents=True, exist_ok=True)
-            raw_io: dict[str, Any] = {"id": request_id}
-            if isinstance(request, str):
-                (raw_dir / "request").write_text(request, encoding="utf-8")
-                raw_io["request_path"] = f"{trace_id}/raw_io/{request_id}/request"
-            if isinstance(response, str):
-                (raw_dir / "response").write_text(response, encoding="utf-8")
-                raw_io["response_path"] = f"{trace_id}/raw_io/{request_id}/response"
-            output["raw_io"] = raw_io
-        return record
 
-    def _hydrated_record(self, record: dict[str, Any]) -> dict[str, Any]:
-        """Load raw model I/O sidecars back into a trace record for callers."""
+def _strip_prompt_fields(record: dict[str, Any]) -> None:
+    """Remove prompt/raw_response blobs from all step outputs in-place."""
 
-        trace_id = str(record.get("id", ""))
-        for step in record.get("steps", []):
-            if not isinstance(step, dict):
-                continue
-            output = step.get("output")
-            if not isinstance(output, dict):
-                continue
-            raw_io = output.get("raw_io")
-            if not isinstance(raw_io, dict):
-                continue
-            request_path = raw_io.get("request_path")
-            response_path = raw_io.get("response_path")
-            if isinstance(request_path, str):
-                request_file = self.root / request_path
-                if request_file.exists():
-                    output["prompt"] = request_file.read_text(encoding="utf-8")
-            if isinstance(response_path, str):
-                response_file = self.root / response_path
-                if response_file.exists():
-                    output["raw_response"] = response_file.read_text(encoding="utf-8")
-            if not trace_id and isinstance(raw_io.get("id"), str):
-                trace_id = raw_io["id"]
-        return record
+    for step in record.get("steps", []):
+        if not isinstance(step, dict):
+            continue
+        output = step.get("output")
+        if isinstance(output, dict):
+            output.pop("prompt", None)
+            output.pop("raw_response", None)
+
+
+def _build_workflow_events(
+    *,
+    step_name: str,
+    output: dict[str, Any],
+    prompt: str | None,
+    raw_response: str | None,
+    tool_call: dict[str, Any] | None,
+    tool_result: dict[str, Any] | None,
+) -> list[dict[str, Any]]:
+    """Build the ordered event list for one turn's workflow.json."""
+
+    events: list[dict[str, Any]] = []
+
+    if prompt is not None:
+        events.append({"type": "prompt", "content": prompt})
+
+    if raw_response is not None:
+        model_event: dict[str, Any] = {"type": "model_response", "raw": raw_response}
+        if tool_call:
+            model_event["parsed_kind"] = "tool_call"
+            if output.get("reason"):
+                model_event["reason"] = output["reason"]
+        elif step_name == "final_response":
+            model_event["parsed_kind"] = "final_response"
+            if output.get("response"):
+                model_event["response"] = output["response"]
+        else:
+            model_event["parsed_kind"] = "error"
+        if output.get("error"):
+            model_event["error"] = output["error"]
+        if output.get("missing_required_tools"):
+            model_event["missing_required_tools"] = output["missing_required_tools"]
+        events.append(model_event)
+
+    if isinstance(tool_call, dict):
+        events.append({
+            "type": "tool_call",
+            "tool_name": tool_call.get("tool_name"),
+            "arguments": tool_call.get("arguments", {}),
+        })
+
+    if isinstance(tool_result, dict):
+        events.append({
+            "type": "tool_result",
+            "ok": tool_result.get("ok"),
+            "output": tool_result.get("output", {}),
+            "error": tool_result.get("error"),
+        })
+
+    return events
 
 
 class LocalWorkflowTraceReader:

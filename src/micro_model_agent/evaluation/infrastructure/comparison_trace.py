@@ -139,31 +139,65 @@ def review_comparison_session(
 
 
 class JsonlComparisonTraceStore:
-    """Append-only JSONL store for comparison trace sessions."""
+    """Comparison trace store with per-session folder and JSONL index.
+
+    Layout::
+
+        <root>/
+          comparison_sessions.jsonl     # append-only index (id, goal, status)
+          <session-id>/
+            metadata.json               # full session record (canonical)
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self._root = self.path.parent
+
+    def _session_dir(self, session_id: str) -> Path:
+        return self._root / session_id
 
     async def save(self, session: ComparisonTraceSession) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._root.mkdir(parents=True, exist_ok=True)
+        session_id = str(session.id)
+        session_dir = self._session_dir(session_id)
+        session_dir.mkdir(parents=True, exist_ok=True)
+
+        record = comparison_session_to_record(session)
+
+        # Canonical full record in the per-session folder.
+        (session_dir / "metadata.json").write_text(
+            json.dumps(record, sort_keys=True, indent=2),
+            encoding="utf-8",
+        )
+
+        # Lightweight index entry: id, goal, status, timestamps only.
+        index_entry = {
+            "id": record["id"],
+            "goal": record["goal"],
+            "status": record["status"],
+            "repository_root": record["repository_root"],
+            "created_at": record["created_at"],
+            "updated_at": record["updated_at"],
+        }
         with self.path.open("a", encoding="utf-8") as file:
-            file.write(json.dumps(comparison_session_to_record(session), sort_keys=True))
+            file.write(json.dumps(index_entry, sort_keys=True))
             file.write("\n")
 
     async def get(self, session_id: str) -> ComparisonTraceSession | None:
-        sessions = await self.list()
-        for session in reversed(sessions):
-            if str(session.id) == session_id:
-                return session
+        meta_file = self._session_dir(session_id) / "metadata.json"
+        if meta_file.exists():
+            return comparison_session_from_record(
+                json.loads(meta_file.read_text(encoding="utf-8"))
+            )
         return None
 
     async def list(self) -> list[ComparisonTraceSession]:
-        """List newest saved versions of each session in first-seen order."""
+        """List sessions in first-seen order, loading each from its folder."""
 
         if not self.path.exists():
             return []
 
-        sessions_by_id: dict[str, ComparisonTraceSession] = {}
+        seen: dict[str, bool] = {}
         order: list[str] = []
         for line_number, line in enumerate(
             self.path.read_text(encoding="utf-8").splitlines(),
@@ -172,14 +206,20 @@ class JsonlComparisonTraceStore:
             if not line.strip():
                 continue
             try:
-                record = json.loads(line)
+                entry = json.loads(line)
             except json.JSONDecodeError as exc:
                 raise ValueError(f"{self.path}:{line_number}: invalid JSONL record") from exc
-            session_id = str(record["id"])
-            if session_id not in sessions_by_id:
+            session_id = str(entry["id"])
+            if session_id not in seen:
+                seen[session_id] = True
                 order.append(session_id)
-            sessions_by_id[session_id] = comparison_session_from_record(record)
-        return [sessions_by_id[session_id] for session_id in order]
+
+        sessions: list[ComparisonTraceSession] = []
+        for session_id in order:
+            session = await self.get(session_id)
+            if session is not None:
+                sessions.append(session)
+        return sessions
 
 
 def _comparison_event_to_record(event: ComparisonTraceEvent) -> dict[str, Any]:
