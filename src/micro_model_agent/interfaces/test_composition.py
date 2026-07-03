@@ -5,19 +5,24 @@ from __future__ import annotations
 from types import ModuleType
 
 from micro_model_agent.interfaces import composition
-from micro_model_agent.execution.infrastructure import runtime as agent_runtime
+from micro_model_agent.execution.infrastructure import agents_runtime as agent_runtime
+from micro_model_agent.execution.infrastructure import composition as execution_composition
 from micro_model_agent.dataset.infrastructure import runtime as dataset_runtime
 from micro_model_agent.evaluation.infrastructure import runtime as evaluation_runtime
 from micro_model_agent.execution.infrastructure.models import runtime as model_runtime
-from micro_model_agent.execution.infrastructure.persistence import runtime as persistence_runtime
+from micro_model_agent.execution.infrastructure import persistence_runtime
 from micro_model_agent.promotion.infrastructure import runtime as promotion_runtime
 from micro_model_agent.repository_ops.infrastructure import runtime as repository_runtime
-from micro_model_agent.repository_ops.infrastructure import runtime as tool_runtime
+from micro_model_agent.repository_ops.infrastructure import tools_runtime as tool_runtime
 from micro_model_agent.training.infrastructure import runtime as training_runtime
 
 FACADE_EXPORTS_BY_OWNER: dict[ModuleType, tuple[str, ...]] = {
     agent_runtime: (
         "build_static_coding_workflow",
+    ),
+    execution_composition: (
+        "build_coding_workflow",
+        "build_event_pipeline",
     ),
     dataset_runtime: (
         "build_dataset_export_workflow",
@@ -59,8 +64,7 @@ FACADE_EXPORTS_BY_OWNER: dict[ModuleType, tuple[str, ...]] = {
         "tool_prompt_schemas",
     ),
     persistence_runtime: (
-        "DEFAULT_TRACE_DIR",
-        "append_comparison_trace_event",
+        "DEFAULT_TRACE_DIR",        "append_comparison_trace_event",
         "comparison_trace_store",
         "register_workspace_record",
         "registered_workspace_path",

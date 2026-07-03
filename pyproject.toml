@@ -75,14 +75,7 @@ module = ["datasets", "peft", "torch", "transformers"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
-addopts = """-q \
-  --ignore=src/micro_model_agent/agents \
-  --ignore=src/micro_model_agent/infrastructure/models \
-  --ignore=src/micro_model_agent/infrastructure/test_composition.py \
-  --ignore=src/micro_model_agent/interfaces \
-  --ignore=src/micro_model_agent/execution/infrastructure/test_agents_runtime.py \
-  --ignore=src/micro_model_agent/evaluation/infrastructure/test_synthetic_behavior.py \
-  --ignore=src/micro_model_agent/evaluation/infrastructure/test_workspace_staged.py"""
+addopts = "-q"
 python_files = ["test_*.py"]
 testpaths = ["src"]
 filterwarnings = [

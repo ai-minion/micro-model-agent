@@ -308,7 +308,7 @@ def test_mcp_trace_module_does_not_own_store_factories() -> None:
 
 
 def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(PERSISTENCE_RUNTIME_HELPER_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -316,13 +316,13 @@ def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
 
 
 def test_model_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(MODEL_RUNTIME_HELPER_NAMES).isdisjoint(_top_level_definition_names(path))
 
 
 def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(INFRASTRUCTURE_RUNTIME_FACTORY_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -330,7 +330,7 @@ def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> No
 
 
 def test_composition_facade_exports_are_explicit_and_public() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
     exports = _all_exports(path)
 
     assert all(not name.startswith("_") for name in exports)

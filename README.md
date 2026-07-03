@@ -69,13 +69,16 @@ import micro_model_agent
 
 ## Architecture
 
-micro-model-agent follows strict Domain Driven Design boundaries:
+micro-model-agent follows a classical DDD bounded-context-first structure:
 
-- `domain`: framework-independent business contracts and policy.
-- `application`: use cases and orchestration.
-- `infrastructure`: model providers, repositories, vector stores, tracing, MCP adapters.
+- `shared`: shared kernel (base domain types used across all contexts).
+- `execution`: agent workflows, tool loops, model providers.
+- `dataset`: training dataset lifecycle — synthesis, export, merge, relabel.
+- `training`: fine-tuning job lifecycle and artifact storage.
+- `evaluation`: model evaluation, scoring rubrics, threshold events.
+- `promotion`: model promotion gate, registry, Ollama packaging.
+- `repository_ops`: source code retrieval, safe repo tools.
 - `interfaces`: CLI, MCP server, and public API entrypoints.
-- `agents`: reference agents built from workflows and tools.
 
 See [docs/architecture.md](docs/architecture.md).
 

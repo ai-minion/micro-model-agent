@@ -33,7 +33,6 @@ micro_model_agent/
   promotion/        <- Bounded Context: model promotion & registry
   repository_ops/   <- Supporting Context: source code repo retrieval
   interfaces/       <- Cross-cutting: CLI and MCP entry points
-  agents/           <- Reference agent implementations
 ```
 
 Each bounded context follows a consistent internal layering:
@@ -180,19 +179,12 @@ The `InProcessEventBus` and handler subscriptions are wired in
 ## Interfaces (`interfaces/`)
 
 Cross-cutting entry points. Import from bounded-context `application/` packages
-and reach infrastructure only through the `infrastructure.composition` facade.
+and reach infrastructure only through the `interfaces.composition` facade.
 
 - **CLI** — `micro-agent` commands: `task`, `loop`, `dataset`, `train`, `eval`,
   `promote`, `repo`, `index`
 - **MCP server** — tool-call server exposing the model-driven tool loop and
   repository operations
-
-## Agents (`agents/`)
-
-Reference implementations built from application ports:
-
-- `CodingAgent` — implements `CodingWorkflowRunner` application port
-- `ToolLoopAgent` — implements the model-driven tool-loop runner port
 
 ## Dependency Direction
 
