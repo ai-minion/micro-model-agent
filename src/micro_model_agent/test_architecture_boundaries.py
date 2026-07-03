@@ -166,30 +166,11 @@ RUNTIME_MODULE_PATHS = {
     PACKAGE_ROOT / "repository_ops" / "infrastructure" / "tools_runtime.py",
     PACKAGE_ROOT / "training" / "infrastructure" / "runtime.py",
 }
-# APPLICATION_USE_CASE_FACADES: all context facade __init__.py files were
-# deleted; the tuple is empty.  The ports __init__.py is checked separately.
-APPLICATION_USE_CASE_FACADES: tuple = ()
-_PORTS_HUB_PATH = PACKAGE_ROOT / "application" / "ports" / "__init__.py"
-_PORTS_HUB_ALLOWED_PREFIXES = (
-    "micro_model_agent.dataset.application.ports",
-    "micro_model_agent.evaluation.application.ports",
-    "micro_model_agent.execution.application.ports",
-    "micro_model_agent.promotion.application.ports",
-    "micro_model_agent.repository_ops.application.ports",
-    "micro_model_agent.training.application.ports",
-    # internal __future__ and standard-library imports are fine
-    "__future__",
-)
 APPLICATION_RUBRIC_PATHS = {
     PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_synthetic.py",
     PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_trace.py",
     PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_workspace_staged.py",
 }
-APPLICATION_FACADE_PATHS = {
-    path for path, _owner_prefix in APPLICATION_USE_CASE_FACADES
-}
-ALLOWED_TOP_LEVEL_APPLICATION_MODULES: set[Path] = set()
-
 
 def _production_modules(package: str) -> list[Path]:
     package_path = PACKAGE_ROOT / package
@@ -436,35 +417,7 @@ def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
     assert violations == []
 
 
-def test_application_use_case_modules_are_compatibility_facades() -> None:
-    violations: list[str] = []
-    for path, owner_prefix in APPLICATION_USE_CASE_FACADES:
-        violations.extend(
-            _shim_violations({path}, allowed_import_prefix=owner_prefix)
-        )
 
-    assert violations == []
-
-
-def test_application_compatibility_facade_exports_are_sorted_public() -> None:
-    violations: list[str] = []
-    for path in APPLICATION_FACADE_PATHS:
-        violations.extend(_public_export_violations(path, require_sorted=True))
-
-    assert violations == []
-
-
-
-def test_ports_hub_only_imports_from_bounded_context_ports() -> None:
-    """application/ports/__init__.py must only import from per-context port modules."""
-    violations: list[str] = []
-    for imported in _imports(_PORTS_HUB_PATH):
-        if imported.startswith(_PORTS_HUB_ALLOWED_PREFIXES):
-            continue
-        if imported in ("__future__",):
-            continue
-        violations.append(f"application/ports/__init__.py imports {imported}")
-    assert violations == []
 
 
 def test_top_level_infrastructure_modules_are_composition_or_compatibility() -> None:
@@ -475,16 +428,6 @@ def test_top_level_infrastructure_modules_are_composition_or_compatibility() -> 
     }
 
     assert top_level_modules == ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES
-
-
-def test_top_level_application_modules_are_empty() -> None:
-    top_level_modules = {
-        path
-        for path in (PACKAGE_ROOT / "application").glob("*.py")
-        if not path.name.startswith("test_") and path.name != "__init__.py"
-    }
-
-    assert top_level_modules == ALLOWED_TOP_LEVEL_APPLICATION_MODULES
 
 
 def _shim_violations(
@@ -583,9 +526,6 @@ DOMAIN_BANNED_EXTERNALS_BOUNDED = (
     "transformers",
 )
 
-_LEGACY_PORTS_HUB = "micro_model_agent.application.ports"
-
-
 def _bounded_context_domain_modules(context: str) -> list[Path]:
     """Return production .py files inside <context>/domain/."""
     domain_path = PACKAGE_ROOT / context / "domain"
@@ -671,17 +611,6 @@ def test_bounded_context_domains_have_no_banned_framework_imports() -> None:
     assert violations == []
 
 
-def test_bounded_context_production_code_does_not_use_legacy_ports_hub() -> None:
-    """All bounded-context production code must import from per-context ports,
-    not the backward-compat ``application.ports.contracts`` hub."""
-    violations: list[str] = []
-    for context in BOUNDED_CONTEXT_PACKAGES:
-        ctx_name = context.split(".")[-1]
-        for path in _bounded_context_production_modules(ctx_name):
-            for imported in _imports(path):
-                if imported == _LEGACY_PORTS_HUB:
-                    violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {imported}")
-    assert violations == []
 
 
 # ---------------------------------------------------------------------------

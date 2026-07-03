@@ -7,8 +7,8 @@ import json
 import subprocess
 from pathlib import Path
 
-from micro_model_agent.application.tool_loop.workflows import run_profile_settings
-from micro_model_agent.infrastructure.repositories.metadata import (
+from micro_model_agent.execution.application.tool_loop import run_profile_settings
+from micro_model_agent.repository_ops.infrastructure.metadata import (
     initialize_repository,
     update_model_configuration,
 )

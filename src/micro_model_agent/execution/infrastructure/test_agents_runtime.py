@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.application.agent.workflows import RunAgentWorkflow
+from micro_model_agent.execution.application.workflows import RunAgentWorkflow
 from micro_model_agent.execution.infrastructure.agents_runtime import build_static_coding_workflow
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
 
