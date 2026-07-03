@@ -97,19 +97,19 @@ suggests more synthetic schema nudging is not the best next lever.
 
 Prompt and export:
 
-- `src/micro_model_agent/infrastructure/dataset_prompting.py`
+- `src/micro_model_agent/dataset/infrastructure/prompting.py`
   - New prompt payload helper.
   - Adds `response_contract`.
   - Sanitizes repair `bad_output`.
   - Omits `variant_focus` from model-facing prompt input.
-- `src/micro_model_agent/infrastructure/dataset_validation.py`
+- `src/micro_model_agent/dataset/infrastructure/validation.py`
   - SFT export uses strict assistant JSON targets.
   - Refusal targets export as refusal-only JSON.
   - Trace-shaped evaluation examples use trace-evaluation assistant shape.
 
 Data generation and examples:
 
-- `src/micro_model_agent/infrastructure/synthetic_data.py`
+- `src/micro_model_agent/dataset/infrastructure/synthetic_data.py`
   - Category include/exclude filters.
   - Scenario variation goes into `variant_focus`, not the user goal/context.
 - `examples/synthetic-data/tool-use.seed.jsonl`
@@ -121,7 +121,7 @@ Data generation and examples:
 
 Trace export:
 
-- `src/micro_model_agent/infrastructure/trace_export.py`
+- `src/micro_model_agent/dataset/infrastructure/traces/export.py`
   - Can filter by workflow status.
   - Can require at least one tool call.
 - `src/micro_model_agent/interfaces/cli.py`
