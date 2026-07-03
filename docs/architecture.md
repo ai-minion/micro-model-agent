@@ -1,11 +1,17 @@
 # Architecture
 
-micro-model-agent is organized as a DDD-oriented Clean/Hexagonal architecture: domain concepts and policies sit at the center, application services orchestrate use cases, and infrastructure/interfaces connect through explicit ports and adapters.
+micro-model-agent is organized as a classical DDD (Domain-Driven Design)
+architecture with bounded contexts as the top-level structural unit. Each context
+owns its own domain, application, and infrastructure layers. The shared kernel
+provides base types used across all contexts.
 
 ## Philosophy
 
 The model is a workflow executor. The platform owns retrieval, tool execution,
-trace capture, verification, evaluation, and future training pipelines.
+trace capture, verification, evaluation, and training pipelines. Domain policy
+and invariants live in aggregate roots; application workflows are pure
+orchestrators that call domain methods, persist via repositories, and publish
+events.
 
 ```text
 User
@@ -15,269 +21,242 @@ User
   -> Verification
 ```
 
-## Layers
+## Package Structure
 
-### Domain
+```text
+micro_model_agent/
+  shared/           <- Shared Kernel (cross-context base types only)
+  execution/        <- Bounded Context: running agent workflows & tool loops
+  dataset/          <- Bounded Context: training dataset lifecycle
+  training/         <- Bounded Context: fine-tuning job lifecycle
+  evaluation/       <- Bounded Context: model evaluation & scoring
+  promotion/        <- Bounded Context: model promotion & registry
+  repository_ops/   <- Supporting Context: source code repo retrieval
+  interfaces/       <- Cross-cutting: CLI and MCP entry points
+  agents/           <- Reference agent implementations
+```
 
-Pure business contracts and policy. No infrastructure, framework, network, file
-system, or MCP dependencies.
+Each bounded context follows a consistent internal layering:
 
-Implemented concepts:
+```text
+<context>/
+  domain/           <- Aggregates, entities, value objects, events,
+                       repository Protocols, domain services
+  application/      <- Commands/results, workflow orchestration, port Protocols
+  infrastructure/   <- Concrete adapters, repositories, ACLs, composition/factory
+```
 
-- `AgentProfile`
-- `ModelProfile`
-- `ToolDefinition`
-- `ToolCall`
-- `ToolResult`
-- `WorkflowTrace`
-- `WorkflowStep`
-- `RepositoryProfile`
-- `RetrievalQuery`
-- `RetrievalResult`
-- `SemanticSearchResult`
-- `EvaluationResult`
+## Shared Kernel (`shared/`)
 
-### Application
+Minimal base types shared across all contexts. Never imports from any bounded
+context.
 
-Use cases and orchestration. This layer coordinates domain contracts with
-infrastructure ports.
+- `DomainEvent` — frozen immutable base for all domain events (`event_id`, `occurred_at`)
+- `Entity` — UUID identity, equality by id, pending-events list with `pull_events()`
+- `EventBus` Protocol — `publish(event)` / `publish_all(events)`
+- `InProcessEventBus` — synchronous in-process implementation; handlers registered by event type
+- `DomainException` — root for all domain rule violations
+- `EvaluationResult` — shared VO used by both evaluation and promotion contexts
 
-Implemented services:
+## Bounded Contexts
 
-- `RunAgentWorkflow`
-- `RunToolLoopWorkflow`
-- `RunDatasetSynthesisWorkflow`
-- `RunDatasetValidationWorkflow`
-- `RunDatasetExportWorkflow`
-- `RunDatasetMergeWorkflow`
-- `RunDatasetRelabelWorkflow`
-- `RunTraceDatasetExportWorkflow`
-- `RunTraceReviewWorkflow`
-- `RunSyntheticTrainingWorkflow`
-- `RunSyntheticEvaluationWorkflow`
-- `RunTraceEvaluationWorkflow`
-- `RunWorkspaceStagedEvaluationWorkflow`
-- `RunWorkspaceStagedReviewWorkflow`
-- `RunEvaluationComparisonWorkflow`
-- `RunPromotionGateWorkflow`
-- `RunPromotionRecordWorkflow`
-- `RunPromotionListWorkflow`
-- `RunPromotionSelectWorkflow`
-- `RunPromotionPackageOllamaWorkflow`
-- `TraceDatasetBuilder`
-- `DefaultWorkflowEvaluator`
+### `execution/` — Workflow Execution
 
-Application-owned ports include `CodingWorkflowRunner`, `ModelProvider`,
-`ToolExecutor`, `TraceStore`, and dataset/training/evaluation storage and runner
-contracts. The reference `CodingAgent` implements `CodingWorkflowRunner`; the
-application layer depends on that port rather than importing the concrete agent.
-Port contracts live in `application.ports.contracts`; `application.ports`
-remains as a compatibility facade.
+Runs agent workflows and model-driven tool loops.
 
-The model-driven tool-loop use case is represented by `RunToolLoopWorkflow`,
-`RunToolLoopRequest`, and `RunToolLoopResult`. The reference
-`agents.ToolLoopAgent` implements the application `ToolLoopRunner` port, while
-safe tool execution is exposed through the `ToolExecutor` application port and
-implemented by `BuiltinToolExecutor`.
-Tool-loop workflow policy lives in `application.tool_loop.workflows`; the
-`application.tool_loop` package remains as a compatibility facade.
+**Aggregate:** `WorkflowExecution` — guarded state machine with transitions
+`start()` → `add_step()` → `complete()` / `fail()`. Emits
+`WorkflowStarted`, `StepAdded`, `WorkflowCompleted`, `WorkflowFailed`.
 
-Dataset synthesis, validation, export, merge, and relabel use cases are
-represented by `RunDatasetSynthesisWorkflow`, `RunDatasetValidationWorkflow`,
-`RunDatasetExportWorkflow`, `RunDatasetMergeWorkflow`, and
-`RunDatasetRelabelWorkflow`. Trace-derived dataset export is represented by
-`RunTraceDatasetExportWorkflow`; human trace review recording is represented by
-`RunTraceReviewWorkflow`. Interfaces supply CLI options and output formatting,
-infrastructure owns template-based generation, JSONL dataset loading/writing,
-trace/review JSONL loading, trace-example export, review persistence, concrete
-validation rules, merge/deduplication and relabel policies, and SFT JSONL
-writing, and the application coordinates the generator, reader, writer,
-validator, merger, relabeler, trace exporter, review writer, and exporter ports.
-Dataset use-case orchestration lives in `application.datasets.workflows`; the
-`application.datasets` package remains as a compatibility facade.
+**Application workflows:** `RunAgentWorkflow`, `RunToolLoopWorkflow`
 
-Synthetic fine-tuning is represented by `RunSyntheticTrainingWorkflow`.
-Interfaces supply CLI options, environment loading, backend selection, output
-formatting, and exit behavior. Infrastructure owns JSONL dataset loading,
-validation rules, SFT JSONL rendering, dataset metadata hashing/profile
-summaries, concrete training backends, and artifact persistence. The
-application coordinates validation, run-local export, training config assembly,
-runner execution, and artifact recording through ports.
-Training use-case orchestration lives in `application.training.workflows`; the
-`application.training` package remains as a compatibility facade.
+**Infrastructure:** `JsonlWorkflowRepository`, model providers
+(`OllamaModelProvider`, `TransformersPeftModelProvider`, `StaticModelProvider`,
+`ScriptedModelProvider`), `JsonlTraceStore`, `build_coding_workflow()`,
+`build_event_pipeline()` (wires `InProcessEventBus` with all cross-context handlers)
 
-Synthetic behavior and metadata-only artifact evaluation are represented by
-`RunSyntheticEvaluationWorkflow`; trace-derived behavior evaluation is
-represented by `RunTraceEvaluationWorkflow`; staged workspace behavior
-evaluation and review queue generation are represented by
-`RunWorkspaceStagedEvaluationWorkflow` and `RunWorkspaceStagedReviewWorkflow`.
-Evaluation report comparison is represented by `RunEvaluationComparisonWorkflow`.
-Interfaces supply CLI model selection, interactive review prompts, threshold
-parsing, output formatting, and exit behavior. Infrastructure owns persisted
-report loading, JSON/JSONL report writing, scoring/rubric adapters, artifact
-evaluators, model providers, staged review record construction, and dataset
-metadata helpers, while the application coordinates behavior model-call loops,
-pure synthetic/trace/workspace-staged scoring rubrics, dataset loading,
-evaluation execution, report metadata, score/metric comparison, review queue
-build/write orchestration, and report persistence through ports.
-Evaluation workflow orchestration is split by concern into
-`application.evaluation.compare`, `application.evaluation.synthetic`,
-`application.evaluation.traces`, and `application.evaluation.workspace_staged`;
-`application.evaluation.workflows` and `application.evaluation` remain
-compatibility facades. Pure evaluation rubrics live under
-`application.evaluation_rubrics`, with old flat rubric imports kept as
-compatibility shims.
+### `dataset/` — Dataset Lifecycle
 
-Promotion gate, registry-record, registry-list, model-selection, and Ollama
-packaging use cases are represented by `RunPromotionGateWorkflow`,
+Manages training dataset examples: synthesis, validation, export, merge, relabel,
+and trace-derived examples.
+
+**Aggregate:** `Dataset` — owns `DatasetExample` entities; enforces
+`DuplicateExampleError` / `ExampleNotFoundError` on `add_example()` / `relabel()`.
+Emits `ExampleAdded`, `ExampleLabelled`, `DatasetExported`, `DatasetMerged`.
+
+**Application workflows:** `RunDatasetSynthesisWorkflow`,
+`RunDatasetValidationWorkflow`, `RunDatasetExportWorkflow`,
+`RunDatasetMergeWorkflow`, `RunDatasetRelabelWorkflow`,
+`RunTraceDatasetExportWorkflow`, `RunTraceReviewWorkflow`
+
+**ACL:** `OnWorkflowCompleted` event handler translates `WorkflowCompleted`
+(execution) into `DatasetExample` via `ExecutionToDatasetTranslator`
+
+**Infrastructure:** `JsonlDatasetRepository`, `SyntheticTemplateGenerator`,
+trace export and review adapters
+
+### `training/` — Fine-Tuning Job Lifecycle
+
+Runs PEFT fine-tuning jobs and stores artifacts.
+
+**Aggregate:** `TrainingJob` — transitions `start()` → `complete()` / `fail()`.
+Emits `TrainingJobCreated`, `TrainingJobStarted`, `TrainingJobCompleted`,
+`TrainingJobFailed`, `ArtifactProduced`.
+
+**Application workflows:** `RunSyntheticTrainingWorkflow`
+
+**Infrastructure:** `LocalFineTuningRunner`, `FakeTrainingRunner`,
+`JsonTrainingArtifactStore`, `JsonlTrainingJobRepository`,
+SFT JSONL export, Ollama adapter packaging
+
+### `evaluation/` — Model Evaluation & Scoring
+
+Evaluates model behavior against synthetic benchmarks, trace replay, and
+staged workspace tasks.
+
+**Aggregate:** `EvaluationReport` — collects `EvaluationResult` entities and
+`finalize(score)` emits `EvaluationCompleted` plus `ThresholdMet` or
+`ThresholdBreached` based on `EvaluationThreshold`.
+
+**Application workflows:** `RunSyntheticEvaluationWorkflow`,
+`RunTraceEvaluationWorkflow`, `RunWorkspaceStagedEvaluationWorkflow`,
+`RunWorkspaceStagedReviewWorkflow`, `RunEvaluationComparisonWorkflow`
+
+**Event handler:** `OnArtifactProduced` triggers evaluation when training
+produces a new artifact
+
+**Infrastructure:** `JsonlEvaluationReportRepository`, rubric suites
+(`SyntheticEvaluationSuite`, `TraceBehaviorEvaluationSuite`,
+`WorkspaceStagedEvaluationSuite`)
+
+### `promotion/` — Model Promotion & Registry
+
+Gates and records model promotions; packages adapters for Ollama.
+
+**Aggregate:** `ModelRegistry` — records `PromotedModel` entries; enforces
+deduplication. Emits `ModelPromoted`, `PromotionGatePassed`,
+`PromotionGateFailed`, `ModelPackaged`.
+
+**Domain service:** `PromotionGateService` — evaluates `PromotionCriteria`
+against `EvaluationScore` VOs and returns a `PromotionGateDecision`.
+
+**Application workflows:** `RunPromotionGateWorkflow`,
 `RunPromotionRecordWorkflow`, `RunPromotionListWorkflow`,
-`RunPromotionSelectWorkflow`, and `RunPromotionPackageOllamaWorkflow`.
-Interfaces supply CLI options and output formatting, infrastructure owns JSON
-artifact/report, registry, repository configuration, and Ollama package storage,
-and the application coordinates promotion policy, registry orchestration,
-repository-local model selection, and packaging requests.
-Promotion use-case orchestration lives in `application.promotion.workflows`; the
-`application.promotion` package remains as a compatibility facade. Static
-coding-agent workflow orchestration lives in `application.agent.workflows`;
-`application.agent`, `application.agent_workflows`, and `application.workflows`
-remain as compatibility facades.
+`RunPromotionSelectWorkflow`, `RunPromotionPackageOllamaWorkflow`
 
-### Infrastructure
+**Event handler:** `OnThresholdEvent` reacts to `ThresholdMet` /
+`ThresholdBreached` events from the evaluation context
 
-Adapters for external systems and local capabilities:
+**Infrastructure:** `JsonlModelRegistryRepository`,
+`LocalOllamaAdapterPackager`
 
-- `models.OllamaModelProvider`
-- `models.TransformersPeftModelProvider`
-- `models.StaticModelProvider`
-- `models.ScriptedModelProvider`
-- `repositories.LocalSemanticRetriever`
-- `repositories.LocalLexicalIndexWriter`
-- `repositories.LocalLexicalIndexReader`
-- `repositories.LocalRepositoryModelConfigurationStore`
-- `repositories.RepositoryRoot`
-- `persistence.JsonlTraceStore`
-- `persistence.JsonlComparisonTraceStore`
-- `persistence.JsonlDatasetExampleStore`
-- `persistence.JsonlWorkspaceRegistry`
-- `training.FakeTrainingRunner`
-- `training.JsonTrainingArtifactStore`
-- `training.LocalFineTuningRunner`
-- `training.LocalOllamaAdapterPackager`
-- `promotion.LocalPromotionGateStore`
-- `evaluation.LocalEvaluationResultReader`
-- `evaluation.LocalEvaluationResultWriter`
-- `evaluation.LocalEvaluationComparisonReportWriter`
-- `evaluation.SyntheticEvaluationSuite`
-- `evaluation.SyntheticBehaviorEvaluationSuite`
-- `evaluation.TraceBehaviorEvaluationSuite`
-- `evaluation.WorkspaceStagedEvaluationSuite`
-- `datasets.SyntheticTemplateGenerator`
-- `datasets.LocalDatasetValidator`
-- `datasets.LocalDatasetMerger`
-- `datasets.LocalDatasetRelabeler`
-- `traces.LocalTraceReviewReader`
-- `traces.LocalTraceDatasetExporter`
-- `tools.BuiltinToolExecutor`
-- `tools.PatchPolicyToolExecutor`
-- `RepoSearchTool`
-- `RepoReadTool`
-- `RepoSemanticSearchTool`
-- `RepoWritePatchTool`
-- `TestRunTool`
-- `GitDiffTool`
-- `TraceStore`
-- `McpServerAdapter`
+### `repository_ops/` — Source Code Retrieval (Supporting)
 
-`LocalSemanticRetriever` adapts the same lexical repository retrieval used by
-`repo.semantic_search` to the application `SemanticRetriever` port. Future
-vector or hybrid stores can be added behind that port without changing domain
-contracts.
+Exposes safe, constrained repository tools used by the execution context.
 
-### Interfaces
+**Value objects:** `RepositoryProfile`, `RetrievalQuery`, `RetrievalResult`,
+`SemanticSearchResult`
 
-User-facing entrypoints:
+**Tools:** `RepoSearchTool`, `RepoReadTool`, `RepoWritePatchTool`,
+`RepoWriteFilesTool`, `RepoSemanticSearchTool`, `GitDiffTool`, `TestRunTool`
 
-- CLI
-- MCP server
-- Public Python API
+**Infrastructure:** `LocalSemanticRetriever`, `LocalLexicalIndexWriter`,
+`LocalLexicalIndexReader`, `BuiltinToolExecutor`, `PatchPolicyToolExecutor`
 
-The stable public compatibility imports are
-`micro_model_agent.interfaces.cli:app` and
-`micro_model_agent.interfaces.mcp_server`. Private helper behavior is tested
-through its owner modules under `interfaces/cli/*` and `interfaces/mcp/*`,
-rather than through compatibility re-exports.
-Production interface modules import infrastructure only through
-`infrastructure.composition`, keeping concrete adapter choices out of CLI and
-MCP request handlers. Private runtime-resolution helpers are not compatibility
-surface; tests target the application or composition owner instead.
+## Cross-Context Event Flow
 
-### Agents
+Contexts communicate exclusively through domain events on the shared event bus.
+No bounded context imports another context's `domain/` package directly.
 
-Reference agents built from workflows and tools. The first implementation is
-`CodingAgent`; `ToolLoopAgent` is the reference model-driven implementation of
-the application tool-loop runner port.
+```text
+execution  --WorkflowCompleted-->   dataset    (ACL: ExecutionToDatasetTranslator)
+training   --ArtifactProduced-->    evaluation
+evaluation --ThresholdMet/Breached--> promotion
+```
+
+The `InProcessEventBus` and handler subscriptions are wired in
+`execution/infrastructure/composition.py` via `build_event_pipeline()`.
+
+## Interfaces (`interfaces/`)
+
+Cross-cutting entry points. Import from bounded-context `application/` packages
+and reach infrastructure only through the `infrastructure.composition` facade.
+
+- **CLI** — `micro-agent` commands: `task`, `loop`, `dataset`, `train`, `eval`,
+  `promote`, `repo`, `index`
+- **MCP server** — tool-call server exposing the model-driven tool loop and
+  repository operations
+
+## Agents (`agents/`)
+
+Reference implementations built from application ports:
+
+- `CodingAgent` — implements `CodingWorkflowRunner` application port
+- `ToolLoopAgent` — implements the model-driven tool-loop runner port
 
 ## Dependency Direction
 
 ```text
-interfaces -> application -> domain
-agents -> application -> domain
-infrastructure -> application/domain ports
-domain -> nothing project-specific
+interfaces  -> application -> domain
+agents      -> application -> domain
+infrastructure -> application/domain (via ports)
+domain      -> shared kernel only
 ```
+
+Cross-context rule: **contexts never import each other's `domain/` packages.**
+Events pass through the shared event bus; data crossing boundaries is translated
+by an ACL in the receiving context's `infrastructure/`.
 
 ## Dependency Injection
 
-Runtime assembly should happen at the edges, usually in `interfaces` or a small
-composition module. Application services accept explicit dependencies through
-constructors. Domain objects remain plain contracts and policy.
-Concrete reference-agent assembly lives in `infrastructure.composition`, so
-interface modules can stay thin adapters over application workflows and public
-runtime helpers. CLI commands also use that composition module as the facade for
-concrete static-agent, dataset, evaluation, training, promotion, repository metadata, and
-repository index adapter wiring; the concrete factories live in the relevant
-package-level `runtime.py` modules. CLI and MCP model-loop entrypoints use it as the facade
-for runtime model/provider/tool-executor assembly, patch-write policy, and
-compact response metadata. MCP workspace and policy adapters use it for
-repository metadata and workspace registry wiring, and MCP trace adapters use
-it for trace persistence and comparison-session record conversion. Model-loop
-runtime helpers live under `infrastructure.models.runtime`, trace/workspace
-persistence runtime helpers live under `infrastructure.persistence.runtime`,
-built-in tool execution helpers live under `infrastructure.tools.runtime`, and
-all are re-exported by the composition facade for interface adapters.
-The facade defines an explicit public `__all__`; owner modules carry behavior
-tests, while composition tests assert export identity.
-Package-owned runtime modules and flat compatibility shims also define explicit
-public export surfaces, with private helper exports kept out of compatibility
-facades.
+Runtime assembly happens at the edges. Application services accept explicit
+dependencies through constructors (repository, event bus, ports). Domain
+aggregates are plain objects with no external dependencies.
+
+Concrete adapter wiring for CLI and MCP commands goes through
+`infrastructure.composition`, which delegates to per-context
+`<context>/infrastructure/composition.py` modules. The facade defines an
+explicit public `__all__`; composition tests assert export identity.
 
 ## Retrieval
 
-Retrieval is a first-class platform capability. The local implementation starts
-simple, but contracts should support source code, docs, ADRs, traces, recipes,
-error history, and future vector stores such as Qdrant and Chroma.
+Retrieval is a first-class platform capability. The local implementation uses a
+lexical index (`repo.semantic_search`) backed by
+`.micro_model_agent/index/lexical-index.json`. Run `micro-agent index` to build
+or refresh the index before longer agent sessions. The `LocalSemanticRetriever`
+adapts this to the `SemanticRetriever` application port; future vector or hybrid
+stores can be swapped in behind that port.
 
 ## Trace Capture
 
 Trace capture is automatic orchestration behavior. The model never records its
-own traces. Workflows produce `WorkflowTrace` records containing goals, tool
-calls, tool results, generated outputs, verification results, and outcomes.
+own traces. `WorkflowExecution` aggregates produce `WorkflowTrace` snapshots
+containing goals, tool calls, tool results, generated outputs, verification
+results, and outcomes. Traces are persisted by `JsonlWorkflowRepository` and
+`JsonlTraceStore`.
 
 ## Fine-Tuning Data
 
-Fine-tuning is a core goal. V1 should capture training-ready data and include a
-minimal synthetic-data training pipeline. CLI workflows should store labeled good
-and bad outcomes, tool-use examples, retrieved documentation context, codebase
-context, patches, verification results, and reviewer notes. Synthetic examples
-should be validated against tool contracts before training. See
-[fine-tuning-data-plan.md](fine-tuning-data-plan.md) and
+Fine-tuning is a core goal. The current pipeline:
+
+```text
+committed synthetic templates
+  -> generated JSONL dataset
+  -> dataset validation
+  -> optional curated trace examples merged into a mixed dataset
+  -> SFT chat JSONL export
+  -> dry-run metadata or local HF/PEFT LoRA adapter training
+  -> held-out behavioral synthetic evaluation
+```
+
+See [fine-tuning-data-plan.md](fine-tuning-data-plan.md) and
 [training-pipeline.md](training-pipeline.md).
 
 ## Security
 
 MCP and CLI tools must avoid arbitrary shell execution and unrestricted writes.
-Dangerous operations need explicit allowlists, dry-run support, patch previews,
-and approval workflows.
+Dangerous operations require explicit allowlists, dry-run support, patch
+previews, and approval workflows.
 
 ## Planning
 
