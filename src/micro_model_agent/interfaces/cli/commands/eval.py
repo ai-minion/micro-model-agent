@@ -15,7 +15,7 @@ from micro_model_agent.evaluation.application.workflows import (
     RunWorkspaceStagedReviewRequest,
     RunWorkspaceStagedReviewWriteRequest,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     build_evaluation_comparison_workflow,
     build_synthetic_evaluation_workflow,
     build_trace_evaluation_workflow,

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from micro_model_agent.execution.application.ports import ModelProvider
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     ConfiguredToolLoopResult,
     base_model_from_adapter,
     build_loop_model_provider,
@@ -14,10 +14,10 @@ from micro_model_agent.infrastructure.composition import (
     run_mcp_agent_loop,
     string_config_value,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     loop_budget_response as build_loop_budget_response,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     tool_prompt_schemas as build_tool_prompt_schemas,
 )
 from micro_model_agent.interfaces.mcp.compat import (

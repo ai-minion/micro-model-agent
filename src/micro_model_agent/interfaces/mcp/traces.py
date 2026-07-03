@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     append_comparison_trace_event,
     review_comparison_trace_session,
     start_comparison_trace_session,

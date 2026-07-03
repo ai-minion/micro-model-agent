@@ -22,7 +22,7 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     build_dataset_export_workflow,
     build_dataset_merge_workflow,
     build_dataset_relabel_workflow,

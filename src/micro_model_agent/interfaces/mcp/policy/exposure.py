@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from micro_model_agent.infrastructure.composition import local_repository_initialized
+from micro_model_agent.interfaces.composition import local_repository_initialized
 from micro_model_agent.interfaces.mcp.compat import MCP_DEBUG_TOOLS_ENV, MCP_EXPOSE_INIT_ENV
 
 

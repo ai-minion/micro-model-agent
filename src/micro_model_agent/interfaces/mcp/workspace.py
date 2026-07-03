@@ -9,12 +9,12 @@ from uuid import uuid4
 
 from mcp.server.fastmcp.exceptions import ToolError as FastMcpToolError
 
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     initialize_local_repository,
     register_workspace_record,
     registered_workspace_path,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     workspace_registry as build_workspace_registry,
 )
 from micro_model_agent.interfaces.mcp.compat import WINDOWS_ABSOLUTE_PATH_RE

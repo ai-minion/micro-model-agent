@@ -9,7 +9,7 @@ import typer
 from micro_model_agent.execution.application.workflows import label_from_workflow_result
 from micro_model_agent.execution.application.ports import CodingAgentTask
 from micro_model_agent.dataset.domain.value_objects import FailureMode, OutcomeLabel, QualityLabel
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     build_coding_workflow,
     build_event_pipeline,
     build_jsonl_dataset_example_store,

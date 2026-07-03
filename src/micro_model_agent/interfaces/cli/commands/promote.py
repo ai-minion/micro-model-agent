@@ -13,7 +13,7 @@ from micro_model_agent.promotion.application.workflows import (
     RunPromotionRecordRequest,
     RunPromotionSelectRequest,
 )
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     build_promotion_gate_workflow,
     build_promotion_list_workflow,
     build_promotion_package_ollama_workflow,

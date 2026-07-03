@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     builtin_tools_response,
     execute_builtin_tool_request,
 )

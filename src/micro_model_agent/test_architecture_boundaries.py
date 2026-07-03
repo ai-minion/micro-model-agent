@@ -13,9 +13,6 @@ APPLICATION_BANNED_PREFIXES = (
     "micro_model_agent.interfaces",
 )
 INTERFACE_BANNED_PREFIXES = ("micro_model_agent.agents",)
-INTERFACE_ALLOWED_INFRASTRUCTURE_PREFIXES = (
-    "micro_model_agent.infrastructure.composition",
-)
 INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES = (
     "micro_model_agent.infrastructure.models",
     "micro_model_agent.infrastructure.tools.catalog",
@@ -151,9 +148,6 @@ INFRASTRUCTURE_RUNTIME_FACTORY_NAMES = (
     "local_repository_initialized",
     "write_local_repository_index",
 )
-ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES = {
-    PACKAGE_ROOT / "infrastructure" / "composition.py"
-}
 RUNTIME_MODULE_PATHS = {
     # New canonical runtime locations after DDD migration
     PACKAGE_ROOT / "execution" / "infrastructure" / "agents_runtime.py",
@@ -317,7 +311,7 @@ def test_mcp_trace_module_does_not_own_store_factories() -> None:
 
 
 def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(PERSISTENCE_RUNTIME_HELPER_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -325,13 +319,13 @@ def test_persistence_runtime_helpers_are_not_defined_in_composition() -> None:
 
 
 def test_model_runtime_helpers_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(MODEL_RUNTIME_HELPER_NAMES).isdisjoint(_top_level_definition_names(path))
 
 
 def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
 
     assert set(INFRASTRUCTURE_RUNTIME_FACTORY_NAMES).isdisjoint(
         _top_level_definition_names(path)
@@ -339,7 +333,7 @@ def test_infrastructure_runtime_factories_are_not_defined_in_composition() -> No
 
 
 def test_composition_facade_exports_are_explicit_and_public() -> None:
-    path = PACKAGE_ROOT / "infrastructure" / "composition.py"
+    path = PACKAGE_ROOT / "interfaces" / "composition.py"
     exports = _all_exports(path)
 
     assert all(not name.startswith("_") for name in exports)
@@ -380,13 +374,12 @@ def test_interface_modules_do_not_import_low_level_concrete_adapters() -> None:
     assert violations == []
 
 
-def test_interface_modules_import_infrastructure_only_through_composition() -> None:
+def test_interface_modules_do_not_import_infrastructure() -> None:
+    """Interfaces must not import from the legacy top-level infrastructure package."""
     violations: list[str] = []
     for path in _production_modules("interfaces"):
         for imported in _imports(path):
-            if imported.startswith("micro_model_agent.infrastructure") and not imported.startswith(
-                INTERFACE_ALLOWED_INFRASTRUCTURE_PREFIXES
-            ):
+            if imported.startswith("micro_model_agent.infrastructure"):
                 relative_path = path.relative_to(PACKAGE_ROOT)
                 violations.append(f"{relative_path}: {imported}")
 
@@ -418,16 +411,6 @@ def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
 
 
 
-
-
-def test_top_level_infrastructure_modules_are_composition_or_compatibility() -> None:
-    top_level_modules = {
-        path
-        for path in (PACKAGE_ROOT / "infrastructure").glob("*.py")
-        if not path.name.startswith("test_") and path.name != "__init__.py"
-    }
-
-    assert top_level_modules == ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES
 
 
 def _shim_violations(

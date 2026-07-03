@@ -10,7 +10,7 @@ from typing import Any, Never
 
 import typer
 
-from micro_model_agent.infrastructure.composition import (
+from micro_model_agent.interfaces.composition import (
     EvaluationModelSelection,
     select_evaluation_model,
 )

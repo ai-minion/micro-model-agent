@@ -9,7 +9,7 @@ import typer
 from micro_model_agent.training.application.workflows import (
     RunSyntheticTrainingRequest,
 )
-from micro_model_agent.infrastructure.composition import build_synthetic_training_workflow
+from micro_model_agent.interfaces.composition import build_synthetic_training_workflow
 from micro_model_agent.interfaces.cli.common import _load_dotenv, _run
 
 

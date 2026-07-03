@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from micro_model_agent.infrastructure import composition
+from micro_model_agent.interfaces import composition
 from micro_model_agent.execution.infrastructure import runtime as agent_runtime
 from micro_model_agent.dataset.infrastructure import runtime as dataset_runtime
 from micro_model_agent.evaluation.infrastructure import runtime as evaluation_runtime

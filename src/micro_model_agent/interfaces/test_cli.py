@@ -17,7 +17,7 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.infrastructure.composition import resolve_model_options
+from micro_model_agent.interfaces.composition import resolve_model_options
 from micro_model_agent.dataset.infrastructure.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
