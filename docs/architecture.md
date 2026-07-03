@@ -206,7 +206,7 @@ dependencies through constructors (repository, event bus, ports). Domain
 aggregates are plain objects with no external dependencies.
 
 Concrete adapter wiring for CLI and MCP commands goes through
-`infrastructure.composition`, which delegates to per-context
+`interfaces.composition`, which delegates to per-context
 `<context>/infrastructure/composition.py` modules. The facade defines an
 explicit public `__all__`; composition tests assert export identity.
 

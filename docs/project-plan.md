@@ -131,19 +131,14 @@ trace stores.
 
 ### Infrastructure Layer
 
-Path: `src/micro_model_agent/infrastructure`
+Each bounded context owns its adapters under `<context>/infrastructure/`. For example:
 
-Owns adapters:
-
-- `OllamaModelProvider`
-- `TransformersModelProvider`
-- `LocalLexicalIndexWriter`
-- `LocalLexicalIndexReader`
-- `LocalSemanticRetriever`
-- `BuiltinToolExecutor`
-- repository tools such as `RepoReadTool`, `RepoWritePatchTool`, and `GitDiffTool`
-- `JsonlTraceStore`
-- `McpServerAdapter`
+- `execution/infrastructure/` — model providers (`OllamaModelProvider`, `TransformersModelProvider`), `JsonlTraceStore`, coding/tool-loop agents
+- `repository_ops/infrastructure/` — `BuiltinToolExecutor`, `RepoReadTool`, `RepoWritePatchTool`, `GitDiffTool`, `LocalSemanticRetriever`
+- `dataset/infrastructure/` — prompting adapters, SFT export, dataset store
+- `training/infrastructure/` — `LocalFineTuningRunner`, packaging helpers
+- `evaluation/infrastructure/` — `WorkspaceStagedEvaluationSuite`, `SyntheticBehaviorEvaluationSuite`
+- `interfaces/` — CLI, MCP server, public Python API
 
 Infrastructure can use external libraries, file system access, subprocesses
 where explicitly allowed, and provider-specific details.
@@ -163,7 +158,7 @@ typed request/response contracts.
 
 ### Agents
 
-Path: `src/micro_model_agent/agents`
+Path: `src/micro_model_agent/execution/infrastructure/`
 
 Owns reference workflows. The first agent is `CodingAgent`, which coordinates:
 
