@@ -251,11 +251,11 @@ def test_workspace_staged_prompt_includes_virtual_filesystem() -> None:
     user_payload = json.loads(prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
 
     assert "workspace_files" in user_payload
-    assert "src/micro_model_agent/infrastructure/workspace_staged_evaluation.py" in user_payload[
+    assert "src/micro_model_agent/evaluation/infrastructure/workspace_staged.py" in user_payload[
         "workspace_files"
     ]
     assert "parse_success_rate" in user_payload["workspace_files"][
-        "src/micro_model_agent/infrastructure/test_workspace_staged_evaluation.py"
+        "src/micro_model_agent/evaluation/infrastructure/test_workspace_staged.py"
     ]
 
 

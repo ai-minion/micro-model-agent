@@ -17,7 +17,7 @@ def build_prompt(
     tool_calls_made: int,
     turn_number: int,
     final_response_only: bool,
-    missing_required_tools: set[str],
+    missing_required_tools: tuple[str, ...],
     orchestration_hints: list[str],
     steps: list[WorkflowStep],
 ) -> str:

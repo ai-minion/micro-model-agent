@@ -511,7 +511,7 @@ def test_export_sft_jsonl_sanitizes_invalid_argument_helpers(tmp_path: Path) -> 
                 "tool_name": "test.run",
                 "arguments": {
                     "command": "pytest",
-                    "extra_args": ["src/micro_model_agent/infrastructure"],
+                    "extra_args": ["src/micro_model_agent/dataset/infrastructure"],
                 },
             },
             "validation_error": "test.run requires command_name and forbids command",
@@ -520,7 +520,7 @@ def test_export_sft_jsonl_sanitizes_invalid_argument_helpers(tmp_path: Path) -> 
             "tool_name": "test.run",
             "arguments": {
                 "command_name": "pytest",
-                "extra_args": ["src/micro_model_agent/infrastructure"],
+                "extra_args": ["src/micro_model_agent/dataset/infrastructure"],
                 "timeout_seconds": 120,
             },
             "reason": "Use command_name, not command.",
