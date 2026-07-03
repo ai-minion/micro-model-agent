@@ -957,10 +957,10 @@ def _trace_replay_boundary_specs() -> list[dict[str, Any]]:
             files={
                 "examples/trace-data/held-out.trace.jsonl": "{\"input\":{\"tool_history\":[{\"tool_call\":{\"tool_name\":\"repo.read\"}}]},\"target\":{\"final_response\":\"The architecture doc says infrastructure depends inward.\"}}\n",
                 "docs/architecture.md": "Dependencies point inward: interfaces call application, application calls domain ports, infrastructure implements ports.\n",
-                "src/micro_model_agent/agents/tool_loop_agent.py": "def should_continue(response):\n    return 'tool_name' in response\n",
+                "src/micro_model_agent/execution/infrastructure/tool_loop_agent.py": "def should_continue(response):\n    return 'tool_name' in response\n",
             },
             required_files=["examples/trace-data/held-out.trace.jsonl", "docs/architecture.md"],
-            forbidden_files=["src/micro_model_agent/agents/tool_loop_agent.py"],
+            forbidden_files=["src/micro_model_agent/execution/infrastructure/tool_loop_agent.py"],
             required_queries=["repo.read", "final_response"],
             diagnosis_terms=["final response", "completed read", "trace"],
             patch_terms=["final_response", "completed", "repo.read"],
