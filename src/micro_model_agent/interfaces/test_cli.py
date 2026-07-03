@@ -10,7 +10,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from micro_model_agent.domain.datasets import (
+from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
     DatasetLabel,
@@ -18,7 +18,7 @@ from micro_model_agent.domain.datasets import (
     QualityLabel,
 )
 from micro_model_agent.infrastructure.composition import resolve_model_options
-from micro_model_agent.infrastructure.persistence.dataset_store import (
+from micro_model_agent.dataset.infrastructure.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
 )

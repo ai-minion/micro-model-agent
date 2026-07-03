@@ -6,13 +6,16 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.application.agent.workflows import label_from_workflow_result
-from micro_model_agent.application.ports.contracts import CodingAgentTask
-from micro_model_agent.domain.datasets import FailureMode, OutcomeLabel, QualityLabel
+from micro_model_agent.execution.application.workflows import label_from_workflow_result
+from micro_model_agent.execution.application.ports import CodingAgentTask
+from micro_model_agent.dataset.domain.value_objects import FailureMode, OutcomeLabel, QualityLabel
 from micro_model_agent.infrastructure.composition import (
+    build_coding_workflow,
+    build_event_pipeline,
     build_jsonl_dataset_example_store,
     build_static_coding_workflow,
     initialize_local_repository,
+    trace_dir,
     write_local_repository_index,
 )
 from micro_model_agent.interfaces.cli.common import (
@@ -131,11 +134,21 @@ def task(
     dataset_store = (
         build_jsonl_dataset_example_store(dataset_output) if dataset_output else None
     )
-    workflow = build_static_coding_workflow(
+    # Build an event pipeline so WorkflowCompleted events automatically
+    # populate the default dataset under .micro_model_agent/datasets/.
+    _trace_dir = trace_dir(repository_root)
+    bus = build_event_pipeline(
+        trace_dir=_trace_dir,
+        dataset_root=repository_root / ".micro_model_agent" / "datasets",
+        evaluation_root=repository_root / ".micro_model_agent" / "evaluation",
+        promotion_root=repository_root / ".micro_model_agent" / "promotion",
+    )
+    workflow = build_coding_workflow(
         repository_root=repository_root,
         patch=patch,
         allowed_commands=allowed_commands,
         dataset_store=dataset_store,
+        event_bus=bus,
     )
     task_input = CodingAgentTask(
         goal=prompt,

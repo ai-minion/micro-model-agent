@@ -1,11 +1,14 @@
-"""Concrete model-provider adapters."""
+"""Concrete model-provider adapters — backward-compat re-exports.
 
-from micro_model_agent.infrastructure.models.fake import (
+Canonical location: execution.infrastructure.models.*
+"""
+
+from micro_model_agent.execution.infrastructure.models.fake import (
     ScriptedModelProvider,
     StaticModelProvider,
 )
-from micro_model_agent.infrastructure.models.ollama import OllamaModelProvider
-from micro_model_agent.infrastructure.models.transformers import (
+from micro_model_agent.execution.infrastructure.models.ollama import OllamaModelProvider
+from micro_model_agent.execution.infrastructure.models.transformers import (
     TransformersPeftModelProvider,
 )
 

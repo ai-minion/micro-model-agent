@@ -6,8 +6,8 @@ import asyncio
 import json
 from pathlib import Path
 
-from micro_model_agent.infrastructure.models.fake import ScriptedModelProvider
-from micro_model_agent.infrastructure.models.runtime import (
+from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.execution.infrastructure.models.runtime import (
     RuntimeModelOptions,
     base_model_from_adapter,
     build_model_provider,
@@ -16,7 +16,7 @@ from micro_model_agent.infrastructure.models.runtime import (
     run_mcp_agent_loop,
     runtime_model_metadata,
 )
-from micro_model_agent.infrastructure.repositories.metadata import (
+from micro_model_agent.repository_ops.infrastructure.metadata import (
     initialize_repository,
     update_model_configuration,
 )

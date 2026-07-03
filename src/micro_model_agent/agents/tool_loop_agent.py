@@ -23,13 +23,13 @@ from micro_model_agent.agents.tool_loop_policy import (
     tool_budget_exhausted,
 )
 from micro_model_agent.agents.tool_loop_prompting import build_prompt
-from micro_model_agent.application.ports.contracts import ModelProvider, ToolExecutor, TraceStore
-from micro_model_agent.application.tool_loop.workflows import (
+from micro_model_agent.execution.application.ports import ModelProvider, ToolExecutor, TraceStore
+from micro_model_agent.execution.application.tool_loop import (
     DEFAULT_TOOL_NAMES,
     ToolLoopAgentResult,
     ToolLoopAgentTask,
 )
-from micro_model_agent.domain.contracts import (
+from micro_model_agent.execution.domain.value_objects import (
     ToolCall,
     ToolResult,
     WorkflowStatus,

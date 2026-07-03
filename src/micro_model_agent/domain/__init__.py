@@ -1,14 +1,14 @@
-"""Domain contracts and policy for MicroModelAgent."""
+"""Domain layer backward-compat re-exports.
 
-from micro_model_agent.domain.contracts import (
+All types now live in their bounded-context packages.  This package re-exports
+everything for any remaining old-path callers.
+"""
+from __future__ import annotations
+
+from micro_model_agent.shared.domain.value_objects import EvaluationResult  # noqa: F401
+from micro_model_agent.execution.domain.value_objects import (  # noqa: F401
     AgentProfile,
-    EvaluationResult,
     ModelProfile,
-    RepositoryProfile,
-    RetrievalQuery,
-    RetrievalResult,
-    RetrievedItem,
-    SemanticSearchResult,
     ToolCall,
     ToolDefinition,
     ToolResult,
@@ -16,7 +16,14 @@ from micro_model_agent.domain.contracts import (
     WorkflowStep,
     WorkflowTrace,
 )
-from micro_model_agent.domain.datasets import (
+from micro_model_agent.repository_ops.domain.value_objects import (  # noqa: F401
+    RepositoryProfile,
+    RetrievalQuery,
+    RetrievalResult,
+    RetrievedItem,
+    SemanticSearchResult,
+)
+from micro_model_agent.dataset.domain.value_objects import (  # noqa: F401
     DatasetExample,
     DatasetExampleKind,
     DatasetLabel,
@@ -26,7 +33,7 @@ from micro_model_agent.domain.datasets import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.domain.training import (
+from micro_model_agent.training.domain.value_objects import (  # noqa: F401
     ModelArtifact,
     ModelArtifactKind,
     TrainingConfig,
@@ -34,34 +41,3 @@ from micro_model_agent.domain.training import (
     TrainingRunKind,
     TrainingRunStatus,
 )
-
-__all__ = [
-    "AgentProfile",
-    "DatasetExample",
-    "DatasetExampleKind",
-    "DatasetLabel",
-    "DatasetSplit",
-    "DatasetSplitName",
-    "EvaluationResult",
-    "FailureMode",
-    "ModelArtifact",
-    "ModelArtifactKind",
-    "ModelProfile",
-    "OutcomeLabel",
-    "QualityLabel",
-    "RepositoryProfile",
-    "RetrievalQuery",
-    "RetrievalResult",
-    "RetrievedItem",
-    "SemanticSearchResult",
-    "ToolCall",
-    "ToolDefinition",
-    "ToolResult",
-    "TrainingConfig",
-    "TrainingRun",
-    "TrainingRunKind",
-    "TrainingRunStatus",
-    "WorkflowStatus",
-    "WorkflowStep",
-    "WorkflowTrace",
-]

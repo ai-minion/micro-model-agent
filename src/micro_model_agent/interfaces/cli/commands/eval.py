@@ -7,7 +7,7 @@ from typing import Any
 
 import typer
 
-from micro_model_agent.application.evaluation.workflows import (
+from micro_model_agent.evaluation.application.workflows import (
     RunEvaluationComparisonRequest,
     RunSyntheticEvaluationRequest,
     RunTraceEvaluationRequest,

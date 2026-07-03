@@ -10,14 +10,14 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from micro_model_agent.application.ports.contracts import (
+from micro_model_agent.execution.application.ports import (
     CodingAgentResult,
     CodingAgentTask,
     ModelProvider,
     ToolExecutor,
     TraceStore,
 )
-from micro_model_agent.domain.contracts import (
+from micro_model_agent.execution.domain.value_objects import (
     ToolCall,
     ToolResult,
     WorkflowStatus,

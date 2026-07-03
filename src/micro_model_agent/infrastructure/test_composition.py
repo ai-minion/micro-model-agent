@@ -5,15 +5,15 @@ from __future__ import annotations
 from types import ModuleType
 
 from micro_model_agent.infrastructure import composition
-from micro_model_agent.infrastructure.agents import runtime as agent_runtime
-from micro_model_agent.infrastructure.datasets import runtime as dataset_runtime
-from micro_model_agent.infrastructure.evaluation import runtime as evaluation_runtime
-from micro_model_agent.infrastructure.models import runtime as model_runtime
-from micro_model_agent.infrastructure.persistence import runtime as persistence_runtime
-from micro_model_agent.infrastructure.promotion import runtime as promotion_runtime
-from micro_model_agent.infrastructure.repositories import runtime as repository_runtime
-from micro_model_agent.infrastructure.tools import runtime as tool_runtime
-from micro_model_agent.infrastructure.training import runtime as training_runtime
+from micro_model_agent.execution.infrastructure import runtime as agent_runtime
+from micro_model_agent.dataset.infrastructure import runtime as dataset_runtime
+from micro_model_agent.evaluation.infrastructure import runtime as evaluation_runtime
+from micro_model_agent.execution.infrastructure.models import runtime as model_runtime
+from micro_model_agent.execution.infrastructure.persistence import runtime as persistence_runtime
+from micro_model_agent.promotion.infrastructure import runtime as promotion_runtime
+from micro_model_agent.repository_ops.infrastructure import runtime as repository_runtime
+from micro_model_agent.repository_ops.infrastructure import runtime as tool_runtime
+from micro_model_agent.training.infrastructure import runtime as training_runtime
 
 FACADE_EXPORTS_BY_OWNER: dict[ModuleType, tuple[str, ...]] = {
     agent_runtime: (

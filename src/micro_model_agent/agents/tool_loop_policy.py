@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from micro_model_agent.application.tool_loop.workflows import ToolLoopAgentTask
-from micro_model_agent.domain.contracts import ToolCall, WorkflowStep
+from micro_model_agent.execution.application.tool_loop import ToolLoopAgentTask
+from micro_model_agent.execution.domain.value_objects import ToolCall, WorkflowStep
 
 
 def tool_budget_exhausted(

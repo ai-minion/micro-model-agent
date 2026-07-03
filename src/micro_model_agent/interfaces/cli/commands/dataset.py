@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.application.datasets.workflows import (
+from micro_model_agent.dataset.application.workflows import (
     RunDatasetExportRequest,
     RunDatasetMergeRequest,
     RunDatasetRelabelRequest,
@@ -15,8 +15,8 @@ from micro_model_agent.application.datasets.workflows import (
     RunTraceDatasetExportRequest,
     RunTraceReviewRequest,
 )
-from micro_model_agent.domain.contracts import WorkflowStatus
-from micro_model_agent.domain.datasets import (
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
+from micro_model_agent.dataset.domain.value_objects import (
     DatasetExampleKind,
     FailureMode,
     OutcomeLabel,

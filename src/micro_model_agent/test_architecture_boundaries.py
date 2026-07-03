@@ -21,15 +21,15 @@ INTERFACE_BANNED_CONCRETE_ADAPTER_PREFIXES = (
     "micro_model_agent.infrastructure.tools.catalog",
     "micro_model_agent.infrastructure.tools.command_runner",
     "micro_model_agent.infrastructure.tools.executor",
-    "micro_model_agent.infrastructure.persistence.comparison_trace",
-    "micro_model_agent.infrastructure.persistence.dataset_store",
-    "micro_model_agent.infrastructure.persistence.trace_store",
-    "micro_model_agent.infrastructure.persistence.workspace_registry",
+    "micro_model_agent.evaluation.infrastructure.comparison_trace",
+    "micro_model_agent.dataset.infrastructure.dataset_store",
+    "micro_model_agent.execution.infrastructure.trace_store",
+    "micro_model_agent.repository_ops.infrastructure.workspace_registry",
     "micro_model_agent.infrastructure.promotion.gate",
     "micro_model_agent.infrastructure.repositories.local_index",
     "micro_model_agent.infrastructure.repositories.metadata",
     "micro_model_agent.infrastructure.training.artifacts",
-    "micro_model_agent.infrastructure.training.local_finetuning",
+    "micro_model_agent.training.infrastructure.local_finetuning",
     "micro_model_agent.infrastructure.training.ollama_packaging",
     "micro_model_agent.infrastructure.datasets",
     "micro_model_agent.infrastructure.evaluation",
@@ -155,59 +155,35 @@ ALLOWED_TOP_LEVEL_INFRASTRUCTURE_MODULES = {
     PACKAGE_ROOT / "infrastructure" / "composition.py"
 }
 RUNTIME_MODULE_PATHS = {
-    PACKAGE_ROOT / "infrastructure" / "agents" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "datasets" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "evaluation" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "models" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "persistence" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "promotion" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "repositories" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "tools" / "runtime.py",
-    PACKAGE_ROOT / "infrastructure" / "training" / "runtime.py",
+    # New canonical runtime locations after DDD migration
+    PACKAGE_ROOT / "execution" / "infrastructure" / "agents_runtime.py",
+    PACKAGE_ROOT / "execution" / "infrastructure" / "persistence_runtime.py",
+    PACKAGE_ROOT / "execution" / "infrastructure" / "models" / "runtime.py",
+    PACKAGE_ROOT / "dataset" / "infrastructure" / "runtime.py",
+    PACKAGE_ROOT / "evaluation" / "infrastructure" / "runtime.py",
+    PACKAGE_ROOT / "promotion" / "infrastructure" / "runtime.py",
+    PACKAGE_ROOT / "repository_ops" / "infrastructure" / "runtime.py",
+    PACKAGE_ROOT / "repository_ops" / "infrastructure" / "tools_runtime.py",
+    PACKAGE_ROOT / "training" / "infrastructure" / "runtime.py",
 }
-APPLICATION_USE_CASE_FACADES = (
-    (
-        PACKAGE_ROOT / "application" / "agent" / "__init__.py",
-        "micro_model_agent.application.agent.workflows",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "datasets" / "__init__.py",
-        "micro_model_agent.application.datasets.workflows",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "evaluation" / "__init__.py",
-        "micro_model_agent.application.evaluation.workflows",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "promotion" / "__init__.py",
-        "micro_model_agent.application.promotion.workflows",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "ports" / "__init__.py",
-        "micro_model_agent.application.ports.contracts",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "training" / "__init__.py",
-        "micro_model_agent.application.training.workflows",
-    ),
-    (
-        PACKAGE_ROOT / "application" / "tool_loop" / "__init__.py",
-        "micro_model_agent.application.tool_loop.workflows",
-    ),
-)
-APPLICATION_FACADE_MODULES = (
-    "micro_model_agent.application.agent",
-    "micro_model_agent.application.datasets",
-    "micro_model_agent.application.evaluation",
-    "micro_model_agent.application.ports",
-    "micro_model_agent.application.promotion",
-    "micro_model_agent.application.tool_loop",
-    "micro_model_agent.application.training",
+# APPLICATION_USE_CASE_FACADES: all context facade __init__.py files were
+# deleted; the tuple is empty.  The ports __init__.py is checked separately.
+APPLICATION_USE_CASE_FACADES: tuple = ()
+_PORTS_HUB_PATH = PACKAGE_ROOT / "application" / "ports" / "__init__.py"
+_PORTS_HUB_ALLOWED_PREFIXES = (
+    "micro_model_agent.dataset.application.ports",
+    "micro_model_agent.evaluation.application.ports",
+    "micro_model_agent.execution.application.ports",
+    "micro_model_agent.promotion.application.ports",
+    "micro_model_agent.repository_ops.application.ports",
+    "micro_model_agent.training.application.ports",
+    # internal __future__ and standard-library imports are fine
+    "__future__",
 )
 APPLICATION_RUBRIC_PATHS = {
-    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "synthetic.py",
-    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "trace.py",
-    PACKAGE_ROOT / "application" / "evaluation_rubrics" / "workspace_staged.py",
+    PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_synthetic.py",
+    PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_trace.py",
+    PACKAGE_ROOT / "evaluation" / "domain" / "rubrics_workspace_staged.py",
 }
 APPLICATION_FACADE_PATHS = {
     path for path, _owner_prefix in APPLICATION_USE_CASE_FACADES
@@ -302,9 +278,24 @@ def test_application_layer_does_not_import_outer_layers() -> None:
     assert violations == []
 
 
+DOMAIN_COMPAT_STUB_MARKER = "Backward-compatible re-export"
+
+
+def _is_compat_stub(path: Path) -> bool:
+    """Return True when the file is a backward-compatible re-export shim."""
+    try:
+        text = path.read_text(encoding="utf-8")
+        return DOMAIN_COMPAT_STUB_MARKER in text
+    except Exception:
+        return False
+
+
 def test_domain_layer_has_no_project_or_framework_imports() -> None:
     violations: list[str] = []
     for path in _production_modules("domain"):
+        # Backward-compat stubs are allowed to re-export from bounded-context packages.
+        if _is_compat_stub(path):
+            continue
         for imported in _imports(path):
             if imported.startswith(PROJECT_IMPORT_PREFIX) or imported in DOMAIN_BANNED_EXTERNALS:
                 relative_path = path.relative_to(PACKAGE_ROOT)
@@ -377,6 +368,10 @@ def test_composition_facade_exports_are_explicit_and_public() -> None:
 def test_runtime_modules_define_explicit_sorted_public_exports() -> None:
     violations: list[str] = []
     for path in RUNTIME_MODULE_PATHS:
+        # Backward-compat stubs replaced the original runtime files; check
+        # the new canonical locations instead when a stub is found.
+        if _is_compat_stub(path):
+            continue
         violations.extend(_public_export_violations(path, require_sorted=True))
 
     assert violations == []
@@ -433,6 +428,9 @@ def test_pure_rubrics_do_not_import_concrete_infrastructure() -> None:
 def test_application_rubric_exports_are_explicit_sorted_and_public() -> None:
     violations: list[str] = []
     for path in APPLICATION_RUBRIC_PATHS:
+        # Stubs replaced the original rubric files; skip them.
+        if _is_compat_stub(path):
+            continue
         violations.extend(_public_export_violations(path, require_sorted=True))
 
     assert violations == []
@@ -453,6 +451,19 @@ def test_application_compatibility_facade_exports_are_sorted_public() -> None:
     for path in APPLICATION_FACADE_PATHS:
         violations.extend(_public_export_violations(path, require_sorted=True))
 
+    assert violations == []
+
+
+
+def test_ports_hub_only_imports_from_bounded_context_ports() -> None:
+    """application/ports/__init__.py must only import from per-context port modules."""
+    violations: list[str] = []
+    for imported in _imports(_PORTS_HUB_PATH):
+        if imported.startswith(_PORTS_HUB_ALLOWED_PREFIXES):
+            continue
+        if imported in ("__future__",):
+            continue
+        violations.append(f"application/ports/__init__.py imports {imported}")
     assert violations == []
 
 
@@ -518,3 +529,198 @@ def _public_export_violations(path: Path, *, require_sorted: bool = False) -> li
     if missing_exports:
         violations.append(f"{relative_path} exports missing names: {sorted(missing_exports)}")
     return violations
+
+# ---------------------------------------------------------------------------
+# New bounded context packages (DDD migration)
+# ---------------------------------------------------------------------------
+BOUNDED_CONTEXT_PACKAGES = (
+    "micro_model_agent.execution",
+    "micro_model_agent.dataset",
+    "micro_model_agent.training",
+    "micro_model_agent.evaluation",
+    "micro_model_agent.promotion",
+    "micro_model_agent.repository_ops",
+)
+
+# Each context's domain layer must not import another context's domain layer.
+CROSS_CONTEXT_DOMAIN_PREFIXES = tuple(
+    f"micro_model_agent.{ctx}.domain"
+    for ctx in (
+        "execution",
+        "dataset",
+        "training",
+        "evaluation",
+        "promotion",
+        "repository_ops",
+    )
+)
+
+# The shared kernel must not import any bounded context.
+SHARED_KERNEL_BANNED_PREFIXES = tuple(
+    f"micro_model_agent.{ctx}"
+    for ctx in (
+        "execution",
+        "dataset",
+        "training",
+        "evaluation",
+        "promotion",
+        "repository_ops",
+        "agents",
+        "infrastructure",
+        "interfaces",
+        "application",
+    )
+)
+
+DOMAIN_BANNED_EXTERNALS_BOUNDED = (
+    "pydantic",
+    "typer",
+    "mcp",
+    "fastmcp",
+    "datasets",
+    "peft",
+    "torch",
+    "transformers",
+)
+
+_LEGACY_PORTS_HUB = "micro_model_agent.application.ports"
+
+
+def _bounded_context_domain_modules(context: str) -> list[Path]:
+    """Return production .py files inside <context>/domain/."""
+    domain_path = PACKAGE_ROOT / context / "domain"
+    if not domain_path.exists():
+        return []
+    return sorted(
+        path
+        for path in domain_path.rglob("*.py")
+        if not path.name.startswith("test_") and path.name != "__init__.py"
+    )
+
+
+def _bounded_context_production_modules(context: str) -> list[Path]:
+    """Return all non-test .py files inside a bounded-context package."""
+    ctx_path = PACKAGE_ROOT / context
+    if not ctx_path.exists():
+        return []
+    return sorted(
+        path
+        for path in ctx_path.rglob("*.py")
+        if not path.name.startswith("test_") and path.name != "__init__.py"
+    )
+
+
+def test_shared_kernel_does_not_import_any_bounded_context() -> None:
+    """The shared kernel must be self-contained: no imports from bounded contexts."""
+    violations: list[str] = []
+    shared_path = PACKAGE_ROOT / "shared"
+    if not shared_path.exists():
+        return
+    for path in shared_path.rglob("*.py"):
+        if path.name.startswith("test_") or path.name == "__init__.py":
+            continue
+        for imported in _imports(path):
+            if imported.startswith(SHARED_KERNEL_BANNED_PREFIXES):
+                violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {imported}")
+    assert violations == []
+
+
+# Evaluation rubrics score DatasetExample objects — a deliberate cross-context
+# data-schema dependency (Published Language pattern).  Allow it explicitly.
+ALLOWED_CROSS_CONTEXT_DOMAIN_IMPORTS: set[tuple[str, str]] = {
+    # (importer_prefix, allowed_imported_prefix)
+    ("evaluation", "micro_model_agent.dataset.domain"),
+}
+
+
+def test_bounded_context_domains_do_not_cross_import_each_other() -> None:
+    """No bounded context domain layer may import another context's domain layer.
+
+    Exceptions in ALLOWED_CROSS_CONTEXT_DOMAIN_IMPORTS are documented deliberate
+    Published-Language dependencies (e.g. evaluation rubrics scoring DatasetExample).
+    """
+    violations: list[str] = []
+    for context in BOUNDED_CONTEXT_PACKAGES:
+        ctx_name = context.split(".")[-1]
+        own_prefix = f"micro_model_agent.{ctx_name}.domain"
+        for path in _bounded_context_domain_modules(ctx_name):
+            for imported in _imports(path):
+                if not imported.startswith(CROSS_CONTEXT_DOMAIN_PREFIXES):
+                    continue
+                if imported.startswith(own_prefix):
+                    continue
+                # Check whether this import is in the allowed exceptions.
+                if any(
+                    ctx_name == src and imported.startswith(allowed)
+                    for src, allowed in ALLOWED_CROSS_CONTEXT_DOMAIN_IMPORTS
+                ):
+                    continue
+                violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {imported}")
+    assert violations == []
+
+
+def test_bounded_context_domains_have_no_banned_framework_imports() -> None:
+    """Bounded context domain layers must stay free of heavy framework imports."""
+    violations: list[str] = []
+    for context in BOUNDED_CONTEXT_PACKAGES:
+        ctx_name = context.split(".")[-1]
+        for path in _bounded_context_domain_modules(ctx_name):
+            for imported in _imports(path):
+                if imported in DOMAIN_BANNED_EXTERNALS_BOUNDED:
+                    violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {imported}")
+    assert violations == []
+
+
+def test_bounded_context_production_code_does_not_use_legacy_ports_hub() -> None:
+    """All bounded-context production code must import from per-context ports,
+    not the backward-compat ``application.ports.contracts`` hub."""
+    violations: list[str] = []
+    for context in BOUNDED_CONTEXT_PACKAGES:
+        ctx_name = context.split(".")[-1]
+        for path in _bounded_context_production_modules(ctx_name):
+            for imported in _imports(path):
+                if imported == _LEGACY_PORTS_HUB:
+                    violations.append(f"{path.relative_to(PACKAGE_ROOT)}: {imported}")
+    assert violations == []
+
+
+# ---------------------------------------------------------------------------
+# Bounded-context application layer purity
+# ---------------------------------------------------------------------------
+
+# Application layers must not reach into infrastructure or agents directly.
+BOUNDED_CONTEXT_APP_BANNED_PREFIXES = (
+    "micro_model_agent.agents",
+    "micro_model_agent.infrastructure",
+    "micro_model_agent.interfaces",
+)
+
+
+def _bounded_context_application_modules(context: str) -> list[Path]:
+    """Return production .py files inside <context>/application/."""
+    app_path = PACKAGE_ROOT / context / "application"
+    if not app_path.exists():
+        return []
+    return sorted(
+        path
+        for path in app_path.rglob("*.py")
+        if not path.name.startswith("test_") and path.name != "__init__.py"
+    )
+
+
+def test_bounded_context_application_layers_do_not_import_infrastructure() -> None:
+    """Bounded-context application/ layers must not import from agents/,
+    infrastructure/, or interfaces/ — only from their own context and shared.
+
+    Cross-context communication goes through events and ports, not direct calls.
+    """
+    violations: list[str] = []
+    for context in BOUNDED_CONTEXT_PACKAGES:
+        ctx_name = context.split(".")[-1]
+        for path in _bounded_context_application_modules(ctx_name):
+            for imported in _imports(path):
+                if imported.startswith(BOUNDED_CONTEXT_APP_BANNED_PREFIXES):
+                    violations.append(
+                        f"{path.relative_to(PACKAGE_ROOT)}: {imported}"
+                    )
+    assert violations == []

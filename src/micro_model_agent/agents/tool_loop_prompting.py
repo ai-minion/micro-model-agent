@@ -6,8 +6,8 @@ import json
 from typing import Any
 
 from micro_model_agent.agents.tool_loop_history import tool_history
-from micro_model_agent.application.tool_loop.workflows import PromptContext, ToolLoopAgentTask
-from micro_model_agent.domain.contracts import WorkflowStep
+from micro_model_agent.execution.application.tool_loop import PromptContext, ToolLoopAgentTask
+from micro_model_agent.execution.domain.value_objects import WorkflowStep
 
 
 def build_prompt(

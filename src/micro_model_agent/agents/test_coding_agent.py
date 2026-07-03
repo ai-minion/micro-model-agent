@@ -8,10 +8,10 @@ import sys
 from pathlib import Path
 
 from micro_model_agent.agents.coding_agent import CodingAgent, CodingAgentTask
-from micro_model_agent.infrastructure.models.fake import StaticModelProvider
-from micro_model_agent.infrastructure.persistence.trace_store import JsonlTraceStore
-from micro_model_agent.infrastructure.tools.command_runner import AllowedTestCommand
-from micro_model_agent.infrastructure.tools.executor import BuiltinToolExecutor
+from micro_model_agent.execution.infrastructure.models.fake import StaticModelProvider
+from micro_model_agent.execution.infrastructure.trace_store import JsonlTraceStore
+from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
+from micro_model_agent.repository_ops.infrastructure.executor import BuiltinToolExecutor
 
 
 def _write_text(path: Path, content: str) -> None:

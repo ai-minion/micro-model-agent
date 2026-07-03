@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.application.ports.contracts import ModelProvider
+from micro_model_agent.execution.application.ports import ModelProvider
 from micro_model_agent.infrastructure.composition import (
     ConfiguredToolLoopResult,
     base_model_from_adapter,

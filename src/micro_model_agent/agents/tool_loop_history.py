@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from micro_model_agent.domain.contracts import ToolResult, WorkflowStep
+from micro_model_agent.execution.domain.value_objects import ToolResult, WorkflowStep
 
 
 def tool_result_message(

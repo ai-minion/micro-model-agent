@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
-from micro_model_agent.infrastructure.agents.runtime import build_static_coding_workflow
-from micro_model_agent.infrastructure.datasets.runtime import (
+from micro_model_agent.execution.infrastructure.agents_runtime import build_static_coding_workflow
+from micro_model_agent.execution.infrastructure.composition import (
+    build_coding_workflow,
+    build_event_pipeline,
+)
+from micro_model_agent.dataset.infrastructure.runtime import (
     build_dataset_export_workflow,
     build_dataset_merge_workflow,
     build_dataset_relabel_workflow,
@@ -13,7 +17,7 @@ from micro_model_agent.infrastructure.datasets.runtime import (
     build_trace_dataset_export_workflow,
     build_trace_review_workflow,
 )
-from micro_model_agent.infrastructure.evaluation.runtime import (
+from micro_model_agent.evaluation.infrastructure.runtime import (
     build_evaluation_comparison_workflow,
     build_synthetic_evaluation_workflow,
     build_trace_evaluation_workflow,
@@ -21,7 +25,7 @@ from micro_model_agent.infrastructure.evaluation.runtime import (
     build_workspace_staged_review_workflow,
     default_evaluation_available_tools,
 )
-from micro_model_agent.infrastructure.models.runtime import (
+from micro_model_agent.execution.infrastructure.models.runtime import (
     ConfiguredToolLoopResult,
     EvaluationModelSelection,
     RuntimeModelOptions,
@@ -42,7 +46,7 @@ from micro_model_agent.infrastructure.models.runtime import (
     string_config_value,
     tool_prompt_schemas,
 )
-from micro_model_agent.infrastructure.persistence.runtime import (
+from micro_model_agent.execution.infrastructure.persistence_runtime import (
     DEFAULT_TRACE_DIR,
     append_comparison_trace_event,
     comparison_trace_store,
@@ -56,19 +60,19 @@ from micro_model_agent.infrastructure.persistence.runtime import (
     workflow_trace_store,
     workspace_registry,
 )
-from micro_model_agent.infrastructure.promotion.runtime import (
+from micro_model_agent.promotion.infrastructure.runtime import (
     build_promotion_gate_workflow,
     build_promotion_list_workflow,
     build_promotion_package_ollama_workflow,
     build_promotion_record_workflow,
     build_promotion_select_workflow,
 )
-from micro_model_agent.infrastructure.repositories.runtime import (
+from micro_model_agent.repository_ops.infrastructure.runtime import (
     initialize_local_repository,
     local_repository_initialized,
     write_local_repository_index,
 )
-from micro_model_agent.infrastructure.tools.runtime import (
+from micro_model_agent.repository_ops.infrastructure.tools_runtime import (
     PatchPolicyToolExecutor,
     allowed_test_commands,
     build_builtin_tool_executor,
@@ -78,7 +82,7 @@ from micro_model_agent.infrastructure.tools.runtime import (
     builtin_tools_response,
     execute_builtin_tool_request,
 )
-from micro_model_agent.infrastructure.training.runtime import build_synthetic_training_workflow
+from micro_model_agent.training.infrastructure.runtime import build_synthetic_training_workflow
 
 __all__ = [
     "ConfiguredToolLoopResult",
@@ -90,12 +94,14 @@ __all__ = [
     "append_comparison_trace_event",
     "base_model_from_adapter",
     "build_builtin_tool_executor",
+    "build_coding_workflow",
     "build_dataset_export_workflow",
     "build_dataset_merge_workflow",
     "build_dataset_relabel_workflow",
     "build_dataset_synthesis_workflow",
     "build_dataset_validation_workflow",
     "build_evaluation_comparison_workflow",
+    "build_event_pipeline",
     "build_jsonl_dataset_example_store",
     "build_loop_model_provider",
     "build_model_provider",
