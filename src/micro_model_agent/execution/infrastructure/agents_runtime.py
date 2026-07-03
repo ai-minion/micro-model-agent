@@ -5,14 +5,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from micro_model_agent.execution.infrastructure.coding_agent import CodingAgent
-from micro_model_agent.execution.application.workflows import RunAgentWorkflow
 from micro_model_agent.dataset.application.ports import DatasetExampleStore
-from micro_model_agent.execution.infrastructure.models.fake import StaticModelProvider
-from micro_model_agent.execution.infrastructure.persistence_runtime import workflow_trace_store
+from micro_model_agent.execution.application.workflows import RunAgentWorkflow
+from micro_model_agent.execution.infrastructure.composition import (
+    build_coding_workflow,  # noqa: F401
+)
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
-from micro_model_agent.repository_ops.infrastructure.tools_runtime import build_builtin_tool_executor
-from micro_model_agent.execution.infrastructure.composition import build_coding_workflow  # noqa: F401
 
 __all__ = ["build_static_coding_workflow"]
 

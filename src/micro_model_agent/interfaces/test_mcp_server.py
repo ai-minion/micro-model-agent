@@ -8,10 +8,6 @@ import subprocess
 from pathlib import Path
 
 from micro_model_agent.execution.application.tool_loop import run_profile_settings
-from micro_model_agent.repository_ops.infrastructure.metadata import (
-    initialize_repository,
-    update_model_configuration,
-)
 from micro_model_agent.interfaces.mcp.tools.run_loop import resolve_model_settings
 from micro_model_agent.interfaces.mcp.workspace import path_from_user_input
 from micro_model_agent.interfaces.mcp_server import (
@@ -24,6 +20,10 @@ from micro_model_agent.interfaces.mcp_server import (
     run_agent_loop,
     start_comparison_trace,
     stop_comparison_trace,
+)
+from micro_model_agent.repository_ops.infrastructure.metadata import (
+    initialize_repository,
+    update_model_configuration,
 )
 
 DEFAULT_PUBLIC_TOOLS = {
@@ -125,8 +125,8 @@ def test_mcp_tools_default_to_server_repository_root(tmp_path: Path) -> None:
     )
     _, data = started
 
-    assert data["ok"] is True
-    assert data["session"]["repository_root"] == str(tmp_path)
+    assert data["ok"] is True  # type: ignore[index]
+    assert data["session"]["repository_root"] == str(tmp_path)  # type: ignore[index]
 
 
 def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
@@ -144,7 +144,7 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
         )
     )
     _, created_data = created
-    workspace_id = created_data["workspace"]["id"]
+    workspace_id = created_data["workspace"]["id"]  # type: ignore[index]  # type: ignore[index]
     started = asyncio.run(
         server.call_tool(
             "micro_agent_start_trace",
@@ -156,9 +156,9 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
     )
     _, started_data = started
 
-    assert created_data["ok"] is True
+    assert created_data["ok"] is True  # type: ignore[index]
     assert (workspace_root / ".micro_model_agent" / "config.json").exists()
-    assert started_data["session"]["repository_root"] == str(workspace_root.resolve())
+    assert started_data["session"]["repository_root"] == str(workspace_root.resolve())  # type: ignore[index]
 
 
 def test_path_from_user_input_maps_windows_paths_to_wsl_mounts(tmp_path: Path) -> None:
@@ -735,7 +735,7 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
         )
     )
     _, created_data = created
-    workspace_id = created_data["workspace"]["id"]
+    workspace_id = created_data["workspace"]["id"]  # type: ignore[index]
     ran_data = asyncio.run(
         run_agent_loop(
             goal="Read README.md and summarize status.",
@@ -765,7 +765,7 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
     )
     _, read_data = read
 
-    assert read_data["ok"] is True
-    assert read_data["trace"]["final_output"]["response"] == "status is central"
+    assert read_data["ok"] is True  # type: ignore[index]
+    assert read_data["trace"]["final_output"]["response"] == "status is central"  # type: ignore[index]
     assert (registry_root / ".traces" / "workflows.jsonl").exists()
     assert not (workspace_root / ".traces" / "workflows.jsonl").exists()

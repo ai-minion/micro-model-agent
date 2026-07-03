@@ -6,11 +6,11 @@ from pathlib import Path
 
 import typer
 
+from micro_model_agent.interfaces.cli.common import _load_dotenv, _run
+from micro_model_agent.interfaces.composition import build_synthetic_training_workflow
 from micro_model_agent.training.application.workflows import (
     RunSyntheticTrainingRequest,
 )
-from micro_model_agent.interfaces.composition import build_synthetic_training_workflow
-from micro_model_agent.interfaces.cli.common import _load_dotenv, _run
 
 
 def register_train_commands(train_app: typer.Typer) -> None:

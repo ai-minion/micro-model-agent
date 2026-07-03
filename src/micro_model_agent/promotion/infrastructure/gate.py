@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from micro_model_agent.evaluation.infrastructure.reports import load_evaluation_result
 from micro_model_agent.promotion.application.ports import PromotedArtifactRecord
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.training.domain.value_objects import ModelArtifact
-from micro_model_agent.evaluation.infrastructure.reports import load_evaluation_result
 from micro_model_agent.training.infrastructure.training_records import (
     _to_jsonable,
     load_artifact_from_training_run,

@@ -11,16 +11,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from micro_model_agent.repository_ops.infrastructure.contracts import (
+    RetrievedItemContract,
+    SemanticSearchRequest,
+    SemanticSearchResultContract,
+)
 from micro_model_agent.repository_ops.infrastructure.local_index import LocalLexicalIndexReader
 from micro_model_agent.repository_ops.infrastructure.paths import (
     RepositoryPathError,
     RepositoryRoot,
     looks_binary,
-)
-from micro_model_agent.repository_ops.infrastructure.contracts import (
-    RetrievedItemContract,
-    SemanticSearchRequest,
-    SemanticSearchResultContract,
 )
 
 SOURCE_CODE_EXTENSIONS = {

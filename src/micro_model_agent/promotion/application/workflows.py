@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from micro_model_agent.evaluation.application.ports import EvaluationResultReader
 from micro_model_agent.promotion.application.ports import (
     OllamaPackageRecord,
     PromotedAdapterPackager,
@@ -15,9 +16,8 @@ from micro_model_agent.promotion.application.ports import (
     RepositoryModelConfigurationWriter,
     TrainingRunArtifactReader,
 )
-from micro_model_agent.evaluation.application.ports import EvaluationResultReader
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.promotion.domain.services import PromotionGateService
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.training.domain.value_objects import ModelArtifact
 
 

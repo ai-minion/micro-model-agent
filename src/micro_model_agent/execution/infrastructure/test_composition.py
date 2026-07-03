@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
-from micro_model_agent.execution.infrastructure.composition import build_event_pipeline
-from micro_model_agent.execution.infrastructure.repository import JsonlWorkflowRepository
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
 from micro_model_agent.execution.domain.events import WorkflowCompleted
+from micro_model_agent.execution.infrastructure.composition import build_event_pipeline
+from micro_model_agent.execution.infrastructure.repository import JsonlWorkflowRepository
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -52,11 +54,11 @@ def test_build_event_pipeline_wires_workflow_completed(tmp_path: Path) -> None:
 
 def test_build_event_pipeline_wires_artifact_produced(tmp_path: Path) -> None:
     """ArtifactProduced → OnArtifactProduced → EvaluationReport created."""
-    from micro_model_agent.training.domain.events import ArtifactProduced
-    from micro_model_agent.training.domain.value_objects import ModelArtifactKind
     from micro_model_agent.evaluation.infrastructure.repository import (
         JsonlEvaluationReportRepository,
     )
+    from micro_model_agent.training.domain.events import ArtifactProduced
+    from micro_model_agent.training.domain.value_objects import ModelArtifactKind
 
     trace_dir = tmp_path / "traces"
     dataset_root = tmp_path / "datasets"

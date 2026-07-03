@@ -6,13 +6,13 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.interfaces.composition import run_cli_tool_loop
 from micro_model_agent.interfaces.cli.common import (
     _fail,
     _load_dotenv,
     _read_scripted_responses,
     _run,
 )
+from micro_model_agent.interfaces.composition import run_cli_tool_loop
 
 
 def register_loop_command(app: typer.Typer) -> None:

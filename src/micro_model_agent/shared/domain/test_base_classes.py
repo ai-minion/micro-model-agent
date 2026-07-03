@@ -11,8 +11,6 @@ import pytest
 from micro_model_agent.shared.domain.domain_event import DomainEvent
 from micro_model_agent.shared.domain.entity import Entity
 from micro_model_agent.shared.domain.exceptions import DomainException
-from micro_model_agent.shared.domain.event_bus import EventBus
-
 
 # ---------------------------------------------------------------------------
 # DomainEvent
@@ -58,7 +56,7 @@ def test_domain_event_explicit_id_preserved() -> None:
 
 
 class _ConcreteEntity(Entity):
-    def __init__(self, value: str, id=None) -> None:
+    def __init__(self, value: str, id: UUID | None = None) -> None:
         super().__init__(id)
         self.value = value
 

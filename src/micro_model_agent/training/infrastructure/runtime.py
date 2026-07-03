@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.training.application.workflows import RunSyntheticTrainingWorkflow
+from micro_model_agent.dataset.infrastructure.dataset_store import LocalDatasetExampleReader
 from micro_model_agent.dataset.infrastructure.metadata import (
     LocalDatasetFileHasher,
     LocalDatasetToolProfileSummarizer,
@@ -13,7 +13,7 @@ from micro_model_agent.dataset.infrastructure.validation import (
     LocalDatasetValidator,
     SftJsonlDatasetExporter,
 )
-from micro_model_agent.dataset.infrastructure.dataset_store import LocalDatasetExampleReader
+from micro_model_agent.training.application.workflows import RunSyntheticTrainingWorkflow
 from micro_model_agent.training.infrastructure.artifacts import (
     FakeTrainingRunner,
     JsonTrainingArtifactStore,

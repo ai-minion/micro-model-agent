@@ -11,11 +11,14 @@ import os
 import subprocess
 from pathlib import Path
 
-from micro_model_agent.repository_ops.infrastructure.paths import RepositoryPathError, RepositoryRoot
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     RepoWritePatchRequest,
     RepoWritePatchResult,
     ToolError,
+)
+from micro_model_agent.repository_ops.infrastructure.paths import (
+    RepositoryPathError,
+    RepositoryRoot,
 )
 
 

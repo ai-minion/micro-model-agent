@@ -5,6 +5,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from micro_model_agent.shared.domain.entity import Entity
+from micro_model_agent.shared.domain.exceptions import DomainException
 from micro_model_agent.training.domain.events import (
     ArtifactProduced,
     TrainingJobCompleted,
@@ -21,7 +22,6 @@ from micro_model_agent.training.domain.value_objects import (
     TrainingRun,
     TrainingRunStatus,
 )
-from micro_model_agent.shared.domain.exceptions import DomainException
 
 
 class _InvalidTransition(DomainException):

@@ -19,7 +19,6 @@ from micro_model_agent.dataset.domain.exceptions import (
 )
 from micro_model_agent.shared.domain.domain_event import DomainEvent
 
-
 # ---------------------------------------------------------------------------
 # Domain events
 # ---------------------------------------------------------------------------

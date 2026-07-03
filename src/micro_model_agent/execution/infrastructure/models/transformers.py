@@ -109,7 +109,7 @@ class TransformersPeftModelProvider:
             raise RuntimeError("model provider has not been loaded")
         tokenizer: Any = self._tokenizer
 
-        class CompleteJsonObjectCriteria(StoppingCriteria):  # type: ignore[misc]
+        class CompleteJsonObjectCriteria(StoppingCriteria):
             def __call__(
                 self,
                 input_ids: Any,

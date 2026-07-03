@@ -6,16 +6,7 @@ from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
 
-from micro_model_agent.execution.application.ports import (
-    CodingAgentResult,
-    CodingAgentTask,
-    CodingWorkflowRunner,
-    WorkflowEvaluator,
-)
 from micro_model_agent.dataset.application.ports import DatasetExampleStore
-from micro_model_agent.dataset.infrastructure.acl import ExecutionToDatasetTranslator
-from micro_model_agent.execution.domain.value_objects import WorkflowTrace
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -24,9 +15,18 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.dataset.infrastructure.acl import ExecutionToDatasetTranslator
+from micro_model_agent.execution.application.ports import (
+    CodingAgentResult,
+    CodingAgentTask,
+    CodingWorkflowRunner,
+    WorkflowEvaluator,
+)
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
 from micro_model_agent.execution.domain.services import WorkflowEvaluationService
+from micro_model_agent.execution.domain.value_objects import WorkflowTrace
 from micro_model_agent.shared.domain.event_bus import EventBus
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 class DefaultWorkflowEvaluator:

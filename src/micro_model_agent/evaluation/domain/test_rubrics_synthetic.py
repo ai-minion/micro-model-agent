@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 import pytest
 
@@ -24,7 +25,6 @@ from micro_model_agent.evaluation.domain.rubrics_synthetic import (
     synthetic_metrics,
 )
 
-
 # ---------------------------------------------------------------------------
 # Test helpers
 # ---------------------------------------------------------------------------
@@ -33,8 +33,8 @@ from micro_model_agent.evaluation.domain.rubrics_synthetic import (
 def _example(
     *,
     kind: DatasetExampleKind = DatasetExampleKind.TOOL_USE,
-    input_extra: dict | None = None,
-    target_extra: dict | None = None,
+    input_extra: dict[str, Any] | None = None,
+    target_extra: dict[str, Any] | None = None,
     outcome: OutcomeLabel = OutcomeLabel.ACCEPTED,
 ) -> DatasetExample:
     label = DatasetLabel(outcome=outcome, quality=QualityLabel.GOOD)
@@ -45,7 +45,7 @@ def _example(
     return DatasetExample(kind=kind, input=inp, target=target, label=label)
 
 
-def _resp(tool_name: str = "repo_read", arguments: dict | None = None) -> str:
+def _resp(tool_name: str = "repo_read", arguments: dict[str, Any] | None = None) -> str:
     return json.dumps({"tool_name": tool_name, "arguments": arguments or {"path": "main.py"}})
 
 

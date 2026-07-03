@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
+from typing import Any
 
-from micro_model_agent.dataset.infrastructure.acl import ExecutionToDatasetTranslator
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -12,6 +11,7 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.dataset.infrastructure.acl import ExecutionToDatasetTranslator
 from micro_model_agent.execution.domain.value_objects import (
     ToolCall,
     ToolResult,
@@ -31,7 +31,7 @@ def _label(
 def _trace(
     goal: str = "fix the bug",
     steps: list[WorkflowStep] | None = None,
-    final_output: dict | None = None,
+    final_output: dict[str, Any] | None = None,
 ) -> WorkflowTrace:
     return WorkflowTrace(
         goal=goal,

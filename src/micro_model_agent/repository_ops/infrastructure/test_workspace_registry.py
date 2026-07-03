@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from micro_model_agent.repository_ops.infrastructure.workspace_registry import (
@@ -12,7 +14,7 @@ from micro_model_agent.repository_ops.infrastructure.workspace_registry import (
 )
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 

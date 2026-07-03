@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
 from micro_model_agent.execution.domain.services import WorkflowEvaluationService
+from micro_model_agent.execution.domain.value_objects import WorkflowTrace
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
-def _completed_trace(final_output: dict):
+def _completed_trace(final_output: dict[str, Any]) -> WorkflowTrace:
     ex = WorkflowExecution(goal="fix")
     ex.start()
     ex.complete(final_output)
     return ex.to_snapshot()
 
 
-def _failed_trace():
+def _failed_trace() -> WorkflowTrace:
     ex = WorkflowExecution(goal="fix")
     ex.start()
     ex.fail("error")

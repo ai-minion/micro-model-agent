@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from micro_model_agent.training.domain.value_objects import (
     ModelArtifactKind,
@@ -16,7 +18,7 @@ from micro_model_agent.training.infrastructure.artifacts import (
 )
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -78,7 +80,6 @@ def test_fake_runner_dry_run_creates_dry_run_artifact(tmp_path: Path) -> None:
 
 
 def test_artifact_store_save_and_get(tmp_path: Path) -> None:
-    from micro_model_agent.training.domain.value_objects import ModelArtifact
     store = JsonTrainingArtifactStore(tmp_path)
     runner = FakeTrainingRunner()
     run = _run(runner.run(_config(tmp_path / "out")))

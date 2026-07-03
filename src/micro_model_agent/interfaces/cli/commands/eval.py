@@ -15,6 +15,13 @@ from micro_model_agent.evaluation.application.workflows import (
     RunWorkspaceStagedReviewRequest,
     RunWorkspaceStagedReviewWriteRequest,
 )
+from micro_model_agent.interfaces.cli.common import (
+    _fail,
+    _format_count_distribution,
+    _load_dotenv,
+    _run,
+    _select_evaluation_model,
+)
 from micro_model_agent.interfaces.composition import (
     build_evaluation_comparison_workflow,
     build_synthetic_evaluation_workflow,
@@ -22,13 +29,6 @@ from micro_model_agent.interfaces.composition import (
     build_workspace_staged_evaluation_workflow,
     build_workspace_staged_review_workflow,
     default_evaluation_available_tools,
-)
-from micro_model_agent.interfaces.cli.common import (
-    _fail,
-    _format_count_distribution,
-    _load_dotenv,
-    _run,
-    _select_evaluation_model,
 )
 
 

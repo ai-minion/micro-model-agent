@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from uuid import uuid4
 
 from micro_model_agent.execution.domain.value_objects import (
@@ -91,7 +92,7 @@ def test_patch_policy_disables_approval_when_apply_permission_is_set() -> None:
     assert executor.calls[0].arguments["require_approval"] is False
 
 
-def test_execute_builtin_tool_request_reports_unknown_tool(tmp_path) -> None:
+def test_execute_builtin_tool_request_reports_unknown_tool(tmp_path: Path) -> None:
     result = asyncio.run(
         execute_builtin_tool_request(
             tool_name="missing.tool",

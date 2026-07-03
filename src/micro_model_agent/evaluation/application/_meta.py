@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from micro_model_agent.dataset.application.ports import DatasetToolProfileSummarizer
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import DatasetExample
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def _with_evaluation_metadata(

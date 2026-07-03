@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.infrastructure.repository import JsonlWorkflowRepository
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 

@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent
 from micro_model_agent.execution.application.ports import ModelProvider, ToolExecutor
 from micro_model_agent.execution.application.tool_loop import (
     DEFAULT_TOOL_NAMES,
@@ -21,8 +20,9 @@ from micro_model_agent.execution.application.tool_loop import (
     normalized_tool_names,
     prepare_tool_loop_run,
 )
-from micro_model_agent.training.domain.value_objects import ModelArtifact
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent
+from micro_model_agent.training.domain.value_objects import ModelArtifact
 
 try:
     from micro_model_agent.execution.infrastructure.models.ollama import OllamaModelProvider
@@ -39,19 +39,19 @@ from micro_model_agent.execution.infrastructure.persistence_runtime import (
     append_comparison_trace_event,
     workflow_trace_store,
 )
-from micro_model_agent.training.infrastructure.training_records import (
-    load_artifact_from_training_run,
-)
-from micro_model_agent.repository_ops.infrastructure.metadata import load_repository_config
 from micro_model_agent.repository_ops.infrastructure.catalog import (
     BUILTIN_TOOL_SPECS,
     builtin_tool_prompt_schemas,
 )
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
+from micro_model_agent.repository_ops.infrastructure.metadata import load_repository_config
 from micro_model_agent.repository_ops.infrastructure.tools_runtime import (
     PatchPolicyToolExecutor,
     allowed_test_commands,
     build_builtin_tool_executor,
+)
+from micro_model_agent.training.infrastructure.training_records import (
+    load_artifact_from_training_run,
 )
 
 __all__ = [

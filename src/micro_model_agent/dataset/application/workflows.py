@@ -22,9 +22,6 @@ from micro_model_agent.dataset.application.ports import (
     TraceReviewRecord,
     TraceReviewWriter,
 )
-from micro_model_agent.execution.application.ports import WorkflowTraceReader
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExampleKind,
     DatasetLabel,
@@ -32,6 +29,9 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.execution.application.ports import WorkflowTraceReader
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 @dataclass(frozen=True, slots=True)

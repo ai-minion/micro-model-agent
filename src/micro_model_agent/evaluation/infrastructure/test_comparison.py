@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.evaluation.infrastructure.comparison import compare_evaluation_results
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def test_compare_evaluation_results_passes_score_and_metric_thresholds() -> None:

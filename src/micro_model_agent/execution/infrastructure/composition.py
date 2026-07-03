@@ -9,11 +9,11 @@ This module provides:
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from micro_model_agent.execution.infrastructure.coding_agent import CodingAgent
-from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.dataset.application.event_handlers import OnWorkflowCompleted
+from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.dataset.infrastructure.repository import JsonlDatasetRepository
 from micro_model_agent.evaluation.application.event_handlers import OnArtifactProduced
 from micro_model_agent.evaluation.domain.events import ThresholdBreached, ThresholdMet
@@ -22,6 +22,7 @@ from micro_model_agent.evaluation.infrastructure.repository import (
 )
 from micro_model_agent.execution.application.workflows import RunAgentWorkflow
 from micro_model_agent.execution.domain.events import WorkflowCompleted
+from micro_model_agent.execution.infrastructure.coding_agent import CodingAgent
 from micro_model_agent.execution.infrastructure.models.fake import StaticModelProvider
 from micro_model_agent.execution.infrastructure.persistence_runtime import (
     workflow_trace_store,
@@ -39,7 +40,6 @@ from micro_model_agent.repository_ops.infrastructure.tools_runtime import (
 )
 from micro_model_agent.shared.domain.in_process_event_bus import InProcessEventBus
 from micro_model_agent.training.domain.events import ArtifactProduced
-from collections.abc import Mapping, Sequence
 
 __all__ = [
     "build_coding_workflow",

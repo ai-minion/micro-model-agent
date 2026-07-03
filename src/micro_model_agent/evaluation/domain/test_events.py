@@ -21,7 +21,6 @@ from micro_model_agent.promotion.domain.events import (
 from micro_model_agent.promotion.domain.exceptions import GateThresholdNotMetError
 from micro_model_agent.shared.domain.domain_event import DomainEvent
 
-
 # ---------------------------------------------------------------------------
 # Evaluation events
 # ---------------------------------------------------------------------------

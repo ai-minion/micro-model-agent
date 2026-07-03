@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from micro_model_agent.shared.domain.exceptions import DomainException
 from micro_model_agent.training.domain.aggregate import TrainingJob
 from micro_model_agent.training.domain.events import (
     ArtifactProduced,
@@ -27,8 +26,6 @@ from micro_model_agent.training.domain.value_objects import (
     TrainingRunKind,
     TrainingRunStatus,
 )
-from uuid import uuid4
-from datetime import datetime, UTC
 
 
 def _config(output_dir: str = "/tmp/run") -> TrainingConfig:
@@ -112,7 +109,7 @@ def test_complete_emits_completed_and_artifact_produced() -> None:
 
 def test_complete_before_start_raises() -> None:
     job = TrainingJob(config=_config())
-    with pytest.raises(Exception):
+    with pytest.raises(DomainException):
         job.complete(_run(), _artifact())
 
 
@@ -143,7 +140,7 @@ def test_status_derived_from_run() -> None:
     assert job.status == TrainingRunStatus.PENDING
 
     job.start(_run(TrainingRunStatus.RUNNING))
-    assert job.status == TrainingRunStatus.RUNNING
+    assert job.status == TrainingRunStatus.RUNNING  # type: ignore[comparison-overlap]
 
 
 def test_pull_events_clears_list() -> None:

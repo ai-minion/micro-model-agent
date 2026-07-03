@@ -2,15 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
 from micro_model_agent.repository_ops.infrastructure.catalog import (
     BUILTIN_TOOL_SPECS,
     TOOL_ARGUMENT_CONTRACTS,
-    BuiltinToolSpec,
     builtin_tool_prompt_schemas,
 )
-
 
 # ---------------------------------------------------------------------------
 # BUILTIN_TOOL_SPECS / TOOL_ARGUMENT_CONTRACTS

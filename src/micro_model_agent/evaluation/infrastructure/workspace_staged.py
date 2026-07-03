@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import cast
 
+from micro_model_agent.dataset.domain.value_objects import DatasetExample
 from micro_model_agent.evaluation.application.workflows import (
     WORKSPACE_STAGED_SYSTEM_PROMPT as APPLICATION_WORKSPACE_STAGED_SYSTEM_PROMPT,
 )
@@ -22,7 +23,6 @@ from micro_model_agent.evaluation.domain.rubrics_workspace_staged import (
     WorkspaceStagedRubric,
     WorkspaceStageScore,
 )
-from micro_model_agent.dataset.domain.value_objects import DatasetExample
 from micro_model_agent.evaluation.infrastructure.workspace_staged_review import (
     LocalWorkspaceStagedReviewBuilder,
     LocalWorkspaceStagedReviewQueueWriter,

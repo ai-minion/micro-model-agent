@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.repository_ops.infrastructure.local_index import LocalLexicalIndexWriter
 from micro_model_agent.repository_ops.infrastructure.contracts import SemanticSearchRequest
-from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import RepoSemanticSearchTool
+from micro_model_agent.repository_ops.infrastructure.local_index import LocalLexicalIndexWriter
+from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import (
+    RepoSemanticSearchTool,
+)
 
 
 def _write_text(path: Path, content: str) -> None:

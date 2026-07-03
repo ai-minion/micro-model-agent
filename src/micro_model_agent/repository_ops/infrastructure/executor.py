@@ -16,7 +16,10 @@ from micro_model_agent.execution.domain.value_objects import (
     ToolCall,
     ToolResult,
 )
-from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand, TestRunTool
+from micro_model_agent.repository_ops.infrastructure.command_runner import (
+    AllowedTestCommand,
+    TestRunTool,
+)
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     GitDiffRequest,
     RepoReadRequest,
@@ -29,7 +32,9 @@ from micro_model_agent.repository_ops.infrastructure.contracts import (
 from micro_model_agent.repository_ops.infrastructure.git_diff import GitDiffTool
 from micro_model_agent.repository_ops.infrastructure.repo_read import RepoReadTool
 from micro_model_agent.repository_ops.infrastructure.repo_search import RepoSearchTool
-from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import RepoSemanticSearchTool
+from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import (
+    RepoSemanticSearchTool,
+)
 from micro_model_agent.repository_ops.infrastructure.repo_write_files import RepoWriteFilesTool
 from micro_model_agent.repository_ops.infrastructure.repo_write_patch import RepoWritePatchTool
 

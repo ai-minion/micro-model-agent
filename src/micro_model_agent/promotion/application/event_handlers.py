@@ -36,7 +36,6 @@ class OnThresholdEvent:
         """Open the promotion gate for a report whose score met the threshold."""
 
         registry = await self.registry_repo.get_or_create()
-        from uuid import UUID as _UUID
 
         registry.evaluate_gate(
             artifact_id=event.report_id,  # use report_id as proxy until artifact_id is tracked

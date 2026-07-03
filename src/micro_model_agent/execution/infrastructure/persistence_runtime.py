@@ -25,6 +25,7 @@ from micro_model_agent.repository_ops.infrastructure.workspace_registry import (
 
 __all__ = [
     "DEFAULT_TRACE_DIR",
+    "JsonlWorkspaceRegistry",
     "append_comparison_trace_event",
     "comparison_trace_store",
     "register_workspace_record",

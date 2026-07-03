@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from uuid import uuid4
-
-import pytest
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
 
 from micro_model_agent.promotion.domain.aggregate import ModelRegistry, PromotedModel
 from micro_model_agent.promotion.domain.events import (
@@ -19,7 +17,7 @@ from micro_model_agent.promotion.domain.services import PromotionGateService
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
-def _model(artifact_id=None) -> PromotedModel:
+def _model(artifact_id: UUID | None = None) -> PromotedModel:
     return PromotedModel(
         id=uuid4(),
         artifact_id=artifact_id or uuid4(),

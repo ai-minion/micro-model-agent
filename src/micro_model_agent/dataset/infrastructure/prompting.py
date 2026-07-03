@@ -31,7 +31,9 @@ def synthetic_prompt_payload(
         "response_contract": contract,
     }
     if include_tool_schemas:
-        from micro_model_agent.repository_ops.infrastructure.catalog import builtin_tool_prompt_schemas
+        from micro_model_agent.repository_ops.infrastructure.catalog import (
+            builtin_tool_prompt_schemas,
+        )
 
         payload["tool_schemas"] = builtin_tool_prompt_schemas(available_tools)
     return payload

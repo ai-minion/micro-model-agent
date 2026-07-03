@@ -3,12 +3,20 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import pytest
 
+from micro_model_agent.dataset.domain.value_objects import (
+    DatasetExample,
+    DatasetExampleKind,
+    DatasetLabel,
+    OutcomeLabel,
+    QualityLabel,
+)
 from micro_model_agent.evaluation.application.workflows import (
     RunEvaluationComparisonRequest,
     RunEvaluationComparisonWorkflow,
@@ -28,14 +36,8 @@ from micro_model_agent.evaluation.application.workflows import (
     WorkspaceStagedEvaluationSuite,
     WorkspaceStagedExampleScorer,
 )
+from micro_model_agent.execution.application.ports import ModelProvider
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
-from micro_model_agent.dataset.domain.value_objects import (
-    DatasetExample,
-    DatasetExampleKind,
-    DatasetLabel,
-    OutcomeLabel,
-    QualityLabel,
-)
 from micro_model_agent.training.domain.value_objects import ModelArtifact, ModelArtifactKind
 
 
@@ -174,10 +176,10 @@ class FakeBehaviorEvaluationSuite:
 
     async def evaluate_model(
         self,
-        model_provider: FakeModelProvider,
+        model_provider: ModelProvider,
         examples: list[DatasetExample],
     ) -> EvaluationResult:
-        self.provider = model_provider
+        self.provider = model_provider  # type: ignore[assignment]
         self.examples = examples
         return self.evaluation
 
@@ -205,8 +207,8 @@ class FakeToolProfileSummarizer:
         self,
         examples: list[DatasetExample],
         *,
-        default_available_tools: list[str] | tuple[str, ...] | None = None,
-    ) -> dict[str, object]:
+        default_available_tools: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
         self.examples = examples
         self.default_available_tools = tuple(default_available_tools or ())
         return {
@@ -315,7 +317,7 @@ def test_evaluation_comparison_workflow_loads_compares_and_writes_report() -> No
     assert record["score_delta"] == pytest.approx(0.14)
     metric_deltas = {
         delta["name"]: delta
-        for delta in record["metric_deltas"]
+        for delta in record["metric_deltas"]  # type: ignore[attr-defined]
         if isinstance(delta, dict)
     }
     assert metric_deltas["correct_tool_rate"]["passed"] is True
@@ -825,7 +827,7 @@ def test_workspace_staged_review_workflow_builds_and_writes_records() -> None:
             "auto_triage": {"decision": "needs_human_review"},
         }
     ]
-    builder = FakeWorkspaceStagedReviewBuilder(records)
+    builder = FakeWorkspaceStagedReviewBuilder(records)  # type: ignore[arg-type]
     writer = FakeWorkspaceStagedReviewQueueWriter()
     workflow = RunWorkspaceStagedReviewWorkflow(
         example_reader=reader,

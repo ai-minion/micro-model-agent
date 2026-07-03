@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-import pytest
-
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -17,37 +15,36 @@ from micro_model_agent.dataset.domain.value_objects import (
     QualityLabel,
 )
 
-
 # ---------------------------------------------------------------------------
 # Enum values
 # ---------------------------------------------------------------------------
 
 
 def test_outcome_label_values() -> None:
-    assert OutcomeLabel.ACCEPTED == "accepted"
-    assert OutcomeLabel.REJECTED == "rejected"
-    assert OutcomeLabel.NEEDS_REVIEW == "needs_review"
-    assert OutcomeLabel.PARTIAL == "partial"
-    assert OutcomeLabel.ERRORED == "errored"
+    assert OutcomeLabel.ACCEPTED.value == "accepted"
+    assert OutcomeLabel.REJECTED.value == "rejected"
+    assert OutcomeLabel.NEEDS_REVIEW.value == "needs_review"
+    assert OutcomeLabel.PARTIAL.value == "partial"
+    assert OutcomeLabel.ERRORED.value == "errored"
 
 
 def test_quality_label_values() -> None:
-    assert QualityLabel.GOOD == "good"
-    assert QualityLabel.BAD == "bad"
-    assert QualityLabel.MIXED == "mixed"
-    assert QualityLabel.UNKNOWN == "unknown"
+    assert QualityLabel.GOOD.value == "good"
+    assert QualityLabel.BAD.value == "bad"
+    assert QualityLabel.MIXED.value == "mixed"
+    assert QualityLabel.UNKNOWN.value == "unknown"
 
 
 def test_dataset_example_kind_values() -> None:
-    assert DatasetExampleKind.TOOL_USE == "tool_use"
-    assert DatasetExampleKind.REPAIR == "repair"
-    assert DatasetExampleKind.EVALUATION == "evaluation"
+    assert DatasetExampleKind.TOOL_USE.value == "tool_use"
+    assert DatasetExampleKind.REPAIR.value == "repair"
+    assert DatasetExampleKind.EVALUATION.value == "evaluation"
 
 
 def test_dataset_split_name_values() -> None:
-    assert DatasetSplitName.TRAIN == "train"
-    assert DatasetSplitName.VALIDATION == "validation"
-    assert DatasetSplitName.TEST == "test"
+    assert DatasetSplitName.TRAIN.value == "train"
+    assert DatasetSplitName.VALIDATION.value == "validation"
+    assert DatasetSplitName.TEST.value == "test"
 
 
 # ---------------------------------------------------------------------------

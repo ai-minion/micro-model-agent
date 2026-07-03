@@ -7,8 +7,6 @@ unit-tested without mocks.
 
 from __future__ import annotations
 
-from typing import Any
-
 from micro_model_agent.execution.domain.value_objects import WorkflowTrace
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 

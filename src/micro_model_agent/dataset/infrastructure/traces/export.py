@@ -7,11 +7,6 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any, cast
 
-from micro_model_agent.execution.application.workflows import TraceDatasetBuilder
-from micro_model_agent.execution.domain.value_objects import (
-    WorkflowStatus,
-    WorkflowTrace,
-)
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -21,6 +16,11 @@ from micro_model_agent.dataset.domain.value_objects import (
     QualityLabel,
 )
 from micro_model_agent.dataset.infrastructure.traces.review import TraceReview
+from micro_model_agent.execution.application.workflows import TraceDatasetBuilder
+from micro_model_agent.execution.domain.value_objects import (
+    WorkflowStatus,
+    WorkflowTrace,
+)
 
 SECRET_KEY_PATTERN = re.compile(
     r"(api[_-]?key|auth|credential|password|secret|token)", re.IGNORECASE

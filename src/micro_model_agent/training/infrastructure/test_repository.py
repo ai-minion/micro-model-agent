@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from micro_model_agent.training.domain.aggregate import TrainingJob
 from micro_model_agent.training.domain.value_objects import (
@@ -17,7 +19,7 @@ from micro_model_agent.training.domain.value_objects import (
 from micro_model_agent.training.infrastructure.repository import JsonlTrainingJobRepository
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from uuid import uuid4
+
 import pytest
 
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution, WorkflowStepEntity
 from micro_model_agent.execution.domain.events import (
     StepAdded,
@@ -14,9 +15,7 @@ from micro_model_agent.execution.domain.events import (
 )
 from micro_model_agent.execution.domain.exceptions import InvalidTransitionError
 from micro_model_agent.execution.domain.services import WorkflowEvaluationService
-from micro_model_agent.execution.domain.value_objects import WorkflowTrace
-from uuid import uuid4
-
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus, WorkflowTrace
 
 # ---------------------------------------------------------------------------
 # WorkflowExecution aggregate
@@ -156,7 +155,7 @@ def test_from_snapshot_round_trips() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_trace(**kwargs) -> WorkflowTrace:  # type: ignore[return]
+def _make_trace(**kwargs: object) -> WorkflowTrace:
     ex = WorkflowExecution(goal="goal")
     ex.start()
     ex.complete({"ok": True, "patch_applied": True, "verification_passed": True, **kwargs})

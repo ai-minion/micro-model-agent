@@ -13,6 +13,7 @@ from micro_model_agent.dataset.application.workflows import (
     RunTraceDatasetExportWorkflow,
     RunTraceReviewWorkflow,
 )
+from micro_model_agent.dataset.infrastructure.dataset_store import JsonlDatasetExampleStore
 from micro_model_agent.dataset.infrastructure.runtime import (
     build_dataset_export_workflow,
     build_dataset_merge_workflow,
@@ -23,7 +24,6 @@ from micro_model_agent.dataset.infrastructure.runtime import (
     build_trace_dataset_export_workflow,
     build_trace_review_workflow,
 )
-from micro_model_agent.dataset.infrastructure.dataset_store import JsonlDatasetExampleStore
 
 
 def test_dataset_runtime_builds_standard_store_and_workflows(tmp_path: Path) -> None:

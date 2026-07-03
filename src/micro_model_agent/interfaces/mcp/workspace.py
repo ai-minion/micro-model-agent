@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from mcp.server.fastmcp.exceptions import ToolError as FastMcpToolError
 
+from micro_model_agent.execution.infrastructure.persistence_runtime import JsonlWorkspaceRegistry
 from micro_model_agent.interfaces.composition import (
     initialize_local_repository,
     register_workspace_record,
@@ -102,7 +103,7 @@ async def resolve_workspace_root(
     return workspace_path
 
 
-def workspace_registry(registry_root: Path):
+def workspace_registry(registry_root: Path) -> JsonlWorkspaceRegistry:
     """Return the workspace registry for the server's default root."""
 
     return build_workspace_registry(registry_root)

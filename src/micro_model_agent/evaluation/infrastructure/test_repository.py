@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 from micro_model_agent.evaluation.domain.aggregate import (
     EvaluationReport,
@@ -15,7 +17,7 @@ from micro_model_agent.evaluation.infrastructure.repository import (
 )
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 

@@ -2,14 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from uuid import uuid4
-
-import pytest
 
 from micro_model_agent.promotion.infrastructure.gate import (
     LocalPromotionGateStore,
-    PromotionRegistryEntry,
     load_promotion_registry,
     record_promoted_artifact,
     write_promotion_gate_result,
@@ -26,7 +23,6 @@ from micro_model_agent.training.domain.value_objects import (
 from micro_model_agent.training.infrastructure.training_records import (
     model_artifact_to_record,
 )
-import json
 
 
 def _artifact(output_dir: str = "/tmp/run") -> ModelArtifact:
@@ -105,8 +101,6 @@ def _write_run_metadata(run_dir: Path, artifact: ModelArtifact) -> None:
     artifact_path.write_text(json.dumps(model_artifact_to_record(artifact)), encoding="utf-8")
     # Also write a run.json for load_artifact_from_training_run
     run_json = run_dir / "run.json"
-    from micro_model_agent.training.domain.value_objects import TrainingConfig, TrainingRun, TrainingRunKind, TrainingRunStatus
-    import dataclasses, datetime
     run = TrainingRun(
         kind=TrainingRunKind.SYNTHETIC,
         config=TrainingConfig(base_model="tinyllama", output_dir=str(run_dir)),

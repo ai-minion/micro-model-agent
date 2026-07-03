@@ -3,25 +3,23 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, UTC
+from collections.abc import Coroutine
+from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
-import pytest
-
+from micro_model_agent.promotion.domain.aggregate import ModelRegistry, PromotedModel
 from micro_model_agent.promotion.infrastructure.repository import (
     JsonlModelRegistryRepository,
 )
-from micro_model_agent.promotion.domain.aggregate import ModelRegistry, PromotedModel
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
-from micro_model_agent.promotion.domain.services import PromotionGateService
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
-def _model(artifact_id=None) -> PromotedModel:
+def _model(artifact_id: UUID | None = None) -> PromotedModel:
     return PromotedModel(
         id=uuid4(),
         artifact_id=artifact_id or uuid4(),
@@ -80,7 +78,7 @@ def test_get_by_wrong_id_returns_none(tmp_path: Path) -> None:
 def test_multiple_promotions_accumulated(tmp_path: Path) -> None:
     repo = JsonlModelRegistryRepository(tmp_path)
     registry = _run(repo.get_or_create())
-    for i in range(3):
+    for _ in range(3):
         registry.record_promotion(_model())
     _run(repo.save(registry))
 

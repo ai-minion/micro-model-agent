@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.dataset.application.workflows import (
     RunDatasetExportWorkflow,
     RunDatasetMergeWorkflow,
@@ -13,22 +14,16 @@ from micro_model_agent.dataset.application.workflows import (
     RunTraceDatasetExportWorkflow,
     RunTraceReviewWorkflow,
 )
-from micro_model_agent.dataset.application.ports import DatasetExampleStore
 from micro_model_agent.dataset.infrastructure.curation import (
     LocalDatasetMerger,
     LocalDatasetRelabeler,
-)
-from micro_model_agent.dataset.infrastructure.synthetic_data import SyntheticTemplateGenerator
-from micro_model_agent.dataset.infrastructure.validation import (
-    LocalDatasetValidator,
-    SftJsonlDatasetExporter,
 )
 from micro_model_agent.dataset.infrastructure.dataset_store import (
     JsonlDatasetExampleStore,
     LocalDatasetExampleReader,
     LocalDatasetExampleWriter,
 )
-from micro_model_agent.execution.infrastructure.trace_store import LocalWorkflowTraceReader
+from micro_model_agent.dataset.infrastructure.synthetic_data import SyntheticTemplateGenerator
 from micro_model_agent.dataset.infrastructure.traces.export import (
     LocalTraceDatasetExporter,
     LocalTraceDatasetExportValidator,
@@ -37,6 +32,11 @@ from micro_model_agent.dataset.infrastructure.traces.review import (
     LocalTraceReviewReader,
     LocalTraceReviewWriter,
 )
+from micro_model_agent.dataset.infrastructure.validation import (
+    LocalDatasetValidator,
+    SftJsonlDatasetExporter,
+)
+from micro_model_agent.execution.infrastructure.trace_store import LocalWorkflowTraceReader
 
 __all__ = [
     "build_dataset_export_workflow",

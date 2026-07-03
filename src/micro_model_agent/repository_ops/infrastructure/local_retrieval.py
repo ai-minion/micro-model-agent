@@ -10,7 +10,9 @@ from micro_model_agent.repository_ops.domain.value_objects import (
     SemanticSearchResult,
 )
 from micro_model_agent.repository_ops.infrastructure.contracts import SemanticSearchRequest
-from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import RepoSemanticSearchTool
+from micro_model_agent.repository_ops.infrastructure.repo_semantic_search import (
+    RepoSemanticSearchTool,
+)
 
 
 class LocalSemanticRetriever:

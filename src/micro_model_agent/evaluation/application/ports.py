@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from micro_model_agent.dataset.domain.value_objects import DatasetExample
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.execution.application.ports import ModelProvider
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.training.domain.value_objects import ModelArtifact
 
 

@@ -9,32 +9,30 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from micro_model_agent.training.domain.aggregate import TrainingJob
 from micro_model_agent.training.domain.value_objects import (
-    ModelArtifact,
-    ModelArtifactKind,
     TrainingConfig,
     TrainingRun,
     TrainingRunKind,
     TrainingRunStatus,
 )
 from micro_model_agent.training.infrastructure.training_records import (
+    _to_jsonable,
     model_artifact_from_record,
     model_artifact_to_record,
     training_run_to_record,
-    _to_jsonable,
 )
 
 
-def _training_config_to_record(config: TrainingConfig) -> dict:
+def _training_config_to_record(config: TrainingConfig) -> dict[str, Any]:
     from dataclasses import asdict
-    return _to_jsonable(asdict(config))
+    return _to_jsonable(asdict(config))  # type: ignore[no-any-return]
 
 
-def _training_config_from_record(record: dict) -> TrainingConfig:
-    from datetime import UTC
+def _training_config_from_record(record: dict[str, Any]) -> TrainingConfig:
     return TrainingConfig(
         base_model=record["base_model"],
         output_dir=record["output_dir"],
@@ -48,7 +46,7 @@ def _training_config_from_record(record: dict) -> TrainingConfig:
     )
 
 
-def _training_run_from_record(record: dict) -> TrainingRun:
+def _training_run_from_record(record: dict[str, Any]) -> TrainingRun:
     from datetime import datetime
     from uuid import uuid4
     started_at = record.get("started_at")

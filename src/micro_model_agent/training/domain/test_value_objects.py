@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import datetime, UTC
-from uuid import uuid4
-
-import pytest
-
 from micro_model_agent.training.domain.value_objects import (
     ModelArtifact,
     ModelArtifactKind,
@@ -15,7 +10,6 @@ from micro_model_agent.training.domain.value_objects import (
     TrainingRunKind,
     TrainingRunStatus,
 )
-
 
 # ---------------------------------------------------------------------------
 # TrainingConfig
@@ -92,10 +86,10 @@ def test_model_artifact_fields() -> None:
 
 
 def test_model_artifact_kind_enum_values() -> None:
-    assert ModelArtifactKind.ADAPTER == "adapter"
-    assert ModelArtifactKind.MERGED_MODEL == "merged_model"
-    assert ModelArtifactKind.OLLAMA_MODEL == "ollama_model"
-    assert ModelArtifactKind.REPORT == "report"
+    assert ModelArtifactKind.ADAPTER.value == "adapter"
+    assert ModelArtifactKind.MERGED_MODEL.value == "merged_model"
+    assert ModelArtifactKind.OLLAMA_MODEL.value == "ollama_model"
+    assert ModelArtifactKind.REPORT.value == "report"
 
 
 def test_model_artifact_with_metrics() -> None:
@@ -135,16 +129,16 @@ def test_training_run_defaults() -> None:
 
 
 def test_training_run_status_enum_values() -> None:
-    assert TrainingRunStatus.PENDING == "pending"
-    assert TrainingRunStatus.RUNNING == "running"
-    assert TrainingRunStatus.SUCCEEDED == "succeeded"
-    assert TrainingRunStatus.FAILED == "failed"
+    assert TrainingRunStatus.PENDING.value == "pending"
+    assert TrainingRunStatus.RUNNING.value == "running"
+    assert TrainingRunStatus.SUCCEEDED.value == "succeeded"
+    assert TrainingRunStatus.FAILED.value == "failed"
 
 
 def test_training_run_kind_enum_values() -> None:
-    assert TrainingRunKind.SYNTHETIC == "synthetic"
-    assert TrainingRunKind.TRACE_DERIVED == "trace_derived"
-    assert TrainingRunKind.MIXED == "mixed"
+    assert TrainingRunKind.SYNTHETIC.value == "synthetic"
+    assert TrainingRunKind.TRACE_DERIVED.value == "trace_derived"
+    assert TrainingRunKind.MIXED.value == "mixed"
 
 
 def test_training_run_with_artifacts() -> None:

@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Any, Protocol
-from uuid import UUID, uuid4
+from typing import Protocol
+from uuid import UUID
 
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.training.domain.value_objects import ModelArtifact
-
 
 # ---------------------------------------------------------------------------
 # DTOs

@@ -3,25 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
-from pathlib import Path
-from uuid import UUID, uuid4
+from typing import Any
 
 from micro_model_agent.execution.application.ports import (
     CodingAgentResult,
     CodingAgentTask,
+    TraceStore,
 )
+from micro_model_agent.execution.application.workflows import RunAgentWorkflow
+from micro_model_agent.execution.domain.events import WorkflowCompleted
 from micro_model_agent.execution.domain.value_objects import (
     WorkflowStatus,
     WorkflowTrace,
 )
-from micro_model_agent.execution.application.workflows import RunAgentWorkflow
-from micro_model_agent.execution.domain.events import WorkflowCompleted
 from micro_model_agent.shared.domain.domain_event import DomainEvent
 from micro_model_agent.shared.domain.in_process_event_bus import InProcessEventBus
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -43,7 +44,7 @@ class FakeTraceStore:
 
 @dataclass
 class FakeCodingRunner:
-    trace_store: FakeTraceStore = field(default_factory=FakeTraceStore)
+    trace_store: TraceStore = field(default_factory=FakeTraceStore)
     goal: str = "fix the bug"
 
     async def run(self, task: CodingAgentTask) -> CodingAgentResult:

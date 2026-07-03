@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from micro_model_agent.execution.domain.value_objects import WorkflowTrace
 from micro_model_agent.repository_ops.domain.value_objects import (
     RetrievalQuery,
     SemanticSearchResult,

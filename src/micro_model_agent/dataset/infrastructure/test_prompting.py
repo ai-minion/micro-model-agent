@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -21,10 +23,10 @@ def _label(outcome: OutcomeLabel = OutcomeLabel.ACCEPTED) -> DatasetLabel:
 def _example(
     outcome: OutcomeLabel = OutcomeLabel.ACCEPTED,
     goal: str = "fix the null pointer bug",
-    target: dict | None = None,
-    input_extra: dict | None = None,
+    target: dict[str, Any] | None = None,
+    input_extra: dict[str, Any] | None = None,
 ) -> DatasetExample:
-    inp: dict = {"goal": goal}
+    inp: dict[str, Any] = {"goal": goal}
     if input_extra:
         inp.update(input_extra)
     return DatasetExample(

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Protocol
 
-from micro_model_agent.training.domain.value_objects import ModelArtifact, TrainingConfig, TrainingRun
+from micro_model_agent.training.domain.value_objects import (
+    ModelArtifact,
+    TrainingConfig,
+    TrainingRun,
+)
 
 
 class TrainingRunner(Protocol):

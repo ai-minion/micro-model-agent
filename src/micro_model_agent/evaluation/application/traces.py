@@ -8,18 +8,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from micro_model_agent.dataset.application.ports import (
+    DatasetExampleReader,
+    DatasetToolProfileSummarizer,
+)
+from micro_model_agent.dataset.domain.value_objects import DatasetExample
 from micro_model_agent.evaluation.application._meta import _with_evaluation_metadata
 from micro_model_agent.evaluation.application.ports import (
     EvaluationResultWriter,
     ModelBehaviorEvaluationSuite,
 )
-from micro_model_agent.dataset.application.ports import (
-    DatasetExampleReader,
-    DatasetToolProfileSummarizer,
-)
 from micro_model_agent.execution.application.ports import ModelProvider
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
-from micro_model_agent.dataset.domain.value_objects import DatasetExample
 
 
 @dataclass(frozen=True, slots=True)

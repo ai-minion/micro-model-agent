@@ -6,6 +6,7 @@ from uuid import uuid4
 
 import pytest
 
+from micro_model_agent.shared.domain.domain_event import DomainEvent
 from micro_model_agent.training.domain.events import (
     ArtifactProduced,
     TrainingJobCompleted,
@@ -18,8 +19,6 @@ from micro_model_agent.training.domain.exceptions import (
     TrainingAlreadyStartedError,
 )
 from micro_model_agent.training.domain.value_objects import ModelArtifactKind
-from micro_model_agent.shared.domain.domain_event import DomainEvent
-
 
 # ---------------------------------------------------------------------------
 # Domain events

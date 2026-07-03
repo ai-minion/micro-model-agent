@@ -11,7 +11,9 @@ from micro_model_agent.repository_ops.infrastructure.command_runner import (
 from micro_model_agent.repository_ops.infrastructure.command_runner import (
     TestRunTool as ToolTestRunTool,
 )
-from micro_model_agent.repository_ops.infrastructure.contracts import TestRunRequest as ToolTestRunRequest
+from micro_model_agent.repository_ops.infrastructure.contracts import (
+    TestRunRequest as ToolTestRunRequest,
+)
 
 
 def test_test_run_executes_allowlisted_command(tmp_path: Path) -> None:

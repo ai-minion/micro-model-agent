@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from micro_model_agent.promotion.domain.aggregate import ModelRegistry, PromotedModel
 

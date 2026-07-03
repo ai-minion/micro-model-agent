@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
-from micro_model_agent.training.application.workflows import (
-    RunSyntheticTrainingRequest,
-    RunSyntheticTrainingWorkflow,
-)
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
     DatasetLabel,
     OutcomeLabel,
     QualityLabel,
+)
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
+from micro_model_agent.training.application.workflows import (
+    RunSyntheticTrainingRequest,
+    RunSyntheticTrainingWorkflow,
 )
 from micro_model_agent.training.domain.value_objects import (
     ModelArtifact,
@@ -82,8 +84,8 @@ class FakeDatasetToolProfileSummarizer:
         self,
         examples: list[DatasetExample],
         *,
-        default_available_tools: list[str] | tuple[str, ...] | None = None,
-    ) -> dict[str, object]:
+        default_available_tools: Sequence[str] | None = None,
+    ) -> dict[str, Any]:
         self.examples = examples
         return {"example_count": len(examples), "tools_used": ["repo.read"]}
 

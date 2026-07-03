@@ -10,8 +10,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.infrastructure.trace_store import JsonlTraceStore
 
 

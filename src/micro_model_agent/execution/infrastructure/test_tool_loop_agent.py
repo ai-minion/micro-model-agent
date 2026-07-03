@@ -9,9 +9,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent, ToolLoopAgentTask
 from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
+from micro_model_agent.execution.infrastructure.tool_loop_agent import (
+    ToolLoopAgent,
+    ToolLoopAgentTask,
+)
 from micro_model_agent.execution.infrastructure.trace_store import JsonlTraceStore
 from micro_model_agent.repository_ops.infrastructure.catalog import builtin_tool_prompt_schemas
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand

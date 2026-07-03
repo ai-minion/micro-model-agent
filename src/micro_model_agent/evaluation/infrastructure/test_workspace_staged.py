@@ -6,7 +6,6 @@ import asyncio
 import json
 from pathlib import Path
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -14,12 +13,13 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.dataset.infrastructure.dataset_store import load_dataset_examples
 from micro_model_agent.evaluation.infrastructure.workspace_staged import (
     WorkspaceStagedEvaluationSuite,
     build_workspace_staged_review_records,
 )
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
-from micro_model_agent.dataset.infrastructure.dataset_store import load_dataset_examples
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def _response(payload: dict[str, object]) -> str:

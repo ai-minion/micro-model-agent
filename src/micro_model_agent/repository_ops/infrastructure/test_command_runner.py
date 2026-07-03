@@ -6,6 +6,8 @@ from pathlib import Path
 
 from micro_model_agent.repository_ops.infrastructure.command_runner import (
     AllowedTestCommand,
+)
+from micro_model_agent.repository_ops.infrastructure.command_runner import (
     TestRunTool as _TestRunTool,  # renamed to avoid pytest collection confusion
 )
 
@@ -68,8 +70,9 @@ def test_test_run_tool_preserves_allowed_test_command(tmp_path: Path) -> None:
 
 def test_test_run_tool_unknown_command_returns_error(tmp_path: Path) -> None:
     tool = TestRunTool(repository_root=tmp_path, allowed_commands={})
-    from micro_model_agent.repository_ops.infrastructure.command_runner import TestRunResult
-    from micro_model_agent.repository_ops.infrastructure.repo_read import RepoReadRequest  # noqa: F401
+    from micro_model_agent.repository_ops.infrastructure.contracts import (
+        RepoReadRequest,  # noqa: F401
+    )
     # Import the request type from the right place
     try:
         from micro_model_agent.repository_ops.infrastructure.contracts import TestRunRequest

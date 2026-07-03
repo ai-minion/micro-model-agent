@@ -9,17 +9,17 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from micro_model_agent.repository_ops.infrastructure.paths import (
-    RepositoryPathError,
-    RepositoryRoot,
-    looks_binary,
-)
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     RepoSearchMatch,
     RepoSearchRequest,
     RepoSearchResult,
     SearchKind,
     ToolError,
+)
+from micro_model_agent.repository_ops.infrastructure.paths import (
+    RepositoryPathError,
+    RepositoryRoot,
+    looks_binary,
 )
 
 

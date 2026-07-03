@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import asyncio
-import json
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,6 @@ from micro_model_agent.dataset.domain.value_objects import (
     QualityLabel,
 )
 from micro_model_agent.dataset.infrastructure.dataset_store import (
-    dataset_example_to_record,
     write_dataset_examples,
 )
 from micro_model_agent.dataset.infrastructure.synthetic_data import (
@@ -24,7 +24,7 @@ from micro_model_agent.dataset.infrastructure.synthetic_data import (
 )
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -130,13 +130,13 @@ def test_generate_exclude_categories_filters(tmp_path: Path) -> None:
 def test_generate_vary_scenarios_adds_metadata(tmp_path: Path) -> None:
     gen = SyntheticTemplateGenerator(_setup_templates(tmp_path))
     examples = _run(gen.generate(2, vary_scenarios=True))
-    assert all("scenario_text" == e.metadata.get("variant_strategy") for e in examples)
+    assert all(e.metadata.get("variant_strategy") == "scenario_text" for e in examples)
 
 
 def test_generate_no_vary_uses_template_copy_strategy(tmp_path: Path) -> None:
     gen = SyntheticTemplateGenerator(_setup_templates(tmp_path))
     examples = _run(gen.generate(2, vary_scenarios=False))
-    assert all("template_copy" == e.metadata.get("variant_strategy") for e in examples)
+    assert all(e.metadata.get("variant_strategy") == "template_copy" for e in examples)
 
 
 def test_generate_more_than_templates_repeats(tmp_path: Path) -> None:

@@ -17,17 +17,17 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
-from micro_model_agent.interfaces.composition import resolve_model_options
 from micro_model_agent.dataset.infrastructure.dataset_store import (
     load_dataset_examples,
     write_dataset_examples,
 )
+from micro_model_agent.interfaces.cli import app
+from micro_model_agent.interfaces.cli.common import _load_dotenv
+from micro_model_agent.interfaces.composition import resolve_model_options
 from micro_model_agent.repository_ops.infrastructure.metadata import (
     initialize_repository,
     update_model_configuration,
 )
-from micro_model_agent.interfaces.cli import app
-from micro_model_agent.interfaces.cli.common import _load_dotenv
 
 
 def _registered_command_names(typer_app: typer.Typer) -> set[str]:
@@ -44,6 +44,7 @@ def _registered_command_names(typer_app: typer.Typer) -> set[str]:
 def _registered_group(typer_app: typer.Typer, name: str) -> typer.Typer:
     for group in typer_app.registered_groups:
         if group.name == name:
+            assert group.typer_instance is not None
             return group.typer_instance
     raise AssertionError(f"missing Typer group {name!r}")
 

@@ -8,7 +8,7 @@ this out for a Kafka/RabbitMQ/Redis adapter behind the same ``EventBus`` Protoco
 
 from __future__ import annotations
 
-import asyncio
+import contextlib
 import logging
 from collections import defaultdict
 from collections.abc import Callable, Coroutine
@@ -37,18 +37,20 @@ class InProcessEventBus:
     def __init__(self) -> None:
         self._handlers: dict[type[DomainEvent], list[Handler]] = defaultdict(list)
 
-    def subscribe(self, event_type: type[T], handler: Callable[[T], Coroutine[Any, Any, None]]) -> None:
+    def subscribe(
+        self, event_type: type[T], handler: Callable[[T], Coroutine[Any, Any, None]]
+    ) -> None:
         """Register *handler* to be called whenever *event_type* is published."""
 
-        self._handlers[event_type].append(handler)  # type: ignore[arg-type]
+        self._handlers[event_type].append(handler)
 
-    def unsubscribe(self, event_type: type[T], handler: Callable[[T], Coroutine[Any, Any, None]]) -> None:
+    def unsubscribe(
+        self, event_type: type[T], handler: Callable[[T], Coroutine[Any, Any, None]]
+    ) -> None:
         """Remove a previously registered handler (no-op if not registered)."""
 
-        try:
-            self._handlers[event_type].remove(handler)  # type: ignore[arg-type]
-        except ValueError:
-            pass
+        with contextlib.suppress(ValueError):
+            self._handlers[event_type].remove(handler)
 
     async def publish(self, event: DomainEvent) -> None:
         """Dispatch *event* to all registered handlers for its exact type.

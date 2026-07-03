@@ -5,16 +5,16 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+from micro_model_agent.promotion.infrastructure.gate import MinimumScorePromotionPolicy
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.training.domain.value_objects import TrainingConfig
-from micro_model_agent.training.infrastructure.training_records import (
-    load_artifact_from_training_run,
-)
-from micro_model_agent.promotion.infrastructure.gate import MinimumScorePromotionPolicy
 from micro_model_agent.training.infrastructure.local_finetuning import (
     LocalFineTuningResult,
     LocalFineTuningRunner,
     _model_load_kwargs,
+)
+from micro_model_agent.training.infrastructure.training_records import (
+    load_artifact_from_training_run,
 )
 
 

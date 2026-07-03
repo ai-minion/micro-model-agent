@@ -15,18 +15,17 @@ from micro_model_agent.execution.domain.value_objects import (
     WorkflowTrace,
 )
 
-
 # ---------------------------------------------------------------------------
 # WorkflowStatus
 # ---------------------------------------------------------------------------
 
 
 def test_workflow_status_values() -> None:
-    assert WorkflowStatus.PENDING == "pending"
-    assert WorkflowStatus.RUNNING == "running"
-    assert WorkflowStatus.SUCCEEDED == "succeeded"
-    assert WorkflowStatus.FAILED == "failed"
-    assert WorkflowStatus.CANCELLED == "cancelled"
+    assert WorkflowStatus.PENDING.value == "pending"
+    assert WorkflowStatus.RUNNING.value == "running"
+    assert WorkflowStatus.SUCCEEDED.value == "succeeded"
+    assert WorkflowStatus.FAILED.value == "failed"
+    assert WorkflowStatus.CANCELLED.value == "cancelled"
 
 
 # ---------------------------------------------------------------------------

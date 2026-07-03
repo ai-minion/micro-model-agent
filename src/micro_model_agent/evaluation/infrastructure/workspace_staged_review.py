@@ -6,8 +6,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import DatasetExample
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def build_workspace_staged_review_records(

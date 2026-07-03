@@ -15,7 +15,6 @@ from micro_model_agent.execution.domain.events import (
 from micro_model_agent.execution.domain.exceptions import InvalidTransitionError
 from micro_model_agent.shared.domain.domain_event import DomainEvent
 
-
 # ---------------------------------------------------------------------------
 # Domain events
 # ---------------------------------------------------------------------------

@@ -6,24 +6,19 @@ depends on.  Concrete adapters live in ``execution/infrastructure/``.
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Protocol
+# ---------------------------------------------------------------------------
+# DTOs
+# ---------------------------------------------------------------------------
+from dataclasses import dataclass, field
+from typing import Protocol
+from uuid import UUID
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.execution.domain.value_objects import (
     ToolCall,
     ToolResult,
     WorkflowTrace,
 )
-
-
-# ---------------------------------------------------------------------------
-# DTOs
-# ---------------------------------------------------------------------------
-
-
-from dataclasses import dataclass, field
-from uuid import UUID
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 @dataclass(frozen=True, slots=True)

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from pathlib import Path
 
+from micro_model_agent.dataset.application.ports import TraceReviewRecord
 from micro_model_agent.dataset.application.workflows import (
     RunDatasetExportRequest,
     RunDatasetExportWorkflow,
@@ -21,12 +23,6 @@ from micro_model_agent.dataset.application.workflows import (
     RunTraceReviewRequest,
     RunTraceReviewWorkflow,
 )
-from micro_model_agent.dataset.application.ports import TraceReviewRecord
-from micro_model_agent.execution.domain.value_objects import (
-    WorkflowStatus,
-    WorkflowTrace,
-)
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -35,6 +31,11 @@ from micro_model_agent.dataset.domain.value_objects import (
     OutcomeLabel,
     QualityLabel,
 )
+from micro_model_agent.execution.domain.value_objects import (
+    WorkflowStatus,
+    WorkflowTrace,
+)
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 class FakeDatasetReader:
@@ -215,7 +216,7 @@ class FakeTraceDatasetExporter:
         *,
         kind: DatasetExampleKind,
         label_mode: str,
-        reviews_by_trace_id: dict[str, object],
+        reviews_by_trace_id: Mapping[str, object],
         outcome: OutcomeLabel | None = None,
         quality: QualityLabel | None = None,
         workflow_status: WorkflowStatus | None = None,

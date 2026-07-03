@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from micro_model_agent.evaluation.application.compare import (
     EvaluationComparisonResult,
-    EvaluationMetricDelta,
     compare_evaluation_results,
 )
 from micro_model_agent.shared.domain.value_objects import EvaluationResult
@@ -15,7 +16,7 @@ from micro_model_agent.shared.domain.value_objects import EvaluationResult
 def _result(
     passed: bool = True,
     score: float = 0.8,
-    metrics: dict | None = None,
+    metrics: dict[str, Any] | None = None,
 ) -> EvaluationResult:
     details = {}
     if metrics:

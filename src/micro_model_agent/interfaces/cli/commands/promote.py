@@ -6,13 +6,7 @@ from pathlib import Path
 
 import typer
 
-from micro_model_agent.promotion.application.workflows import (
-    RunPromotionGateRequest,
-    RunPromotionListRequest,
-    RunPromotionPackageOllamaRequest,
-    RunPromotionRecordRequest,
-    RunPromotionSelectRequest,
-)
+from micro_model_agent.interfaces.cli.common import _fail, _run
 from micro_model_agent.interfaces.composition import (
     build_promotion_gate_workflow,
     build_promotion_list_workflow,
@@ -20,7 +14,13 @@ from micro_model_agent.interfaces.composition import (
     build_promotion_record_workflow,
     build_promotion_select_workflow,
 )
-from micro_model_agent.interfaces.cli.common import _fail, _run
+from micro_model_agent.promotion.application.workflows import (
+    RunPromotionGateRequest,
+    RunPromotionListRequest,
+    RunPromotionPackageOllamaRequest,
+    RunPromotionRecordRequest,
+    RunPromotionSelectRequest,
+)
 
 
 def register_promote_commands(promote_app: typer.Typer) -> None:

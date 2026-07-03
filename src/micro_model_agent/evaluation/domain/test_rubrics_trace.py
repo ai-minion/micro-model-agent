@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import json
-
-import pytest
+from typing import Any
 
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
@@ -22,11 +21,9 @@ from micro_model_agent.evaluation.domain.rubrics_trace import (
     score_trace_example,
     trace_category,
     trace_id,
-    trace_patch_match,
     trace_similarity,
     trace_tool_names_from_response,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,8 +35,8 @@ def _label() -> DatasetLabel:
 
 
 def _example(
-    target: dict | None = None,
-    metadata: dict | None = None,
+    target: dict[str, Any] | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> DatasetExample:
     return DatasetExample(
         kind=DatasetExampleKind.REPAIR,
@@ -50,7 +47,7 @@ def _example(
     )
 
 
-def _resp(**kwargs) -> str:
+def _resp(**kwargs: object) -> str:
     return json.dumps(kwargs)
 
 

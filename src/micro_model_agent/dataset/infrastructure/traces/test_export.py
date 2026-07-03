@@ -2,13 +2,6 @@
 
 from __future__ import annotations
 
-from micro_model_agent.execution.domain.value_objects import (
-    ToolCall,
-    ToolResult,
-    WorkflowStatus,
-    WorkflowStep,
-    WorkflowTrace,
-)
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExampleKind,
     DatasetLabel,
@@ -20,6 +13,13 @@ from micro_model_agent.dataset.infrastructure.traces.export import (
     validate_trace_export_examples,
 )
 from micro_model_agent.dataset.infrastructure.traces.review import TraceReview
+from micro_model_agent.execution.domain.value_objects import (
+    ToolCall,
+    ToolResult,
+    WorkflowStatus,
+    WorkflowStep,
+    WorkflowTrace,
+)
 
 
 def test_trace_export_defaults_to_review_label_and_redacts_secrets() -> None:

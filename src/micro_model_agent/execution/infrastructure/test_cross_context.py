@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
-
-import pytest
 
 from micro_model_agent.dataset.application.event_handlers import OnWorkflowCompleted
 from micro_model_agent.dataset.domain.value_objects import OutcomeLabel, QualityLabel
 from micro_model_agent.dataset.infrastructure.repository import JsonlDatasetRepository
-from micro_model_agent.execution.domain.value_objects import (
-    WorkflowStatus,
-    WorkflowTrace,
-)
 from micro_model_agent.evaluation.domain.aggregate import EvaluationReport, EvaluationThreshold
 from micro_model_agent.evaluation.domain.events import ThresholdBreached, ThresholdMet
 from micro_model_agent.evaluation.infrastructure.repository import (
@@ -28,19 +24,13 @@ from micro_model_agent.promotion.infrastructure.repository import (
     JsonlModelRegistryRepository,
 )
 from micro_model_agent.training.domain.aggregate import TrainingJob
-from micro_model_agent.training.domain.events import ArtifactProduced, TrainingJobCompleted
 from micro_model_agent.training.domain.value_objects import (
-    ModelArtifact,
-    ModelArtifactKind,
     TrainingConfig,
-    TrainingRun,
-    TrainingRunKind,
-    TrainingRunStatus,
 )
 from micro_model_agent.training.infrastructure.repository import JsonlTrainingJobRepository
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -169,7 +159,8 @@ def test_model_registry_repo_get_or_create(tmp_path: Path) -> None:
 
 
 def test_model_registry_repo_save_and_reload(tmp_path: Path) -> None:
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
+
     from micro_model_agent.promotion.domain.aggregate import PromotedModel
 
     repo = JsonlModelRegistryRepository(tmp_path)
@@ -251,7 +242,6 @@ def test_on_threshold_met_records_gate_pass(tmp_path: Path) -> None:
     event = ThresholdMet(report_id=uuid4(), score=0.9)
     _run(handler.handle_met(event))
 
-    from micro_model_agent.promotion.domain.events import PromotionGatePassed
     # Gate pass was recorded — the registry now exists
     registry = _run(registry_repo.get_or_create())
     assert registry is not None

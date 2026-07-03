@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Coroutine
 from pathlib import Path
-
-import pytest
+from typing import Any
 
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
@@ -22,7 +22,7 @@ from micro_model_agent.dataset.infrastructure.validation import (
 )
 
 
-def _run(coro):  # type: ignore[return]
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -146,7 +146,7 @@ def test_export_writes_one_line_per_example(tmp_path: Path) -> None:
     out = tmp_path / "train.sft.jsonl"
     export_sft_jsonl(out, examples)
 
-    lines = [l for l in out.read_text().splitlines() if l.strip()]
+    lines = [ln for ln in out.read_text().splitlines() if ln.strip()]
     assert len(lines) == 3
 
 

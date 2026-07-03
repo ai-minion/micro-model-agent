@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 
@@ -38,7 +37,6 @@ from micro_model_agent.training.infrastructure.training_records import (
     model_artifact_to_record,
     training_run_to_record,
 )
-
 
 # ---------------------------------------------------------------------------
 # DatasetExample serialization

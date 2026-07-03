@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.evaluation.infrastructure.reports import (
     LocalEvaluationResultReader,
     LocalEvaluationResultWriter,
 )
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def test_local_evaluation_result_reader_writer_round_trips_report(tmp_path: Path) -> None:

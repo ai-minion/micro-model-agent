@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Protocol
 from uuid import UUID
 
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.execution.domain.aggregate import WorkflowExecution
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 
 
 class WorkflowRepository(Protocol):

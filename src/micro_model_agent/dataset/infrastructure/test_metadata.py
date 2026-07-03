@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 
 from micro_model_agent.dataset.domain.value_objects import (
@@ -83,7 +82,9 @@ def test_tool_profile_for_example_has_tools_used() -> None:
 
 def test_tool_profile_includes_available_tools() -> None:
     ex = _example("repo.read")
-    profile = tool_profile_for_example(ex, default_available_tools=["repo.read", "repo.write_patch"])
+    profile = tool_profile_for_example(
+        ex, default_available_tools=["repo.read", "repo.write_patch"]
+    )
     assert "available_tools" in profile
 
 

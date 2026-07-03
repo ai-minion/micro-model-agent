@@ -5,10 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from micro_model_agent.training.application.ports import (
-    ArtifactStore,
-    TrainingRunner,
-)
 from micro_model_agent.dataset.application.ports import (
     DatasetExampleReader,
     DatasetExporter,
@@ -16,14 +12,17 @@ from micro_model_agent.dataset.application.ports import (
     DatasetToolProfileSummarizer,
     DatasetValidator,
 )
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.shared.domain.event_bus import EventBus
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
+from micro_model_agent.training.application.ports import (
+    ArtifactStore,
+    TrainingRunner,
+)
 from micro_model_agent.training.domain.aggregate import TrainingJob
 from micro_model_agent.training.domain.services import TrainingConfigValidationService
 from micro_model_agent.training.domain.value_objects import (
     TrainingConfig,
     TrainingRun,
-    TrainingRunKind,
 )
 
 

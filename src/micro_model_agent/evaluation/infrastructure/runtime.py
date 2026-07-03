@@ -2,15 +2,16 @@
 
 from __future__ import annotations
 
+from micro_model_agent.dataset.infrastructure.dataset_store import LocalDatasetExampleReader
+from micro_model_agent.dataset.infrastructure.metadata import (
+    LocalDatasetToolProfileSummarizer,
+)
 from micro_model_agent.evaluation.application.workflows import (
     RunEvaluationComparisonWorkflow,
     RunSyntheticEvaluationWorkflow,
     RunTraceEvaluationWorkflow,
     RunWorkspaceStagedEvaluationWorkflow,
     RunWorkspaceStagedReviewWorkflow,
-)
-from micro_model_agent.dataset.infrastructure.metadata import (
-    LocalDatasetToolProfileSummarizer,
 )
 from micro_model_agent.evaluation.infrastructure.artifact import SyntheticEvaluationSuite
 from micro_model_agent.evaluation.infrastructure.comparison import (
@@ -33,7 +34,6 @@ from micro_model_agent.evaluation.infrastructure.workspace_staged_review import 
     LocalWorkspaceStagedReviewBuilder,
     LocalWorkspaceStagedReviewQueueWriter,
 )
-from micro_model_agent.dataset.infrastructure.dataset_store import LocalDatasetExampleReader
 from micro_model_agent.repository_ops.infrastructure.catalog import TOOL_ARGUMENT_CONTRACTS
 
 __all__ = [

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Coroutine
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from micro_model_agent.promotion.application.ports import (
@@ -620,7 +623,5 @@ def test_promotion_package_ollama_rejects_unknown_artifact_id(tmp_path: Path) ->
         raise AssertionError("expected ValueError")
 
 
-def _run(awaitable):
-    import asyncio
-
+def _run[T](awaitable: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(awaitable)

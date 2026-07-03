@@ -15,12 +15,19 @@ from micro_model_agent.dataset.application.workflows import (
     RunTraceDatasetExportRequest,
     RunTraceReviewRequest,
 )
-from micro_model_agent.execution.domain.value_objects import WorkflowStatus
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExampleKind,
     FailureMode,
     OutcomeLabel,
     QualityLabel,
+)
+from micro_model_agent.execution.domain.value_objects import WorkflowStatus
+from micro_model_agent.interfaces.cli.common import (
+    DEFAULT_TRACE_DIR,
+    _fail,
+    _format_count_distribution,
+    _format_tool_profile,
+    _run,
 )
 from micro_model_agent.interfaces.composition import (
     build_dataset_export_workflow,
@@ -30,13 +37,6 @@ from micro_model_agent.interfaces.composition import (
     build_dataset_validation_workflow,
     build_trace_dataset_export_workflow,
     build_trace_review_workflow,
-)
-from micro_model_agent.interfaces.cli.common import (
-    DEFAULT_TRACE_DIR,
-    _fail,
-    _format_count_distribution,
-    _format_tool_profile,
-    _run,
 )
 
 

@@ -11,13 +11,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from micro_model_agent.execution.domain.value_objects import (
-    ToolCall,
-    ToolResult,
-    WorkflowStatus,
-    WorkflowStep,
-    WorkflowTrace,
-)
 from micro_model_agent.execution.domain.events import (
     StepAdded,
     WorkflowCompleted,
@@ -25,6 +18,13 @@ from micro_model_agent.execution.domain.events import (
     WorkflowStarted,
 )
 from micro_model_agent.execution.domain.exceptions import InvalidTransitionError
+from micro_model_agent.execution.domain.value_objects import (
+    ToolCall,
+    ToolResult,
+    WorkflowStatus,
+    WorkflowStep,
+    WorkflowTrace,
+)
 from micro_model_agent.shared.domain.entity import Entity
 
 
@@ -152,7 +152,7 @@ class WorkflowExecution(Entity):
         )
 
     @classmethod
-    def from_snapshot(cls, trace: WorkflowTrace) -> "WorkflowExecution":
+    def from_snapshot(cls, trace: WorkflowTrace) -> WorkflowExecution:
         """Reconstruct an aggregate from a persisted WorkflowTrace snapshot."""
 
         execution = cls(goal=trace.goal, id=trace.id)

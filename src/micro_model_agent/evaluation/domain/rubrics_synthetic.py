@@ -7,7 +7,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Protocol, cast
 
-from micro_model_agent.dataset.domain.value_objects import DatasetExample, DatasetExampleKind, OutcomeLabel
+from micro_model_agent.dataset.domain.value_objects import (
+    DatasetExample,
+    DatasetExampleKind,
+    OutcomeLabel,
+)
 
 DEFAULT_TOOL_PROFILE_NAME = "coding-agent-v1"
 

@@ -6,7 +6,10 @@ import asyncio
 from pathlib import Path
 
 from micro_model_agent.dataset.domain.value_objects import DatasetLabel, OutcomeLabel, QualityLabel
-from micro_model_agent.dataset.infrastructure.traces.review import JsonlTraceReviewStore, TraceReview
+from micro_model_agent.dataset.infrastructure.traces.review import (
+    JsonlTraceReviewStore,
+    TraceReview,
+)
 
 
 def test_jsonl_trace_review_store_returns_latest_review_by_trace_id(tmp_path: Path) -> None:

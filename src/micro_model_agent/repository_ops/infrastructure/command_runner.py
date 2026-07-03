@@ -12,12 +12,12 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from micro_model_agent.repository_ops.infrastructure.paths import RepositoryRoot
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     TestRunRequest,
     TestRunResult,
     ToolError,
 )
+from micro_model_agent.repository_ops.infrastructure.paths import RepositoryRoot
 
 
 @dataclass(frozen=True, slots=True)

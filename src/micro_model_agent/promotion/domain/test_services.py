@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.promotion.domain.services import PromotionGateService
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 def test_meets_threshold_passes_when_score_ok() -> None:

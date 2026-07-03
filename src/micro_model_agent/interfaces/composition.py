@@ -2,11 +2,6 @@
 
 from __future__ import annotations
 
-from micro_model_agent.execution.infrastructure.agents_runtime import build_static_coding_workflow
-from micro_model_agent.execution.infrastructure.composition import (
-    build_coding_workflow,
-    build_event_pipeline,
-)
 from micro_model_agent.dataset.infrastructure.runtime import (
     build_dataset_export_workflow,
     build_dataset_merge_workflow,
@@ -24,6 +19,11 @@ from micro_model_agent.evaluation.infrastructure.runtime import (
     build_workspace_staged_evaluation_workflow,
     build_workspace_staged_review_workflow,
     default_evaluation_available_tools,
+)
+from micro_model_agent.execution.infrastructure.agents_runtime import build_static_coding_workflow
+from micro_model_agent.execution.infrastructure.composition import (
+    build_coding_workflow,
+    build_event_pipeline,
 )
 from micro_model_agent.execution.infrastructure.models.runtime import (
     ConfiguredToolLoopResult,

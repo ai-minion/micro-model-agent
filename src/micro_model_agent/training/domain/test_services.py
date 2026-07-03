@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 
 from micro_model_agent.training.domain.exceptions import InvalidConfigError
@@ -9,8 +11,8 @@ from micro_model_agent.training.domain.services import TrainingConfigValidationS
 from micro_model_agent.training.domain.value_objects import TrainingConfig
 
 
-def _cfg(**kwargs) -> TrainingConfig:
-    defaults = dict(base_model="tinyllama", output_dir="/tmp/out")
+def _cfg(**kwargs: Any) -> TrainingConfig:
+    defaults: dict[str, Any] = dict(base_model="tinyllama", output_dir="/tmp/out")
     defaults.update(kwargs)
     return TrainingConfig(**defaults)
 

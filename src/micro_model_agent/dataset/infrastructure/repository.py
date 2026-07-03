@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from micro_model_agent.dataset.domain.aggregate import Dataset
-from micro_model_agent.dataset.domain.value_objects import DatasetExample
 from micro_model_agent.dataset.infrastructure.dataset_store import (
-    dataset_example_from_record,
     dataset_example_to_record,
     load_dataset_examples,
 )

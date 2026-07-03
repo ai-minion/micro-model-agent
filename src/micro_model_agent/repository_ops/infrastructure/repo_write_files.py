@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from micro_model_agent.repository_ops.infrastructure.paths import RepositoryPathError, RepositoryRoot
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     RepoWriteFileResult,
     RepoWriteFilesRequest,
     RepoWriteFilesResult,
     ToolError,
+)
+from micro_model_agent.repository_ops.infrastructure.paths import (
+    RepositoryPathError,
+    RepositoryRoot,
 )
 
 

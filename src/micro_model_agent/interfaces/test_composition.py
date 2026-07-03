@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from micro_model_agent.interfaces import composition
-from micro_model_agent.execution.infrastructure import agents_runtime as agent_runtime
-from micro_model_agent.execution.infrastructure import composition as execution_composition
 from micro_model_agent.dataset.infrastructure import runtime as dataset_runtime
 from micro_model_agent.evaluation.infrastructure import runtime as evaluation_runtime
-from micro_model_agent.execution.infrastructure.models import runtime as model_runtime
+from micro_model_agent.execution.infrastructure import agents_runtime as agent_runtime
+from micro_model_agent.execution.infrastructure import composition as execution_composition
 from micro_model_agent.execution.infrastructure import persistence_runtime
+from micro_model_agent.execution.infrastructure.models import runtime as model_runtime
+from micro_model_agent.interfaces import composition
 from micro_model_agent.promotion.infrastructure import runtime as promotion_runtime
 from micro_model_agent.repository_ops.infrastructure import runtime as repository_runtime
 from micro_model_agent.repository_ops.infrastructure import tools_runtime as tool_runtime

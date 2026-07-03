@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import asyncio
-
-import pytest
-
-from micro_model_agent.execution.domain.events import WorkflowCompleted, WorkflowStarted
-from micro_model_agent.shared.domain.in_process_event_bus import InProcessEventBus
+from collections.abc import Coroutine
+from typing import Any
 from uuid import uuid4
 
+from micro_model_agent.execution.domain.events import WorkflowCompleted, WorkflowStarted
+from micro_model_agent.shared.domain.domain_event import DomainEvent
+from micro_model_agent.shared.domain.in_process_event_bus import InProcessEventBus
 
-def _run(coro):  # type: ignore[return]
+
+def _run[T](coro: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(coro)
 
 
@@ -68,7 +69,7 @@ def test_publish_all_dispatches_each_event() -> None:
         ids.append(event.goal)
 
     bus.subscribe(WorkflowStarted, handler)
-    events = [
+    events: list[DomainEvent] = [
         WorkflowStarted(execution_id=uuid4(), goal="a"),
         WorkflowStarted(execution_id=uuid4(), goal="b"),
     ]

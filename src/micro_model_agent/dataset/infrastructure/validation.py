@@ -11,7 +11,6 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from micro_model_agent.shared.domain.value_objects import EvaluationResult
 from micro_model_agent.dataset.domain.value_objects import (
     DatasetExample,
     DatasetExampleKind,
@@ -32,6 +31,7 @@ from micro_model_agent.evaluation.infrastructure.workspace_staged import (
 from micro_model_agent.repository_ops.infrastructure.catalog import (
     TOOL_ARGUMENT_CONTRACTS,
 )
+from micro_model_agent.shared.domain.value_objects import EvaluationResult
 
 
 class LocalDatasetValidator:
