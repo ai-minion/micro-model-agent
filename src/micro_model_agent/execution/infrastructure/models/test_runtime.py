@@ -73,7 +73,7 @@ def test_build_model_provider_uses_scripted_responses_without_real_model() -> No
     )
 
     assert isinstance(provider, ScriptedModelProvider)
-    assert asyncio.run(provider.complete("prompt")) == "first"
+    assert asyncio.run(provider.complete([{"role": "user", "content": "prompt"}])) == "first"
 
 
 def test_base_model_from_adapter_reads_peft_config(tmp_path: Path) -> None:

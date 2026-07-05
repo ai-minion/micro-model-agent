@@ -186,14 +186,13 @@ class WorkspaceStagedEvaluationSuite:
             },
         )
 
-    def _prompt_for_example(self, example: DatasetExample) -> str:
+    def _prompt_for_example(self, example: DatasetExample) -> list[dict[str, str]]:
         """Build the model prompt for one staged workspace example."""
 
-        return (
-            f"<|system|>\n{WORKSPACE_STAGED_SYSTEM_PROMPT}\n"
-            f"<|user|>\n{json.dumps(self._prompt_payload(example), sort_keys=True)}\n"
-            "<|assistant|>\n"
-        )
+        return [
+            {"role": "system", "content": WORKSPACE_STAGED_SYSTEM_PROMPT},
+            {"role": "user", "content": json.dumps(self._prompt_payload(example), sort_keys=True)},
+        ]
 
     def _prompt_payload(self, example: DatasetExample) -> dict[str, object]:
         return workspace_staged_prompt_payload(

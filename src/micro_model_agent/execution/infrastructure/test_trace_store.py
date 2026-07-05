@@ -85,7 +85,10 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
                 name="final_response",
                 status=WorkflowStatus.SUCCEEDED,
                 output={
-                    "prompt": "<|system|>\nrequest\n",
+                    "prompt": [
+                        {"role": "system", "content": "request"},
+                        {"role": "user", "content": "{}"},
+                    ],
                     "raw_response": '{"final_response":"done","ok":true}',
                     "response": "done",
                 },
@@ -106,7 +109,9 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
     index_record = json.loads((tmp_path / "traces" / "workflows.jsonl").read_text())
 
     assert metadata_file.exists()
-    assert (step_dir / "request.txt").read_text(encoding="utf-8") == "<|system|>\nrequest\n"
+    assert (step_dir / "request.txt").read_text(encoding="utf-8") == json.dumps(
+        [{"role": "system", "content": "request"}, {"role": "user", "content": "{}"}]
+    )
     assert (step_dir / "response.txt").read_text(encoding="utf-8") == (
         '{"final_response":"done","ok":true}'
     )
@@ -127,13 +132,19 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
 
     # Workflow events.
     events = workflow["events"]
-    assert events[0] == {"type": "prompt", "content": "<|system|>\nrequest\n"}
+    assert events[0] == {
+        "type": "prompt",
+        "content": [{"role": "system", "content": "request"}, {"role": "user", "content": "{}"}],
+    }
     assert events[1]["type"] == "model_response"
     assert events[1]["parsed_kind"] == "final_response"
 
     loaded = asyncio.run(store.get(str(trace.id)))
 
     assert loaded is not None
-    assert loaded.steps[0].output["prompt"] == "<|system|>\nrequest\n"
+    assert loaded.steps[0].output["prompt"] == [
+        {"role": "system", "content": "request"},
+        {"role": "user", "content": "{}"},
+    ]
     assert loaded.steps[0].output["raw_response"] == '{"final_response":"done","ok":true}'
     assert loaded.run_metadata == {"interface": "test"}

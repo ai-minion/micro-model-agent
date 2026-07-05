@@ -28,12 +28,11 @@ class OllamaModelProvider:
         self.options = dict(options or {})
         self.client = AsyncClient(host=base_url)
 
-    async def complete(self, prompt: str) -> str:
-        # stream=False asks Ollama for one complete response instead of chunks.
-        result = await self.client.generate(
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        # Use the chat endpoint so Ollama applies the model's own chat template.
+        result = await self.client.chat(
             model=self.model_name,
-            prompt=prompt,
-            stream=False,
+            messages=messages,
             format="json" if self.json_mode else None,
             options=self.options or None,
         )
@@ -43,10 +42,12 @@ class OllamaModelProvider:
         return response
 
     def _response_text(self, result: object) -> str | None:
-        """Read completion text from either dict-like or object-like responses."""
+        """Read completion text from either dict-like or object-like chat responses."""
 
         if isinstance(result, Mapping):
-            response = result.get("response")
+            message = result.get("message") or {}
+            response = message.get("content") if isinstance(message, Mapping) else None
         else:
-            response = getattr(result, "response", None)
+            message = getattr(result, "message", None)
+            response = getattr(message, "content", None) if message is not None else None
         return response if isinstance(response, str) else None

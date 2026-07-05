@@ -35,12 +35,12 @@ class TransformersPeftModelProvider:
         self._model: Any | None = None
         self._torch: Any | None = None
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, messages: list[dict[str, str]]) -> str:
         if self._model is None or self._tokenizer is None:
             # Loading a model can block for a while, so run it in a worker thread
             # instead of blocking the async event loop.
             await asyncio.to_thread(self._load)
-        return await asyncio.to_thread(self._generate, prompt)
+        return await asyncio.to_thread(self._generate, messages)
 
     def _load(self) -> None:
         """Load tokenizer, base model, and optional PEFT adapter lazily."""
@@ -73,12 +73,17 @@ class TransformersPeftModelProvider:
         self._tokenizer = tokenizer
         self._model = model
 
-    def _generate(self, prompt: str) -> str:
-        """Generate text for one prompt using the already-loaded model."""
+    def _generate(self, messages: list[dict[str, str]]) -> str:
+        """Generate text for one turn using the already-loaded model."""
 
         if self._torch is None or self._model is None or self._tokenizer is None:
             raise RuntimeError("model provider has not been loaded")
 
+        prompt = self._tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=True,
+        )
         inputs = self._tokenizer(prompt, return_tensors="pt")
         model_device = getattr(self._model, "device", None)
         if model_device is not None and hasattr(inputs, "to"):
@@ -109,7 +114,7 @@ class TransformersPeftModelProvider:
             raise RuntimeError("model provider has not been loaded")
         tokenizer: Any = self._tokenizer
 
-        class CompleteJsonObjectCriteria(StoppingCriteria):
+        class CompleteJsonObjectCriteria(StoppingCriteria):  # type: ignore[misc]
             def __call__(
                 self,
                 input_ids: Any,

@@ -20,7 +20,7 @@ def build_prompt(
     missing_required_tools: tuple[str, ...],
     orchestration_hints: list[str],
     steps: list[WorkflowStep],
-) -> str:
+) -> list[dict[str, str]]:
     """Build the prompt that asks the model for one JSON decision."""
 
     payload: dict[str, Any] = {
@@ -89,11 +89,10 @@ def build_prompt(
             "When the task is complete, return "
             '{"final_response":"Concise answer to the user.","ok":true}.'
         )
-    return (
-        f"<|system|>\n{system_prompt}\n"
-        f"<|user|>\n{json.dumps(payload, sort_keys=True)}\n"
-        "<|assistant|>\n"
-    )
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+    ]
 
 
 def available_tool_schemas(task: ToolLoopAgentTask) -> dict[str, Any]:

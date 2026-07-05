@@ -10,11 +10,11 @@ class StaticModelProvider:
 
     def __init__(self, completion: str) -> None:
         self.completion = completion
-        self.prompts: list[str] = []
+        self.prompts: list[list[dict[str, str]]] = []
 
-    async def complete(self, prompt: str) -> str:
-        # Store prompts so tests can assert what the workflow asked the model.
-        self.prompts.append(prompt)
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        # Store messages so tests can assert what the workflow asked the model.
+        self.prompts.append(messages)
         return self.completion
 
 
@@ -23,11 +23,11 @@ class ScriptedModelProvider:
 
     def __init__(self, completions: Sequence[str]) -> None:
         self.completions = tuple(completions)
-        self.prompts: list[str] = []
+        self.prompts: list[list[dict[str, str]]] = []
         self._next_index = 0
 
-    async def complete(self, prompt: str) -> str:
-        self.prompts.append(prompt)
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        self.prompts.append(messages)
         if self._next_index >= len(self.completions):
             raise RuntimeError("scripted model completions exhausted")
         # Return the next scripted response, then advance the cursor.

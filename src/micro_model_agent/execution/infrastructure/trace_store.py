@@ -252,8 +252,9 @@ class JsonlTraceStore:
             raw_response = output.pop("raw_response", None)
 
             # request.txt / response.txt
-            if isinstance(prompt, str):
-                (step_dir / "request.txt").write_text(prompt, encoding="utf-8")
+            if isinstance(prompt, (str, list)):
+                prompt_text = json.dumps(prompt) if isinstance(prompt, list) else prompt
+                (step_dir / "request.txt").write_text(prompt_text, encoding="utf-8")
             if isinstance(raw_response, str):
                 (step_dir / "response.txt").write_text(raw_response, encoding="utf-8")
 
@@ -329,7 +330,11 @@ class JsonlTraceStore:
             if not isinstance(output, dict):
                 continue
             if request_file.exists():
-                output["prompt"] = request_file.read_text(encoding="utf-8")
+                raw = request_file.read_text(encoding="utf-8")
+                try:
+                    output["prompt"] = json.loads(raw)
+                except json.JSONDecodeError:
+                    output["prompt"] = raw
             if response_file.exists():
                 output["raw_response"] = response_file.read_text(encoding="utf-8")
 
@@ -350,7 +355,7 @@ def _build_workflow_events(
     *,
     step_name: str,
     output: dict[str, Any],
-    prompt: str | None,
+    prompt: list[dict[str, Any]] | str | None,
     raw_response: str | None,
     tool_call: dict[str, Any] | None,
     tool_result: dict[str, Any] | None,

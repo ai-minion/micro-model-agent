@@ -141,7 +141,7 @@ class HuggingFacePeftFineTuningBackend:
         # The exported dataset is chat-shaped JSON. Convert each record into one
         # plain training string, then tokenize those strings.
         text_dataset = raw_dataset.map(
-            lambda record: {"text": _training_text_from_record(record, tokenizer.eos_token or "")}
+            lambda record: {"text": _training_text_from_record(record, tokenizer)}
         )
         tokenized_dataset = text_dataset.map(
             lambda batch: tokenizer(
@@ -401,21 +401,19 @@ def _model_load_kwargs(
     return model_kwargs
 
 
-def _training_text_from_record(record: dict[str, Any], eos_token: str) -> str:
-    """Turn one chat-style SFT record into plain text for causal LM training."""
+def _training_text_from_record(record: dict[str, Any], tokenizer: Any) -> str:
+    """Turn one chat-style SFT record into a formatted training string."""
 
     messages = record.get("messages")
     if not isinstance(messages, list):
         raise ValueError("SFT dataset records must contain a messages list")
-
-    parts: list[str] = []
-    for message in messages:
-        if not isinstance(message, dict):
-            raise ValueError("SFT dataset messages must be objects")
-        role = str(message.get("role", "user"))
-        content = str(message.get("content", ""))
-        parts.append(f"<|{role}|>\n{content}")
-    return "\n".join(parts) + eos_token
+    return str(
+        tokenizer.apply_chat_template(
+            messages,
+            tokenize=False,
+            add_generation_prompt=False,
+        )
+    )
 
 
 def _numeric_metrics(metrics: dict[str, Any]) -> dict[str, float]:

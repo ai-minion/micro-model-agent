@@ -90,7 +90,7 @@ class ToolLoopAgent:
                     steps,
                 )
                 final_response_only = force_final_response or budget_exhausted
-                prompt = build_prompt(
+                messages = build_prompt(
                     task,
                     transcript,
                     tool_calls_made=tool_calls_made,
@@ -101,7 +101,7 @@ class ToolLoopAgent:
                     steps=steps,
                 )
                 try:
-                    raw_response = await self._complete_model(task, prompt)
+                    raw_response = await self._complete_model(task, messages)
                 except TimeoutError:
                     steps.append(
                         WorkflowStep(
@@ -112,7 +112,7 @@ class ToolLoopAgent:
                                     "error": "model_completion_timeout",
                                     "timeout_seconds": task.model_timeout_seconds,
                                 },
-                                prompt=prompt,
+                                messages=messages,
                             ),
                         )
                     )
@@ -135,7 +135,7 @@ class ToolLoopAgent:
                                 "raw_response": decision.raw_response,
                                 "error": "final_response_before_tool_call",
                             },
-                            prompt=prompt,
+                            messages=messages,
                         )
                         steps.append(
                             WorkflowStep(
@@ -167,7 +167,7 @@ class ToolLoopAgent:
                                 "error": "final_response_before_required_tools",
                                 "missing_required_tools": list(missing_required),
                             },
-                            prompt=prompt,
+                            messages=messages,
                         )
                         steps.append(
                             WorkflowStep(
@@ -198,7 +198,7 @@ class ToolLoopAgent:
                                 "raw_response": decision.raw_response,
                                 "error": "final_response_before_verification",
                             },
-                            prompt=prompt,
+                            messages=messages,
                         )
                         steps.append(
                             WorkflowStep(
@@ -239,7 +239,7 @@ class ToolLoopAgent:
                                         "response": decision.response,
                                         "ok": final_ok,
                                     },
-                                    prompt=prompt,
+                                    messages=messages,
                                 ),
                             ),
                         ],
@@ -255,7 +255,7 @@ class ToolLoopAgent:
                             "raw_response": decision.raw_response,
                             "error": decision.error,
                         },
-                        prompt=prompt,
+                        messages=messages,
                     )
                     steps.append(
                         WorkflowStep(
@@ -287,7 +287,7 @@ class ToolLoopAgent:
                             "raw_response": decision.raw_response,
                             "error": "tool_call_after_budget_exhausted",
                         },
-                        prompt=prompt,
+                        messages=messages,
                     )
                     steps.append(
                         WorkflowStep(
@@ -329,7 +329,7 @@ class ToolLoopAgent:
                             "raw_response": decision.raw_response,
                             "error": "duplicate_successful_write",
                         },
-                        prompt=prompt,
+                        messages=messages,
                     )
                     steps.append(
                         WorkflowStep(
@@ -362,7 +362,7 @@ class ToolLoopAgent:
                                 "raw_response": decision.raw_response,
                                 "reason": decision.reason,
                             },
-                            prompt=prompt,
+                            messages=messages,
                         ),
                     )
                 )
@@ -431,10 +431,10 @@ class ToolLoopAgent:
             trace=trace,
         )
 
-    async def _complete_model(self, task: ToolLoopAgentTask, prompt: str) -> str:
+    async def _complete_model(self, task: ToolLoopAgentTask, messages: list[dict[str, str]]) -> str:
         """Complete one model turn, optionally bounded by a per-turn timeout."""
 
-        completion = self.model_provider.complete(prompt)
+        completion = self.model_provider.complete(messages)
         if task.model_timeout_seconds is None:
             return await completion
         return await asyncio.wait_for(completion, timeout=task.model_timeout_seconds)
@@ -459,8 +459,8 @@ class ToolLoopAgent:
         self,
         output: dict[str, Any],
         *,
-        prompt: str,
+        messages: list[dict[str, str]],
     ) -> dict[str, Any]:
-        """Attach the exact prompt and (if present) raw_response to a trace step."""
+        """Attach the turn messages and (if present) raw_response to a trace step."""
 
-        return {**output, "prompt": prompt}
+        return {**output, "prompt": messages}

@@ -248,7 +248,7 @@ def test_workspace_staged_prompt_includes_virtual_filesystem() -> None:
     )[:1]
 
     prompt = WorkspaceStagedEvaluationSuite()._prompt_for_example(example)
-    user_payload = json.loads(prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
+    user_payload = json.loads(next(m for m in prompt if m["role"] == "user")["content"])
 
     assert "workspace_files" in user_payload
     assert "src/micro_model_agent/evaluation/infrastructure/workspace_staged.py" in user_payload[

@@ -134,7 +134,7 @@ def test_behavioral_synthetic_prompt_sanitizes_repair_bad_outputs() -> None:
     )
 
     prompt = SyntheticBehaviorEvaluationSuite()._prompt_for_example(example)
-    user_payload = json.loads(prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
+    user_payload = json.loads(next(m for m in prompt if m["role"] == "user")["content"])
 
     assert user_payload["response_contract"]["type"] == "tool_call"
     assert "bad_output" not in user_payload["input"]

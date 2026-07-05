@@ -82,7 +82,7 @@ class FakeDatasetReader:
 class FakeModelProvider:
     """Minimal model provider for synthetic evaluation tests."""
 
-    async def complete(self, prompt: str) -> str:
+    async def complete(self, messages: list[dict[str, str]]) -> str:
         return '{"ok": true}'
 
 
@@ -91,10 +91,10 @@ class RecordingModelProvider:
 
     def __init__(self, responses: list[str]) -> None:
         self.responses = responses
-        self.prompts: list[str] = []
+        self.prompts: list[list[dict[str, str]]] = []
 
-    async def complete(self, prompt: str) -> str:
-        self.prompts.append(prompt)
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        self.prompts.append(messages)
         return self.responses.pop(0)
 
 
@@ -394,7 +394,7 @@ def test_synthetic_behavior_suite_calls_model_and_scores_in_application() -> Non
 
     assert raw_responses == ['{"ok": true}', '{"ok": false}']
     assert len(provider.prompts) == 2
-    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0][1]["content"]
     assert result.passed is True
     assert result.score == pytest.approx(0.75)
     assert result.details["metrics"]["correct_tool_rate"] == 1.0
@@ -429,8 +429,8 @@ def test_trace_behavior_suite_calls_model_and_scores_in_application() -> None:
     result = asyncio.run(suite.evaluate_model(provider, examples))
 
     assert raw_responses == ['{"final_response": "done"}', '{"patch": "diff"}']
-    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
-    assert '"available_tools": ["repo.search"]' in provider.prompts[1]
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0][1]["content"]
+    assert '"available_tools": ["repo.search"]' in provider.prompts[1][1]["content"]
     assert result.passed is True
     assert result.score == pytest.approx(0.625)
     assert result.details["metrics"]["tool_history_match_rate"] == 0.5
@@ -471,9 +471,9 @@ def test_workspace_staged_suite_calls_model_and_scores_in_application() -> None:
     result = asyncio.run(suite.evaluate_model(provider, examples))
 
     assert raw_responses == ['{"read_search": {}}', '{"diagnosis": {}}']
-    assert '"workspace_files": {"src/app.py": "print' in provider.prompts[0]
-    assert '"available_tools": ["repo.read"]' in provider.prompts[0]
-    assert '"available_tools": ["repo.search"]' in provider.prompts[1]
+    assert '"workspace_files": {"src/app.py": "print' in provider.prompts[0][1]["content"]
+    assert '"available_tools": ["repo.read"]' in provider.prompts[0][1]["content"]
+    assert '"available_tools": ["repo.search"]' in provider.prompts[1][1]["content"]
     assert result.passed is True
     assert result.score == pytest.approx(0.625)
     assert result.details["rubric_version"] == "v2"

@@ -53,9 +53,9 @@ def _model_response(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True)
 
 
-def _user_payload_from_prompt(prompt: str) -> dict[str, Any]:
-    payload = prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0]
-    loaded = json.loads(payload)
+def _user_payload_from_messages(messages: list[dict[str, Any]]) -> dict[str, Any]:
+    user_msg = next(m for m in messages if m["role"] == "user")
+    loaded = json.loads(user_msg["content"])
     assert isinstance(loaded, dict)
     return loaded
 
@@ -64,10 +64,10 @@ class SlowModelProvider:
     """Model provider that blocks until cancelled or timed out."""
 
     def __init__(self) -> None:
-        self.prompts: list[str] = []
+        self.prompts: list[list[dict[str, str]]] = []
 
-    async def complete(self, prompt: str) -> str:
-        self.prompts.append(prompt)
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        self.prompts.append(messages)
         await asyncio.sleep(3600)
         return _model_response({"final_response": "too late", "ok": True})
 
@@ -159,9 +159,9 @@ def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Pa
         for step in loaded_trace.steps
         if step.tool_call is not None
     ] == ["repo.read", "repo.write_patch", "test.run", "git.diff"]
-    assert "arguments_schema" in model.prompts[0]
-    assert "return 1" in model.prompts[1]
-    assert "verified" in model.prompts[3]
+    assert "arguments_schema" in model.prompts[0][1]["content"]
+    assert "return 1" in model.prompts[1][1]["content"]
+    assert "verified" in model.prompts[3][1]["content"]
     assert loaded_trace.final_output == {
         "ok": True,
         "response": result.response,
@@ -243,7 +243,7 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
 
     assert loaded_trace is not None
     # Prompts are always captured to per-step request.txt files.
-    assert loaded_trace.steps[0].output["prompt"].startswith("<|system|>")
+    assert loaded_trace.steps[0].output["prompt"][0]["role"] == "system"
     assert loaded_trace.final_output["run_metadata"] == {
         "interface": "test",
         "schema_prompt": True,
@@ -294,12 +294,12 @@ def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(
             )
         )
     )
-    second_prompt = _user_payload_from_prompt(model.prompts[1])
-    third_prompt = _user_payload_from_prompt(model.prompts[2])
+    second_prompt = _user_payload_from_messages(model.prompts[1])
+    third_prompt = _user_payload_from_messages(model.prompts[2])
 
     assert result.ok is True
     assert second_prompt["tool_history"][0]["tool_name"] == "repo.search"
-    assert "small fixed turn budget" in model.prompts[0]
+    assert "small fixed turn budget" in model.prompts[0][0]["content"]
     assert second_prompt["tool_history"][0]["arguments"] == {
         "glob": "**/*.py",
         "limit": 10,
@@ -340,7 +340,7 @@ def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
             )
         )
     )
-    second_prompt = _user_payload_from_prompt(model.prompts[1])
+    second_prompt = _user_payload_from_messages(model.prompts[1])
     history = second_prompt["tool_history"]
 
     assert history[0]["tool_name"] == "repo.read"
@@ -385,7 +385,7 @@ def test_tool_loop_agent_hints_to_write_files_after_empty_creation_searches(
             )
         )
     )
-    third_prompt = _user_payload_from_prompt(model.prompts[2])
+    third_prompt = _user_payload_from_messages(model.prompts[2])
 
     assert "orchestration_hints" in third_prompt
     assert "stop searching and use repo.write_files" in third_prompt["orchestration_hints"][0]
@@ -423,7 +423,7 @@ def test_tool_loop_agent_hints_to_write_files_after_patch_validation_failure(
             )
         )
     )
-    second_prompt = _user_payload_from_prompt(model.prompts[1])
+    second_prompt = _user_payload_from_messages(model.prompts[1])
 
     assert result.ok is False
     assert "orchestration_hints" in second_prompt
@@ -473,7 +473,7 @@ def test_tool_loop_agent_hints_to_write_files_after_write_files_validation_failu
             )
         )
     )
-    second_payload = _user_payload_from_prompt(model.prompts[1])
+    second_payload = _user_payload_from_messages(model.prompts[1])
 
     assert result.ok is True
     assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Demo\n"
@@ -632,8 +632,8 @@ def test_tool_loop_agent_allows_final_response_after_max_turn_tool_call(
     assert result.ok is True
     assert result.turns_used == 2
     assert [step.name for step in result.trace.steps] == ["tool_call_1", "final_response"]
-    first_payload = _user_payload_from_prompt(model.prompts[0])
-    final_payload = _user_payload_from_prompt(model.prompts[1])
+    first_payload = _user_payload_from_messages(model.prompts[0])
+    final_payload = _user_payload_from_messages(model.prompts[1])
     assert first_payload["loop_budget"] == {
         "turn_number": 1,
         "max_turns": 1,
@@ -807,8 +807,7 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
         "final_response",
     ]
     assert result.trace.steps[1].output["error"] == "duplicate_successful_write"
-    second_prompt = model.prompts[1]
-    second_payload = _user_payload_from_prompt(second_prompt)
+    second_payload = _user_payload_from_messages(model.prompts[1])
     assert second_payload["tool_history"][0]["arguments"] == {
         "dry_run": False,
         "file_count": 1,
@@ -817,7 +816,7 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
     assert "# Demo" not in json.dumps(second_payload["tool_history"])
     assert "README.md" not in second_payload["orchestration_hints"][0]
     assert "Do not repeat the same write" in second_payload["orchestration_hints"][0]
-    third_payload = _user_payload_from_prompt(model.prompts[2])
+    third_payload = _user_payload_from_messages(model.prompts[2])
     assert "tool_results" not in third_payload
 
 
@@ -871,7 +870,7 @@ def test_tool_loop_agent_keeps_latest_read_write_history_per_path(
             )
         )
     )
-    final_payload = _user_payload_from_prompt(model.prompts[3])
+    final_payload = _user_payload_from_messages(model.prompts[3])
 
     history = final_payload["tool_history"]
     assert [entry["tool_name"] for entry in history] == [
@@ -1030,7 +1029,7 @@ def test_tool_loop_agent_requires_verification_after_repair_write(
         "final_response",
     ]
     assert result.trace.steps[1].output["error"] == "final_response_before_verification"
-    third_payload = _user_payload_from_prompt(model.prompts[2])
+    third_payload = _user_payload_from_messages(model.prompts[2])
     assert "no test.run has passed" in third_payload["orchestration_hints"][0]
 
 
@@ -1231,7 +1230,7 @@ def test_tool_loop_agent_on_turn_fires_before_tool_execution(tmp_path: Path) -> 
                 tool_call_id=tool_call.id,
                 tool_name=tool_call.tool_name,
                 ok=True,
-                output="x = 1",
+                output={"content": "x = 1"},
             )
 
     async def on_turn(turn_number: int, max_turns: int, message: str) -> None:
@@ -1250,7 +1249,7 @@ def test_tool_loop_agent_on_turn_fires_before_tool_execution(tmp_path: Path) -> 
     )
     agent = ToolLoopAgent(
         model_provider=model,
-        tool_executor=OrderTrackingExecutor(),  # type: ignore[arg-type]
+        tool_executor=OrderTrackingExecutor(),
         trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 

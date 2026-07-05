@@ -117,7 +117,7 @@ class TraceBehaviorEvaluationSuite:
             },
         )
 
-    def _prompt_for_example(self, example: DatasetExample) -> str:
+    def _prompt_for_example(self, example: DatasetExample) -> list[dict[str, str]]:
         """Build the model prompt for one held-out trace example."""
 
         payload = {
@@ -137,11 +137,10 @@ class TraceBehaviorEvaluationSuite:
             "patch when a code change is required, "
             "and tool_history when tool calls were part of the workflow."
         )
-        return (
-            f"<|system|>\n{system_prompt}\n"
-            f"<|user|>\n{json.dumps(payload, sort_keys=True)}\n"
-            "<|assistant|>\n"
-        )
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+        ]
 
 
 class RunTraceEvaluationWorkflow:

@@ -55,8 +55,8 @@ class CodingAgentResult:
 class ModelProvider(Protocol):
     """Anything that can turn a prompt into model text."""
 
-    async def complete(self, prompt: str) -> str:
-        """Generate a model completion for a workflow prompt."""
+    async def complete(self, messages: list[dict[str, str]]) -> str:
+        """Generate a model completion from a chat messages list."""
 
 
 class ToolExecutor(Protocol):

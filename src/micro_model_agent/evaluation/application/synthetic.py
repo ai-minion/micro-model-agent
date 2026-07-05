@@ -133,7 +133,7 @@ class SyntheticBehaviorEvaluationSuite:
             },
         )
 
-    def _prompt_for_example(self, example: DatasetExample) -> str:
+    def _prompt_for_example(self, example: DatasetExample) -> list[dict[str, str]]:
         """Build the model prompt for one held-out dataset example."""
 
         payload = _synthetic_prompt_payload(
@@ -156,11 +156,10 @@ class SyntheticBehaviorEvaluationSuite:
             '"reason":"..."}. '
             "If the request is unsafe, include a refusal string."
         )
-        return (
-            f"<|system|>\n{system_prompt}\n"
-            f"<|user|>\n{json.dumps(payload, sort_keys=True)}\n"
-            "<|assistant|>\n"
-        )
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+        ]
 
 
 class RunSyntheticEvaluationWorkflow:

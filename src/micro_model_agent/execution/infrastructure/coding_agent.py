@@ -173,16 +173,23 @@ class CodingAgent:
             tool_result=tool_result,
         )
 
-    def _build_prompt(self, task: CodingAgentTask, retrieval_result: ToolResult | None) -> str:
-        """Create the text prompt sent to the model provider."""
+    def _build_prompt(
+        self, task: CodingAgentTask, retrieval_result: ToolResult | None
+    ) -> list[dict[str, str]]:
+        """Create the messages list sent to the model provider."""
 
         context = retrieval_result.output if retrieval_result else {}
-        return (
-            "Generate a unified diff for the requested coding task.\n"
-            f"Goal: {task.goal}\n"
-            f"Retrieved context: {context}\n"
-            "Return only the unified diff."
-        )
+        return [
+            {
+                "role": "user",
+                "content": (
+                    "Generate a unified diff for the requested coding task.\n"
+                    f"Goal: {task.goal}\n"
+                    f"Retrieved context: {context}\n"
+                    "Return only the unified diff."
+                ),
+            }
+        ]
 
     def _step_ok(self, step: WorkflowStep) -> bool:
         """Return true when a step has a successful tool result."""
