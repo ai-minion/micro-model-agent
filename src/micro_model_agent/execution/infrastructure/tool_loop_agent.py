@@ -27,6 +27,7 @@ from micro_model_agent.execution.domain.value_objects import (
 )
 from micro_model_agent.execution.infrastructure.tool_loop_decisions import parse_model_response
 from micro_model_agent.execution.infrastructure.tool_loop_policy import (
+    discovery_sufficient_for_final_response,
     has_unresolved_failed_tool_step,
     is_duplicate_successful_write,
     missing_required_tools,
@@ -89,7 +90,13 @@ class ToolLoopAgent:
                     tool_calls_made,
                     steps,
                 )
-                final_response_only = force_final_response or budget_exhausted
+                discovery_sufficient = discovery_sufficient_for_final_response(
+                    task,
+                    steps,
+                )
+                final_response_only = (
+                    force_final_response or budget_exhausted or discovery_sufficient
+                )
                 messages = build_prompt(
                     task,
                     transcript,
@@ -277,15 +284,15 @@ class ToolLoopAgent:
                     turn_number += 1
                     continue
 
-                if force_final_response or tool_budget_exhausted(
-                    task,
-                    tool_calls_made,
-                    steps,
-                ):
+                if final_response_only:
                     output = self._step_output(
                         {
                             "raw_response": decision.raw_response,
-                            "error": "tool_call_after_budget_exhausted",
+                            "error": (
+                                "tool_call_after_discovery_sufficient"
+                                if discovery_sufficient
+                                else "tool_call_after_budget_exhausted"
+                            ),
                         },
                         messages=messages,
                     )

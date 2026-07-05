@@ -22,6 +22,20 @@ def tool_budget_exhausted(
     )
 
 
+def discovery_sufficient_for_final_response(
+    task: ToolLoopAgentTask,
+    steps: list[WorkflowStep],
+) -> bool:
+    """Return true when a dry-run creation/proposal task has enough discovery."""
+
+    return (
+        looks_like_creation_task(task)
+        and looks_like_dry_run_or_proposal_task(task)
+        and not missing_required_tools(task, steps)
+        and any(is_successful_search_step(step) for step in steps)
+    )
+
+
 def should_allow_extra_finalization_turn(
     task: ToolLoopAgentTask,
     tool_calls_made: int,
@@ -242,6 +256,17 @@ def is_empty_search_step(step: WorkflowStep) -> bool:
     return False
 
 
+def is_successful_search_step(step: WorkflowStep) -> bool:
+    """Return true for any successful search-style call."""
+
+    return (
+        step.tool_call is not None
+        and step.tool_result is not None
+        and step.tool_result.ok
+        and step.tool_call.tool_name in {"repo.search", "repo.semantic_search"}
+    )
+
+
 def missing_required_tools(
     task: ToolLoopAgentTask,
     steps: list[WorkflowStep],
@@ -310,5 +335,25 @@ def looks_like_verification_task(task: ToolLoopAgentTask) -> bool:
             "modulenotfounderror",
             "runs successfully",
             "verification",
+        )
+    )
+
+
+def looks_like_dry_run_or_proposal_task(task: ToolLoopAgentTask) -> bool:
+    """Heuristic for tasks that ask the loop to propose rather than write."""
+
+    text = f"{task.goal} {task.context}".lower()
+    return any(
+        term in text
+        for term in (
+            "do not apply",
+            "without applying",
+            "do not change",
+            "no changes",
+            "no files changed",
+            "propose",
+            "proposal",
+            "dry-run",
+            "dry run",
         )
     )

@@ -391,6 +391,60 @@ def test_tool_loop_agent_hints_to_write_files_after_empty_creation_searches(
     assert "stop searching and use repo.write_files" in third_prompt["orchestration_hints"][0]
 
 
+def test_tool_loop_agent_stops_dry_run_creation_discovery_after_required_search(
+    tmp_path: Path,
+) -> None:
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py", "limit": 1},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.md", "limit": 1},
+                }
+            ),
+            _model_response({"final_response": "I propose creating hello.txt.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal=(
+                    "Search the empty workspace, then propose creating hello.txt. "
+                    "Do not apply changes."
+                ),
+                available_tools=("repo.search",),
+                required_tools=("repo.search",),
+                max_tool_calls=3,
+            )
+        )
+    )
+    second_prompt = _user_payload_from_messages(model.prompts[1])
+
+    assert result.ok is True
+    assert result.tool_calls_made == 1
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "final_response",
+    ]
+    assert result.trace.steps[1].output["error"] == (
+        "tool_call_after_discovery_sufficient"
+    )
+    assert second_prompt["loop_budget"]["final_response_only"] is True
+
+
 def test_tool_loop_agent_hints_to_write_files_after_patch_validation_failure(
     tmp_path: Path,
 ) -> None:
