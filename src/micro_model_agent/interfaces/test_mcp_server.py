@@ -373,6 +373,62 @@ def test_run_agent_loop_applies_extended_profile_budget(tmp_path: Path) -> None:
     }
 
 
+def test_run_agent_loop_profile_preserves_explicit_smaller_tool_cap(
+    tmp_path: Path,
+) -> None:
+    result = asyncio.run(
+        run_agent_loop(
+            goal="Search once and summarize.",
+            repository_root=str(tmp_path),
+            available_tools=["repo.search"],
+            run_profile="quick",
+            max_turns=5,
+            max_tool_calls=3,
+            scripted_responses=[
+                _model_response(
+                    {
+                        "tool_name": "repo.search",
+                        "arguments": {"glob": "**/*.py", "limit": 1},
+                    }
+                ),
+                _model_response(
+                    {
+                        "tool_name": "repo.search",
+                        "arguments": {"glob": "**/*.md", "limit": 1},
+                    }
+                ),
+                _model_response(
+                    {
+                        "tool_name": "repo.search",
+                        "arguments": {"glob": "**/*.txt", "limit": 1},
+                    }
+                ),
+                _model_response(
+                    {
+                        "tool_name": "repo.search",
+                        "arguments": {"glob": "**/*.json", "limit": 1},
+                    }
+                ),
+                _model_response({"final_response": "searched once", "ok": True}),
+            ],
+        )
+    )
+
+    assert result["ok"] is True
+    assert result["tool_calls_made"] == 3
+    assert [step["name"] for step in result["steps"]] == [
+        "tool_call_1",
+        "tool_call_2",
+        "tool_call_3",
+        "model_turn_4",
+        "final_response",
+    ]
+    assert result["steps"][3]["status"] == "failed"
+    assert result["loop_budget"]["max_turns"] == 5
+    assert result["loop_budget"]["max_tool_calls"] == 3
+    assert result["loop_budget"]["run_profile"] == "quick"
+
+
 def test_run_profile_settings_increase_by_tier() -> None:
     quick = run_profile_settings("quick")
     standard = run_profile_settings("standard")

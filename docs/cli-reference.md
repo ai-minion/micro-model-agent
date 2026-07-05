@@ -296,6 +296,10 @@ micro-agent train synthetic [OPTIONS]
 
 Training artifacts include the source dataset path, source dataset SHA-256,
 exported SFT JSONL SHA-256, and dataset tool-profile summary.
+The artifact index is stored under the training root that contains the selected
+`runs/` directory, for example `.micro_model_agent/training/artifacts/` for the
+default output path or `<tmp>/training/artifacts/` for a temporary
+`--output-dir <tmp>/training/runs/latest`.
 
 ## `micro-agent eval synthetic`
 

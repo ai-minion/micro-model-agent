@@ -172,6 +172,7 @@ Training artifacts should be recorded locally:
 ```text
 .micro_model_agent/training/
   runs/
+  artifacts/
   adapters/
   merged-models/
   reports/

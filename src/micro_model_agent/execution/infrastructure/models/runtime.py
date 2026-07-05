@@ -20,6 +20,7 @@ from micro_model_agent.execution.application.tool_loop import (
     TurnProgressCallback,
     normalized_tool_names,
     prepare_tool_loop_run,
+    run_profile_settings,
 )
 from micro_model_agent.execution.infrastructure.models.fake import ScriptedModelProvider
 from micro_model_agent.execution.infrastructure.tool_loop_agent import ToolLoopAgent
@@ -294,6 +295,61 @@ def loop_budget_response(
     return loop_budget
 
 
+def mcp_effective_profile_budget(
+    *,
+    run_profile: RunProfile | None,
+    max_turns: int,
+    max_tool_calls: int | None,
+    max_new_tokens: int,
+    max_tool_result_prompt_chars: int,
+    model_timeout_seconds: float | None,
+) -> tuple[int, int | None, int, int, float | None, RunProfile | None]:
+    """Merge MCP defaults with a profile while preserving explicit tighter caps."""
+
+    if run_profile is None:
+        return (
+            max_turns,
+            max_tool_calls,
+            max_new_tokens,
+            max_tool_result_prompt_chars,
+            model_timeout_seconds,
+            None,
+        )
+
+    settings = run_profile_settings(run_profile)
+    profile_max_turns = int(settings["max_turns"])
+    raw_profile_max_tool_calls = settings["max_tool_calls"]
+    profile_max_tool_calls = (
+        int(raw_profile_max_tool_calls)
+        if raw_profile_max_tool_calls is not None
+        else None
+    )
+
+    effective_max_turns = (
+        profile_max_turns if max_turns == 4 else min(max_turns, profile_max_turns)
+    )
+    if max_tool_calls == 1:
+        effective_max_tool_calls = profile_max_tool_calls
+    elif max_tool_calls is None or profile_max_tool_calls is None:
+        effective_max_tool_calls = max_tool_calls
+    else:
+        effective_max_tool_calls = min(max_tool_calls, profile_max_tool_calls)
+
+    raw_max_new_tokens = settings["max_new_tokens"]
+    raw_prompt_chars = settings["max_tool_result_prompt_chars"]
+    raw_timeout = settings["model_timeout_seconds"]
+    assert raw_max_new_tokens is not None
+    assert raw_prompt_chars is not None
+    return (
+        effective_max_turns,
+        effective_max_tool_calls,
+        int(raw_max_new_tokens),
+        int(raw_prompt_chars),
+        float(raw_timeout) if raw_timeout is not None else model_timeout_seconds,
+        None,
+    )
+
+
 async def run_configured_tool_loop(
     *,
     goal: str,
@@ -440,6 +496,29 @@ async def run_mcp_agent_loop(
         use_adapter=use_adapter,
         allow_missing_base_model=bool(scripted_responses),
     )
+    (
+        effective_max_turns,
+        effective_max_tool_calls,
+        effective_max_new_tokens,
+        effective_max_tool_result_prompt_chars,
+        effective_model_timeout_seconds,
+        effective_run_profile,
+    ) = mcp_effective_profile_budget(
+        run_profile=run_profile,
+        max_turns=max_turns,
+        max_tool_calls=max_tool_calls,
+        max_new_tokens=max_new_tokens,
+        max_tool_result_prompt_chars=max_tool_result_prompt_chars,
+        model_timeout_seconds=model_timeout_seconds,
+    )
+    metadata: dict[str, Any] = {
+        "interface": "mcp",
+        "apply_patches": apply_patches,
+        "allowed_test_commands": list(test_commands),
+        "model": model_settings,
+    }
+    if run_profile is not None:
+        metadata["run_profile"] = run_profile
     configured = await run_configured_tool_loop(
         goal=goal,
         repository_root=repository,
@@ -451,17 +530,17 @@ async def run_mcp_agent_loop(
             else None,
             selected_promotion_artifact_id=model_settings["selected_promotion_artifact_id"],
         ),
-        max_new_tokens=max_new_tokens,
+        max_new_tokens=effective_max_new_tokens,
         scripted_responses=scripted_responses,
         offline=offline,
         available_tools=loop_tool_names,
         required_tools=loop_required_tool_names,
         default_tools=default_available_tools,
-        max_turns=max_turns,
-        max_tool_calls=max_tool_calls,
-        max_tool_result_prompt_chars=max_tool_result_prompt_chars,
-        model_timeout_seconds=model_timeout_seconds,
-        run_profile=run_profile,
+        max_turns=effective_max_turns,
+        max_tool_calls=effective_max_tool_calls,
+        max_tool_result_prompt_chars=effective_max_tool_result_prompt_chars,
+        model_timeout_seconds=effective_model_timeout_seconds,
+        run_profile=effective_run_profile,
         context=context,
         schema_prompt=schema_prompt,
         capture_prompts=capture_prompts,
@@ -472,12 +551,7 @@ async def run_mcp_agent_loop(
             apply_patches=apply_patches,
         ),
         on_turn=on_turn,
-        run_metadata={
-            "interface": "mcp",
-            "apply_patches": apply_patches,
-            "allowed_test_commands": list(test_commands),
-            "model": model_settings,
-        },
+        run_metadata=metadata,
     )
     result = configured.result
     if comparison_session_id:

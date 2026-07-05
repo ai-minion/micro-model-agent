@@ -50,7 +50,10 @@ def train_synthetic(
 
     _load_dotenv()
 
-    workflow = build_synthetic_training_workflow(dry_run=dry_run)
+    workflow = build_synthetic_training_workflow(
+        dry_run=dry_run,
+        artifact_store_root=_artifact_store_root_for_output_dir(output_dir),
+    )
     result = _run(
         workflow.run(
             RunSyntheticTrainingRequest(
@@ -82,3 +85,11 @@ def train_synthetic(
     )
     if run.status.value == "failed":
         raise typer.Exit(1)
+
+
+def _artifact_store_root_for_output_dir(output_dir: Path) -> Path:
+    """Place the artifact index beside the selected training-runs directory."""
+
+    if output_dir.parent.name == "runs":
+        return output_dir.parent.parent
+    return output_dir.parent

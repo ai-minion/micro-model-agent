@@ -261,6 +261,7 @@ def test_cli_synthetic_dataset_train_and_eval_loop(tmp_path: Path) -> None:
     assert train.exit_code == 0, train.output
     assert (run_dir / "run.json").exists()
     assert (run_dir / "artifact.json").exists()
+    assert any((tmp_path / "training" / "artifacts").glob("*.json"))
     artifact = json.loads((run_dir / "artifact.json").read_text(encoding="utf-8"))
     assert "repo.search" in artifact["metadata"]["dataset_tool_profile"]["available_tools"]
     assert len(artifact["metadata"]["source_dataset_sha256"]) == 64

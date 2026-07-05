@@ -423,6 +423,17 @@ Outputs are written under the run directory:
   evaluation.json
 ```
 
+The artifact index is written beside the selected `runs/` directory:
+
+```text
+.micro_model_agent/training/artifacts/<artifact-id>.json
+```
+
+When `--output-dir` points at a temporary test directory such as
+`/tmp/.../training/runs/latest`, the artifact index follows that temporary
+training root instead of writing to the repository's `.micro_model_agent`
+folder.
+
 The real runner trains a PEFT adapter using Hugging Face Transformers, PEFT, and
 the exported SFT JSONL. It saves adapter and tokenizer files to `adapter/`.
 Training metadata records the source dataset path, source dataset SHA-256,
