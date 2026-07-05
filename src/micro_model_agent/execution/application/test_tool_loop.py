@@ -141,3 +141,32 @@ def test_prepare_tool_loop_run_rejects_unknown_tools() -> None:
         assert str(exc) == "unknown built-in tool: unknown.tool"
     else:
         raise AssertionError("expected unknown tool to be rejected")
+
+
+def test_run_tool_loop_workflow_threads_on_turn_to_task() -> None:
+    runner = FakeToolLoopRunner()
+    workflow = RunToolLoopWorkflow(runner)
+
+    async def on_turn(turn_number: int, max_turns: int, message: str) -> None:
+        pass
+
+    asyncio.run(
+        workflow.run(
+            RunToolLoopRequest(
+                goal="Inspect the repo.",
+                on_turn=on_turn,
+            )
+        )
+    )
+
+    task = runner.tasks[0]
+    assert task.on_turn is on_turn
+
+
+def test_run_tool_loop_workflow_threads_none_on_turn_when_absent() -> None:
+    runner = FakeToolLoopRunner()
+    workflow = RunToolLoopWorkflow(runner)
+
+    asyncio.run(workflow.run(RunToolLoopRequest(goal="Inspect the repo.")))
+
+    assert runner.tasks[0].on_turn is None

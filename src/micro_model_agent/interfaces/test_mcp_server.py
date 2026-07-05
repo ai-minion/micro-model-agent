@@ -6,8 +6,12 @@ import asyncio
 import json
 import subprocess
 from pathlib import Path
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
 
 from micro_model_agent.execution.application.tool_loop import run_profile_settings
+from micro_model_agent.interfaces.mcp.tools.registry import register_mcp_tools
 from micro_model_agent.interfaces.mcp.tools.run_loop import resolve_model_settings
 from micro_model_agent.interfaces.mcp.workspace import path_from_user_input
 from micro_model_agent.interfaces.mcp_server import (
@@ -769,3 +773,26 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
     assert read_data["trace"]["final_output"]["response"] == "status is central"  # type: ignore[index]
     assert (registry_root / ".traces" / "workflows.jsonl").exists()
     assert not (workspace_root / ".traces" / "workflows.jsonl").exists()
+
+
+def test_mcp_run_loop_wires_on_turn_callable_to_handler(tmp_path: Path) -> None:
+    """When micro_agent_run_loop runs through the server, on_turn is a callable."""
+    received: list[Any] = []
+
+    async def mock_handler(**kwargs: Any) -> dict[str, Any]:
+        received.append(kwargs.get("on_turn"))
+        return {"ok": True, "response": "done"}
+
+    server = FastMCP("test")
+    register_mcp_tools(
+        server,
+        default_repository_root=str(tmp_path),
+        expose_debug_tools=False,
+        expose_init_tool=False,
+        run_agent_loop_handler=mock_handler,
+    )
+
+    asyncio.run(server.call_tool("micro_agent_run_loop", {"goal": "test goal"}))
+
+    assert len(received) == 1
+    assert callable(received[0])

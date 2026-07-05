@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 from uuid import UUID
@@ -22,6 +22,7 @@ DEFAULT_TOOL_NAMES: tuple[str, ...] = (
 type RunProfile = Literal["quick", "standard", "extended"]
 type PromptContext = dict[str, Any] | str
 type ToolSchemaBuilder = Callable[[tuple[str, ...]], dict[str, Any]]
+type TurnProgressCallback = Callable[[int, int, str], Awaitable[None]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,7 @@ class ToolLoopAgentTask:
     capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
     model_timeout_seconds: float | None = None
+    on_turn: TurnProgressCallback | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +82,7 @@ class RunToolLoopRequest:
     capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
     model_timeout_seconds: float | None = None
+    on_turn: TurnProgressCallback | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -329,6 +332,7 @@ class RunToolLoopWorkflow:
                 capture_prompts=request.capture_prompts,
                 run_metadata=request.run_metadata,
                 model_timeout_seconds=request.model_timeout_seconds,
+                on_turn=request.on_turn,
             )
         )
         return RunToolLoopResult(

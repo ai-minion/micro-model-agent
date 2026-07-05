@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +17,7 @@ from micro_model_agent.execution.application.tool_loop import (
     RunToolLoopResult,
     RunToolLoopWorkflow,
     ToolLoopBudget,
+    TurnProgressCallback,
     normalized_tool_names,
     prepare_tool_loop_run,
 )
@@ -322,6 +323,7 @@ async def run_configured_tool_loop(
     trace_repository_root: str | Path | None = None,
     executor_wrapper: Callable[[ToolExecutor], ToolExecutor] | None = None,
     run_metadata: dict[str, Any] | None = None,
+    on_turn: TurnProgressCallback | None = None,
 ) -> ConfiguredToolLoopResult:
     """Build and run the standard model-driven tool loop."""
 
@@ -373,7 +375,8 @@ async def run_configured_tool_loop(
         trace_store=workflow_trace_store(trace_repository_root or repository),
     )
     workflow = RunToolLoopWorkflow(agent)
-    result = await workflow.run(prepared.request)
+    request = replace(prepared.request, on_turn=on_turn) if on_turn is not None else prepared.request
+    result = await workflow.run(request)
 
     return ConfiguredToolLoopResult(
         result=result,
@@ -415,6 +418,7 @@ async def run_mcp_agent_loop(
     default_available_tools: tuple[str, ...] = DEFAULT_TOOL_NAMES,
     tool_aliases: Mapping[str, Sequence[str]] | None = None,
     required_tool_aliases: Mapping[str, Sequence[str]] | None = None,
+    on_turn: TurnProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Run the MCP-flavored model tool loop and return its response record."""
 
@@ -473,6 +477,7 @@ async def run_mcp_agent_loop(
             executor,
             apply_patches=apply_patches,
         ),
+        on_turn=on_turn,
         run_metadata={
             "interface": "mcp",
             "apply_patches": apply_patches,

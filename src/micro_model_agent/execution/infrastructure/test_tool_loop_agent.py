@@ -1174,3 +1174,131 @@ def test_tool_loop_agent_requires_specific_tools_before_final_response(tmp_path:
         "final_response",
     ]
     assert result.trace.steps[1].output["error"] == "final_response_before_required_tools"
+
+
+def test_tool_loop_agent_fires_on_turn_at_start_of_each_turn(tmp_path: Path) -> None:
+    (tmp_path / "app.py").write_text("def value():\n    return 1\n", encoding="utf-8")
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                    "reason": "read file",
+                }
+            ),
+            _model_response({"final_response": "value() returns 1.", "ok": True}),
+        ]
+    )
+    trace_store = JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl")
+    executor = BuiltinToolExecutor(tmp_path, allowed_test_commands={})
+    agent = ToolLoopAgent(model_provider=model, tool_executor=executor, trace_store=trace_store)
+
+    on_turn_calls: list[tuple[int, int, str]] = []
+
+    async def on_turn(turn_number: int, max_turns: int, message: str) -> None:
+        on_turn_calls.append((turn_number, max_turns, message))
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py",
+                available_tools=("repo.read",),
+                max_turns=4,
+                on_turn=on_turn,
+            )
+        )
+    )
+
+    assert result.ok is True
+    thinking_calls = [(t, m) for t, m, msg in on_turn_calls if msg == "thinking"]
+    tool_calls_fired = [(t, m, msg) for t, m, msg in on_turn_calls if msg != "thinking"]
+    # "thinking" fires once per turn: turn 1 (tool call) and turn 2 (final response)
+    assert thinking_calls == [(1, 4), (2, 4)]
+    # tool name fires once, before the tool executes
+    assert tool_calls_fired == [(1, 4, "repo.read")]
+
+
+def test_tool_loop_agent_on_turn_fires_before_tool_execution(tmp_path: Path) -> None:
+    order: list[str] = []
+
+    class OrderTrackingExecutor:
+        async def execute(self, tool_call: Any) -> Any:
+            order.append(f"execute:{tool_call.tool_name}")
+            from micro_model_agent.execution.domain.value_objects import ToolResult
+
+            return ToolResult(
+                tool_call_id=tool_call.id,
+                tool_name=tool_call.tool_name,
+                ok=True,
+                output="x = 1",
+            )
+
+    async def on_turn(turn_number: int, max_turns: int, message: str) -> None:
+        order.append(f"on_turn:{message}")
+
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "done", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=OrderTrackingExecutor(),  # type: ignore[arg-type]
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read x",
+                available_tools=("repo.read",),
+                max_turns=4,
+                on_turn=on_turn,
+            )
+        )
+    )
+
+    # on_turn with the tool name must be recorded strictly before execute
+    tool_on_turn_idx = order.index("on_turn:repo.read")
+    execute_idx = order.index("execute:repo.read")
+    assert tool_on_turn_idx < execute_idx
+
+
+def test_tool_loop_agent_propagates_on_turn_exception(tmp_path: Path) -> None:
+    """The agent does not swallow callback exceptions; only the MCP layer does."""
+    (tmp_path / "app.py").write_text("x = 1\n", encoding="utf-8")
+
+    async def failing_on_turn(turn_number: int, max_turns: int, message: str) -> None:
+        raise RuntimeError("callback failure")
+
+    model = ScriptedModelProvider(
+        [_model_response({"final_response": "done", "ok": True})]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    try:
+        asyncio.run(
+            agent.run(
+                ToolLoopAgentTask(
+                    goal="Read x",
+                    available_tools=("repo.read",),
+                    require_tool_call=False,
+                    on_turn=failing_on_turn,
+                )
+            )
+        )
+    except RuntimeError as exc:
+        assert str(exc) == "callback failure"
+    else:
+        raise AssertionError("expected on_turn exception to propagate")

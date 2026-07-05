@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,7 @@ async def run_agent_loop(
     comparison_session_id: str | None = None,
     comparison_repository_root: str | None = None,
     offline: bool = True,
+    on_turn: Callable[[int, int, str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
 
@@ -96,6 +98,7 @@ async def run_agent_loop(
         default_available_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
         tool_aliases=COMPAT_TOOL_ALIASES,
         required_tool_aliases=COMPAT_REQUIRED_TOOL_ALIASES,
+        on_turn=on_turn,
     )
 
 

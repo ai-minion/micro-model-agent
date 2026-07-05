@@ -6,7 +6,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError as FastMcpToolError
 
 from micro_model_agent.interfaces.mcp.compat import (
@@ -107,12 +107,22 @@ def register_mcp_tools(
         test_command_args: list[str] | None = None,
         comparison_session_id: str | None = None,
         offline: bool = True,
+        ctx: Context | None = None,
     ) -> dict[str, Any]:
         resolved_repository_root = await resolve_workspace_root(
             registry_root=Path(default_repository_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
+
+        async def _on_turn(turn_number: int, max_turns: int, message: str) -> None:
+            label = f"[turn {turn_number}/{max_turns}] {message}" if message else f"[turn {turn_number}/{max_turns}]"
+            try:
+                await ctx.report_progress(turn_number - 1, max_turns, message=label)
+                await ctx.info(label)
+            except Exception:
+                pass
+
         return await run_agent_loop_handler(
             goal=goal,
             repository_root=str(resolved_repository_root),
@@ -137,6 +147,7 @@ def register_mcp_tools(
             comparison_session_id=comparison_session_id,
             comparison_repository_root=default_repository_root,
             offline=offline,
+            on_turn=_on_turn if ctx is not None else None,
         )
 
     @server.tool(

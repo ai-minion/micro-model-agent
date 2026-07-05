@@ -79,6 +79,8 @@ class ToolLoopAgent:
                 not used_extra_finalization_turn
                 and should_allow_extra_finalization_turn(task, tool_calls_made, steps)
             ):
+                if task.on_turn:
+                    await task.on_turn(turn_number, task.max_turns, "thinking")
                 force_final_response = turn_number > task.max_turns
                 if force_final_response:
                     used_extra_finalization_turn = True
@@ -342,6 +344,8 @@ class ToolLoopAgent:
                     turn_number += 1
                     continue
                 else:
+                    if task.on_turn:
+                        await task.on_turn(turn_number, task.max_turns, tool_call.tool_name)
                     tool_result = await self.tool_executor.execute(tool_call)
 
                 tool_calls_made += 1
