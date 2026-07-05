@@ -19,4 +19,6 @@ def test_agent_runtime_builds_static_coding_workflow(tmp_path: Path) -> None:
 
     assert isinstance(workflow, RunAgentWorkflow)
     assert isinstance(workflow.agent.trace_store, JsonlTraceStore)
-    assert workflow.agent.trace_store.path == tmp_path / ".traces" / "workflows.jsonl"
+    assert workflow.agent.trace_store.path == (
+        tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    )

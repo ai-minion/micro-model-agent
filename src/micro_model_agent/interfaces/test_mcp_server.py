@@ -253,6 +253,20 @@ def test_mcp_model_settings_can_disable_adapter_for_base_collection(
     assert settings["adapter_path"] is None
 
 
+def test_mcp_model_settings_use_base_model_when_adapter_is_unset(
+    tmp_path: Path,
+) -> None:
+    settings = resolve_model_settings(
+        repository_root=tmp_path,
+        adapter_path=None,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        use_adapter=True,
+    )
+
+    assert settings["base_model"] == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert settings["adapter_path"] is None
+
+
 def test_list_builtin_tools_marks_safe_defaults() -> None:
     result = list_builtin_tools()
 
@@ -546,7 +560,15 @@ def test_run_agent_loop_adds_default_pytest_command_when_tests_allowed(
         read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
     )
     first_prompt = trace["trace"]["steps"][0]["output"]["prompt"]
-    payload = json.loads(first_prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0])
+    if isinstance(first_prompt, list):
+        user_message = next(
+            message for message in first_prompt if message.get("role") == "user"
+        )
+        payload = json.loads(user_message["content"])
+    else:
+        payload = json.loads(
+            first_prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0]
+        )
 
     assert result["ok"] is True
     assert trace["trace"]["final_output"]["run_metadata"]["allowed_test_commands"] == ["pytest"]
@@ -696,7 +718,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
             actual_summary="Codex read README.md and saw status central.",
         )
     )
-    central_workflow_trace = registry_root / ".traces" / "workflows.jsonl"
+    central_workflow_trace = registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     reviewed = asyncio.run(
         review_comparison_trace(
             session_id=session_id,
@@ -708,13 +730,15 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     )
 
     assert (
-        registry_root / ".traces" / "comparison_sessions.jsonl"
+        registry_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
     assert not (
-        workspace_root / ".traces" / "comparison_sessions.jsonl"
+        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
     assert central_workflow_trace.exists()
-    assert not (workspace_root / ".traces" / "workflows.jsonl").exists()
+    assert not (
+        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
     assert model_result["trace_id"] in stopped["session"]["local_trace_ids"]
     assert reviewed["comparison"]["local_model"][0]["response"] == "status is central"
 
@@ -771,8 +795,12 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
 
     assert read_data["ok"] is True  # type: ignore[index]
     assert read_data["trace"]["final_output"]["response"] == "status is central"  # type: ignore[index]
-    assert (registry_root / ".traces" / "workflows.jsonl").exists()
-    assert not (workspace_root / ".traces" / "workflows.jsonl").exists()
+    assert (
+        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
+    assert not (
+        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
 
 
 def test_mcp_run_loop_wires_on_turn_callable_to_handler(tmp_path: Path) -> None:

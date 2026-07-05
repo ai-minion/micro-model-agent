@@ -148,7 +148,7 @@ availability and the tool arguments to keep writes deliberate.
 Every `task` and `loop` run writes a workflow trace to:
 
 ```text
-.traces/workflows.jsonl
+.micro_model_agent/traces/workflows.jsonl
 ```
 
 The `task` command can turn a completed workflow trace into a labeled dataset
@@ -175,7 +175,7 @@ Export stored traces into reviewable dataset examples:
 
 ```bash
 uv run micro-agent dataset export-traces \
-  --trace-path .traces/workflows.jsonl \
+  --trace-path .micro_model_agent/traces/workflows.jsonl \
   --output .micro_model_agent/datasets/trace_examples.jsonl
 ```
 
@@ -585,7 +585,7 @@ Use this progression:
 
 2. Run real workflows and keep traces.
    Use `loop` for model-driven tool use and `task` for static patch workflows.
-   Every run creates trace records under `.traces/`.
+   Every run creates trace records under `.micro_model_agent/traces/`.
 
 3. Label outcomes.
    Good training data needs labels: `accepted`, `rejected`, `partial`,

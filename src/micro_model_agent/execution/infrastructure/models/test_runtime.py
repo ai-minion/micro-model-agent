@@ -65,6 +65,20 @@ def test_resolve_model_options_uses_selected_repository_config(tmp_path: Path) -
     assert options.selected_promotion_artifact_id == "00000000-0000-4000-8000-000000000001"
 
 
+def test_resolve_model_options_does_not_use_default_adapter_fallback(
+    tmp_path: Path,
+) -> None:
+    options = resolve_model_options(
+        repository_root=tmp_path,
+        base_model="Qwen/Qwen2.5-Coder-7B-Instruct",
+        adapter_path=None,
+        env={},
+    )
+
+    assert options.base_model == "Qwen/Qwen2.5-Coder-7B-Instruct"
+    assert options.adapter_path is None
+
+
 def test_build_model_provider_uses_scripted_responses_without_real_model() -> None:
     provider = build_model_provider(
         options=RuntimeModelOptions(model=None, base_model=None, adapter_path=None),

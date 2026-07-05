@@ -235,7 +235,7 @@ Suggested starting path:
    - valid test.run and git.diff request schemas
 2. Export with:
    uv run micro-agent dataset export-traces \
-     --trace-path .traces/workflows.jsonl \
+     --trace-path .micro_model_agent/traces/workflows.jsonl \
      --output .micro_model_agent/datasets/<new_review_file>.jsonl \
      --kind evaluation \
      --workflow-status succeeded \

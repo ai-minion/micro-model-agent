@@ -25,10 +25,12 @@ from micro_model_agent.execution.infrastructure.persistence_runtime import (
 
 
 def test_runtime_helpers_use_standard_trace_and_registry_paths(tmp_path: Path) -> None:
-    assert trace_dir(tmp_path) == tmp_path / ".traces"
-    assert workflow_trace_store(tmp_path).path == tmp_path / ".traces" / "workflows.jsonl"
+    assert trace_dir(tmp_path) == tmp_path / ".micro_model_agent" / "traces"
+    assert workflow_trace_store(tmp_path).path == (
+        tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    )
     assert comparison_trace_store(tmp_path).path == (
-        tmp_path / ".traces" / "comparison_sessions.jsonl"
+        tmp_path / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     )
     assert workspace_registry(tmp_path).path == (
         tmp_path / ".micro_model_agent" / "workspaces.jsonl"

@@ -1048,7 +1048,9 @@ def test_cli_loop_runs_scripted_tool_call_and_final_response(tmp_path: Path) -> 
     assert result.exit_code == 0, result.output
     assert "app.py value() returns 1." in result.output
     assert "Tool calls: 1" in result.output
-    assert (tmp_path / ".traces" / "workflows.jsonl").exists()
+    assert (
+        tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
 
 
 def test_cli_dataset_export_traces_writes_review_examples(tmp_path: Path) -> None:
@@ -1074,7 +1076,7 @@ def test_cli_dataset_export_traces_writes_review_examples(tmp_path: Path) -> Non
         ),
         encoding="utf-8",
     )
-    trace_path = tmp_path / ".traces" / "workflows.jsonl"
+    trace_path = tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
     dataset_path = tmp_path / ".micro_model_agent" / "datasets" / "trace_examples.jsonl"
 
     loop = runner.invoke(

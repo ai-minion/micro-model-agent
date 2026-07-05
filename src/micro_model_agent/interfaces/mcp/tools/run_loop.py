@@ -24,7 +24,6 @@ from micro_model_agent.interfaces.composition import (
 from micro_model_agent.interfaces.mcp.compat import (
     COMPAT_REQUIRED_TOOL_ALIASES,
     COMPAT_TOOL_ALIASES,
-    DEFAULT_7B_ADAPTER_PATH,
     DEFAULT_MCP_AVAILABLE_TOOLS,
     RunProfile,
 )
@@ -94,7 +93,6 @@ async def run_agent_loop(
         comparison_session_id=comparison_session_id,
         comparison_repository_root=comparison_repository_root,
         offline=offline,
-        default_adapter_path=DEFAULT_7B_ADAPTER_PATH,
         default_available_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
         tool_aliases=COMPAT_TOOL_ALIASES,
         required_tool_aliases=COMPAT_REQUIRED_TOOL_ALIASES,
@@ -146,7 +144,6 @@ def resolve_model_settings(
         adapter_path=adapter_path,
         base_model=base_model,
         use_adapter=use_adapter,
-        default_adapter_path=DEFAULT_7B_ADAPTER_PATH,
         allow_missing_base_model=allow_missing_base_model,
     )
 

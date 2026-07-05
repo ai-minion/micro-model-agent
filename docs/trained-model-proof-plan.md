@@ -498,7 +498,7 @@ final-response wording, not tool-history reconstruction.
 
 The next ablation replaced synthetic data as aggressively as the available real
 trace pool allowed. Eighteen succeeded real workflow traces with at least one
-tool call were exported from `.traces/workflows.jsonl` using
+tool call were exported from `.micro_model_agent/traces/workflows.jsonl` using
 `dataset export-traces --kind evaluation --workflow-status succeeded
 --require-tool-call`, reviewed, and relabeled as accepted/good examples. A
 real-trace-only 7B adapter was trained at

@@ -246,7 +246,7 @@ Local generated data should be ignored by Git:
 Suggested generated files:
 
 ```text
-.traces/workflows.jsonl
+.micro_model_agent/traces/workflows.jsonl
 .micro_model_agent/datasets/tool_use.jsonl
 .micro_model_agent/datasets/documentation_grounded.jsonl
 .micro_model_agent/datasets/codebase_grounded.jsonl

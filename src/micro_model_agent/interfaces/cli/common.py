@@ -15,7 +15,7 @@ from micro_model_agent.interfaces.composition import (
     select_evaluation_model,
 )
 
-DEFAULT_TRACE_DIR = Path(".traces")
+DEFAULT_TRACE_DIR = Path(".micro_model_agent/traces")
 
 
 def _run[T](coro: Coroutine[Any, Any, T]) -> T:

@@ -39,7 +39,7 @@ __all__ = [
     "workspace_registry",
 ]
 
-DEFAULT_TRACE_DIR = Path(".traces")
+DEFAULT_TRACE_DIR = Path(".micro_model_agent/traces")
 
 
 def trace_dir(

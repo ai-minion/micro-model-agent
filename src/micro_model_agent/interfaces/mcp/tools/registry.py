@@ -75,7 +75,8 @@ def register_mcp_tools(
         name="micro_agent_run_loop",
         description=(
             "Ask the local MicroModelAgent model to orchestrate repository tool calls and "
-            "return a final response. Defaults target the cached Qwen 7B PEFT adapter. "
+            "return a final response. Defaults use configured model settings and run "
+            "without a fine-tuning adapter when no adapter path is configured. "
             "Each run has a limited turn/tool budget; use run_profile='quick', 'standard', "
             "or 'extended' to choose the size, and split broad tasks into multiple focused "
             "loops instead of asking one loop to build, repair, test, and document everything. "

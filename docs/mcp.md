@@ -53,17 +53,15 @@ Create `.vscode/mcp.json` in this repository:
 }
 ```
 
-This launches the server inside WSL so it can use direct Transformers adapter
-inference. Model resolution uses this order:
+This launches the server inside WSL so it can use direct Transformers inference.
+Model resolution uses this order:
 
 1. `micro_agent_run_loop` `base_model` / `adapter_path` arguments.
 2. `MICRO_MODEL_AGENT_BASE_MODEL` / `MICRO_MODEL_AGENT_ADAPTER_PATH`.
 3. The selected promoted adapter in `.micro_model_agent/config.json`.
-4. The legacy default local PEFT adapter path:
 
-```text
-.micro_model_agent/training/runs/qwen-coder-7b-tool-schema-20260613-205520/adapter
-```
+If no adapter path is configured, the loop runs the resolved base model without
+fine-tuning. A missing adapter is not replaced with a hard-coded fallback.
 
 Select a promoted adapter for the repository before starting MCP:
 
@@ -187,10 +185,10 @@ the canonical tools needed for the task, such as `repo.search`, `repo.read`,
 This stores workflow traces under:
 
 ```text
-.traces/workflows.jsonl
-.traces/<trace-id>/trace.json
-.traces/<trace-id>/raw_io/<request-step-id>/request
-.traces/<trace-id>/raw_io/<request-step-id>/response
+.micro_model_agent/traces/workflows.jsonl
+.micro_model_agent/traces/<trace-id>/metadata.json
+.micro_model_agent/traces/<trace-id>/<request-step-id>/request.txt
+.micro_model_agent/traces/<trace-id>/<request-step-id>/response.txt
 ```
 
 Review labels are stored separately from the raw trace log:
@@ -270,7 +268,7 @@ that was actually evaluated. This keeps comparison evidence centralized even
 when a task runs in a temporary or registered workspace.
 
 ```text
-.traces/comparison_sessions.jsonl
+.micro_model_agent/traces/comparison_sessions.jsonl
 ```
 
 ## MCP Prompts

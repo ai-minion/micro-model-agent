@@ -121,7 +121,6 @@ def resolve_model_options(
     base_model: str | None = None,
     adapter_path: str | Path | None = None,
     use_adapter: bool = True,
-    default_adapter_path: str | Path | None = None,
     env: Mapping[str, str] | None = None,
 ) -> RuntimeModelOptions:
     """Resolve model settings from explicit args, environment, repository config."""
@@ -138,7 +137,6 @@ def resolve_model_options(
             path_or_none(adapter_path)
             or path_env(environment, "MICRO_MODEL_AGENT_ADAPTER_PATH")
             or path_config_value(model_config, "adapter_path")
-            or path_or_none(default_adapter_path)
         )
     resolved_base_model = (
         base_model
@@ -229,7 +227,6 @@ def resolve_mcp_model_settings(
     adapter_path: str | None,
     base_model: str | None,
     use_adapter: bool,
-    default_adapter_path: str | Path | None,
     allow_missing_base_model: bool = False,
 ) -> dict[str, str | None]:
     """Resolve MCP model settings from explicit args, repository config, and defaults."""
@@ -239,7 +236,6 @@ def resolve_mcp_model_settings(
         base_model=base_model,
         adapter_path=adapter_path,
         use_adapter=use_adapter,
-        default_adapter_path=default_adapter_path,
     )
     resolved_base_model = options.base_model
     if resolved_base_model is None and not allow_missing_base_model:
@@ -414,7 +410,6 @@ async def run_mcp_agent_loop(
     comparison_session_id: str | None = None,
     comparison_repository_root: str | Path | None = None,
     offline: bool = True,
-    default_adapter_path: str | Path | None = None,
     default_available_tools: tuple[str, ...] = DEFAULT_TOOL_NAMES,
     tool_aliases: Mapping[str, Sequence[str]] | None = None,
     required_tool_aliases: Mapping[str, Sequence[str]] | None = None,
@@ -443,7 +438,6 @@ async def run_mcp_agent_loop(
         adapter_path=adapter_path,
         base_model=base_model,
         use_adapter=use_adapter,
-        default_adapter_path=default_adapter_path,
         allow_missing_base_model=bool(scripted_responses),
     )
     configured = await run_configured_tool_loop(
