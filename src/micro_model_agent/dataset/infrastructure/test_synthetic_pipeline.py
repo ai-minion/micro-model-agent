@@ -80,7 +80,7 @@ def test_dataset_validator_accepts_all_committed_seed_templates() -> None:
     result = asyncio.run(LocalDatasetValidator().validate(examples))
 
     assert result.passed is True
-    assert result.details["example_count"] == 40
+    assert result.details["example_count"] == 81
     assert result.details["category_counts"]["diff_inspection"] == 1
     assert result.details["category_counts"]["patch_preview"] == 1
     assert result.details["category_counts"]["prose_patch_repair"] == 1
@@ -106,8 +106,8 @@ def test_dataset_validator_accepts_all_committed_seed_templates() -> None:
     assert result.details["category_counts"]["write_patch_request_schema_contrast"] == 1
     assert result.details["category_counts"]["trace_patch_training"] == 1
     assert result.details["category_counts"]["trace_verification_loop_training"] == 1
-    assert result.details["kind_counts"]["repair"] == 21
-    assert result.details["kind_counts"]["tool_use"] == 12
+    assert result.details["kind_counts"]["repair"] == 43
+    assert result.details["kind_counts"]["tool_use"] == 31
     assert result.details["kind_counts"]["evaluation"] == 7
     assert "git.diff" in result.details["tool_profile"]["tools_used"]
     assert "test.run" in result.details["tool_profile"]["tools_used"]

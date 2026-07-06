@@ -156,9 +156,17 @@ def score_synthetic_example(
         valid_arguments = refusal_safe
         exact_arguments = exact_arguments_match(example, response) or refusal_safe
     else:
-        correct_tool = isinstance(predicted_tool, str) and predicted_tool == expected_tool
-        valid_arguments = valid_tool_arguments(response, errors, contracts)
-        exact_arguments = exact_arguments_match(example, response)
+        if expected_tool is None:
+            # Target is a final_response (no tool_name).
+            # Score all components as correct if the model gives final_response.
+            gave_final_response = "final_response" in response and predicted_tool is None
+            correct_tool = gave_final_response
+            valid_arguments = gave_final_response
+            exact_arguments = gave_final_response
+        else:
+            correct_tool = isinstance(predicted_tool, str) and predicted_tool == expected_tool
+            valid_arguments = valid_tool_arguments(response, errors, contracts)
+            exact_arguments = exact_arguments_match(example, response)
     repair_success = example.kind is not DatasetExampleKind.REPAIR or (
         correct_tool and valid_arguments
     )

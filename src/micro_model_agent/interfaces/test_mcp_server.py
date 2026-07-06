@@ -435,7 +435,7 @@ def test_run_profile_settings_increase_by_tier() -> None:
     extended = run_profile_settings("extended")
 
     assert quick["max_tool_calls"] == 8
-    assert quick["max_new_tokens"] == 2048
+    assert quick["max_new_tokens"] == 512
     assert standard["max_tool_calls"] == 24
     assert standard["max_new_tokens"] == 8192
     assert extended["max_tool_calls"] is None

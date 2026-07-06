@@ -154,6 +154,22 @@ class RepoWritePatchRequest(StrictBaseModel):
     require_approval: bool = True
     expected_changed_files: list[str] = Field(default_factory=list, max_length=100)
 
+    @field_validator("expected_changed_files", mode="before")
+    @classmethod
+    def coerce_expected_changed_files(cls, value: object) -> list[str]:
+        """Accept list[str] or list[dict] (model sometimes outputs {"path":"..."}})."""
+        if not isinstance(value, list):
+            return value  # let pydantic report the type error
+        result = []
+        for item in value:
+            if isinstance(item, str):
+                result.append(item)
+            elif isinstance(item, dict) and "path" in item:
+                result.append(str(item["path"]))
+            else:
+                result.append(str(item))
+        return result
+
     @field_validator("patch")
     @classmethod
     def require_unified_diff(cls, value: str) -> str:

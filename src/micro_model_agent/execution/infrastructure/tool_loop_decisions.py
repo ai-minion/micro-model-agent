@@ -67,6 +67,43 @@ def parse_model_response(raw_response: str) -> ModelDecision:
             error="arguments must be an object",
         )
 
+    # Normalize: model sometimes emits {"tool_name":"final_response","arguments":{"body":"..."}}
+    # instead of the canonical {"final_response":"...","ok":true}. Treat this as a final_response.
+    if tool_name == "final_response":
+        response_text = (
+            arguments.get("body")
+            or arguments.get("response")
+            or arguments.get("text")
+            or arguments.get("message")
+            or ""
+        )
+        if not isinstance(response_text, str):
+            response_text = str(response_text)
+        ok_value = payload.get("ok", arguments.get("ok", True))
+        return ModelDecision(
+            kind="final_response",
+            raw_response=raw_response,
+            response=response_text,
+            ok=bool(ok_value) if isinstance(ok_value, bool) else True,
+        )
+
+    # Normalize: model sometimes emits {"tool_name":"final_response","arguments":{"body":"..."}}
+    # instead of the canonical {"final_response":"...","ok":true}.
+    if tool_name == "final_response":
+        response_text = (
+            arguments.get("body") or arguments.get("response") or
+            arguments.get("text") or arguments.get("message") or ""
+        )
+        if not isinstance(response_text, str):
+            response_text = str(response_text)
+        ok_value = payload.get("ok", arguments.get("ok", True))
+        return ModelDecision(
+            kind="final_response",
+            raw_response=raw_response,
+            response=response_text,
+            ok=bool(ok_value) if isinstance(ok_value, bool) else True,
+        )
+
     reason = payload.get("reason")
     return ModelDecision(
         kind="tool_call",

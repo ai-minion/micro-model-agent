@@ -147,9 +147,9 @@ def run_profile_settings(profile: RunProfile | None) -> dict[str, int | float | 
         return {
             "max_turns": 12,
             "max_tool_calls": 8,
-            "max_new_tokens": 2048,
+            "max_new_tokens": 512,
             "max_tool_result_prompt_chars": 8000,
-            "model_timeout_seconds": 60.0,
+            "model_timeout_seconds": 180.0,
         }
     if profile == "standard":
         return {

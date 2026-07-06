@@ -120,24 +120,59 @@ def is_duplicate_successful_write(
     tool_call: ToolCall,
     steps: list[WorkflowStep],
 ) -> bool:
-    """Return true when repo.write_files repeats a prior successful file set."""
+    """Return true when repo.write_files or repo.write_patch repeats a prior successful write."""
 
-    if tool_call.tool_name != "repo.write_files":
+    if tool_call.tool_name == "repo.write_files":
+        requested_paths = write_file_paths(tool_call.arguments)
+        if not requested_paths:
+            return False
+        for step in steps:
+            if (
+                step.tool_call is None
+                or step.tool_result is None
+                or not step.tool_result.ok
+                or step.tool_call.tool_name != "repo.write_files"
+            ):
+                continue
+            if write_file_paths(step.tool_call.arguments) == requested_paths:
+                return True
         return False
-    requested_paths = write_file_paths(tool_call.arguments)
-    if not requested_paths:
+
+    if tool_call.tool_name == "repo.write_patch":
+        requested_paths = write_patch_paths(tool_call.arguments)
+        if not requested_paths:
+            return False
+        for step in steps:
+            if (
+                step.tool_call is None
+                or step.tool_result is None
+                or not step.tool_result.ok
+                or step.tool_call.tool_name != "repo.write_patch"
+            ):
+                continue
+            # Only block if the previous patch was actually applied (not dry_run).
+            prev_output = step.tool_result.output or {}
+            if not prev_output.get("applied", False):
+                continue
+            if write_patch_paths(step.tool_call.arguments) == requested_paths:
+                return True
         return False
-    for step in steps:
-        if (
-            step.tool_call is None
-            or step.tool_result is None
-            or not step.tool_result.ok
-            or step.tool_call.tool_name != "repo.write_files"
-        ):
-            continue
-        if write_file_paths(step.tool_call.arguments) == requested_paths:
-            return True
+
     return False
+
+
+def write_patch_paths(arguments: dict[str, Any]) -> tuple[str, ...]:
+    """Extract a stable file-path tuple from repo.write_patch expected_changed_files."""
+
+    files = arguments.get("expected_changed_files")
+    if not isinstance(files, list):
+        return ()
+    paths = []
+    for f in files:
+        if not isinstance(f, str):
+            return ()
+        paths.append(f)
+    return tuple(sorted(paths))
 
 
 def write_file_paths(arguments: dict[str, Any]) -> tuple[str, ...]:

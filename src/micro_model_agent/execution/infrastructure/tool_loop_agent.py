@@ -331,6 +331,20 @@ class ToolLoopAgent:
                         error=f"tool is not available: {tool_call.tool_name}",
                     )
                 elif is_duplicate_successful_write(tool_call, steps):
+                    dedup_result = ToolResult(
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_call.tool_name,
+                        ok=True,
+                        output={
+                            "applied": False,
+                            "duplicate": True,
+                            "message": (
+                                "File already patched in a previous step. "
+                                "No further writes are needed. "
+                                "Respond with final_response."
+                            ),
+                        },
+                    )
                     output = self._step_output(
                         {
                             "raw_response": decision.raw_response,
@@ -343,6 +357,7 @@ class ToolLoopAgent:
                             name=f"model_turn_{turn_number}",
                             status=WorkflowStatus.FAILED,
                             tool_call=tool_call,
+                            tool_result=dedup_result,
                             output=output,
                         )
                     )

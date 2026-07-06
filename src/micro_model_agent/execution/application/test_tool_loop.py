@@ -110,9 +110,9 @@ def test_prepare_tool_loop_run_applies_profile_and_selects_tools() -> None:
     assert prepared.required_tools == ("repo.read",)
     assert prepared.budget.max_turns == 12
     assert prepared.budget.max_tool_calls == 8
-    assert prepared.budget.max_new_tokens == 2048
+    assert prepared.budget.max_new_tokens == 512
     assert prepared.budget.max_tool_result_prompt_chars == 8000
-    assert prepared.budget.model_timeout_seconds == 60.0
+    assert prepared.budget.model_timeout_seconds == 180.0
     assert prepared.request.tool_schemas == {
         "repo.read": {"schema": "repo.read"},
         "test.run": {"schema": "test.run"},
@@ -123,7 +123,7 @@ def test_prepare_tool_loop_run_applies_profile_and_selects_tools() -> None:
         "capture_prompts": True,
         "available_tools": ["repo.read", "test.run"],
         "required_tools": ["repo.read"],
-        "model_timeout_seconds": 60.0,
+        "model_timeout_seconds": 180.0,
         "run_profile": "quick",
     }
 

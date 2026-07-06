@@ -37,6 +37,11 @@ class RepoSearchTool:
             return self._symbol_search(request)
         if request.kind is SearchKind.GLOB or request.query is None:
             return self._glob_search(request)
+        # Auto-detect: if the query looks like a glob pattern (contains * or ?),
+        # treat it as glob even when kind=text. Models sometimes emit kind=text
+        # with a glob query like **/*.py.
+        if request.query and ('*' in request.query or '?' in request.query):
+            return self._glob_search(request)
         return self._text_search(request)
 
     def _glob_search(self, request: RepoSearchRequest) -> RepoSearchResult:

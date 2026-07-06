@@ -60,8 +60,13 @@ class TransformersPeftModelProvider:
 
         model_kwargs: dict[str, Any] = {"trust_remote_code": self.trust_remote_code}
         if torch.cuda.is_available():
-            # On CUDA machines, let Transformers place model layers on devices.
-            model_kwargs["device_map"] = self.device_map
+            # Prefer a single GPU when it has enough free VRAM (avoids CPU offloading
+            # when system RAM is constrained). Fall back to device_map for multi-GPU.
+            free_vram, _ = torch.cuda.mem_get_info(0)
+            if torch.cuda.device_count() == 1 and free_vram > 10 * 1024 ** 3:
+                model_kwargs["device_map"] = "cuda:0"
+            else:
+                model_kwargs["device_map"] = self.device_map
             model_kwargs["dtype"] = self._torch_dtype(torch)
 
         model: Any = AutoModelForCausalLM.from_pretrained(self.base_model, **model_kwargs)
@@ -79,8 +84,12 @@ class TransformersPeftModelProvider:
         if self._torch is None or self._model is None or self._tokenizer is None:
             raise RuntimeError("model provider has not been loaded")
 
+        normalized = [
+            {**m, "content": json.dumps(m["output"]) if "output" in m and "content" not in m else m.get("content", "")}
+            for m in messages
+        ]
         prompt = self._tokenizer.apply_chat_template(
-            messages,
+            normalized,
             tokenize=False,
             add_generation_prompt=True,
         )

@@ -131,8 +131,48 @@ class RepoWritePatchTool:
         )
 
     def _normalized_patch(self, patch: str) -> str:
-        """Ensure git receives a patch with a trailing newline."""
+        """Normalize patch: fix @@ hunk headers and ensure trailing newline.
 
+        Rewrites every hunk header to have correct line counts derived from the
+        hunk content.  Models frequently emit headers like "@@ -16,0 +17 @@"
+        (missing the new-file count) which causes git apply to silently truncate
+        the hunk.  Bare "@@" headers (no numbers at all) are also rewritten.
+        """
+        import re
+
+        lines = patch.split("\n")
+        result = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if re.match(r"^@@", line):
+                # Scan ahead to count removed, added, and context lines in hunk.
+                removed = added = context = 0
+                j = i + 1
+                while j < len(lines):
+                    if re.match(r"^@@|^diff |^index |^--- |^\+\+\+ ", lines[j]):
+                        break
+                    if lines[j].startswith("-"):
+                        removed += 1
+                    elif lines[j].startswith("+"):
+                        added += 1
+                    elif lines[j].startswith(" "):
+                        context += 1
+                    # lines starting with "\" (no newline marker) are skipped
+                    j += 1
+                old_count = removed + context
+                new_count = added + context
+                m = re.match(r"^@@ (-\d+)(?:,\d+)? (\+\d+)(?:,\d+)? @@", line)
+                if m:
+                    old_minus = m.group(1)  # e.g. "-16"
+                    old_plus = m.group(2)   # e.g. "+17"
+                    result.append(f"@@ {old_minus},{old_count} {old_plus},{new_count} @@")
+                else:
+                    result.append(f"@@ -1,{old_count} +1,{new_count} @@")
+            else:
+                result.append(line)
+            i += 1
+        patch = "\n".join(result)
         return patch if patch.endswith("\n") else f"{patch}\n"
 
     def _changed_files(self, patch: str) -> tuple[list[str], list[ToolError]]:
@@ -221,7 +261,7 @@ class RepoWritePatchTool:
     def _git_apply(self, patch: str, check: bool) -> subprocess.CompletedProcess[str]:
         """Run git apply or git apply --check with the patch on stdin."""
 
-        args = [self.git_executable, "apply", "--whitespace=nowarn"]
+        args = [self.git_executable, "apply", "--whitespace=nowarn", "--unidiff-zero"]
         if check:
             args.append("--check")
         env = os.environ.copy()
