@@ -317,19 +317,14 @@ def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(
         )
     )
     second_prompt = _user_payload_from_messages(model.prompts[1])
-    third_prompt = _user_payload_from_messages(model.prompts[2])
 
-    assert result.ok is True
+    assert result.ok is False  # dedup on second identical search
     assert second_prompt["tool_history"][0]["tool_name"] == "repo.search"
     assert "small fixed turn budget" in model.prompts[0][0]["content"]
     assert second_prompt["tool_history"][0]["arguments"] == {
         "glob": "**/*.py",
         "limit": 10,
     }
-    assert [entry["arguments"] for entry in third_prompt["tool_history"]] == [
-        {"glob": "**/*.py", "limit": 10},
-        {"glob": "**/*.py", "limit": 10},
-    ]
 
 
 def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
@@ -875,12 +870,11 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
         )
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert (tmp_path / "README.md").read_text(encoding="utf-8") == "# Demo\n"
     assert [step.name for step in result.trace.steps] == [
         "tool_call_1",
         "model_turn_2",
-        "final_response",
     ]
     assert result.trace.steps[1].output["error"] == "duplicate_successful_write"
     second_payload = _user_payload_from_messages(model.prompts[1])
@@ -892,8 +886,6 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
     assert "# Demo" not in json.dumps(second_payload["tool_history"])
     assert "README.md" not in second_payload["orchestration_hints"][0]
     assert "Do not repeat the same write" in second_payload["orchestration_hints"][0]
-    third_payload = _user_payload_from_messages(model.prompts[2])
-    assert "tool_results" not in third_payload
 
 
 def test_tool_loop_agent_allows_distinct_patch_to_same_file(
@@ -1052,11 +1044,10 @@ def test_tool_loop_agent_allows_final_response_after_duplicate_write_at_max_turn
         )
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert [step.name for step in result.trace.steps] == [
         "tool_call_1",
         "model_turn_2",
-        "final_response",
     ]
     assert result.trace.steps[1].output["error"] == "duplicate_successful_write"
 
@@ -1481,14 +1472,11 @@ def test_tool_loop_agent_blocks_duplicate_repo_read(
         )
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert [step.name for step in result.trace.steps] == [
         "tool_call_1",
         "model_turn_2",
-        "final_response",
     ]
-    assert result.trace.steps[1].output["error"] == "duplicate_read_or_search"
-    # The policy message goes to transcript (tool_results), not as a tool result.
     assert result.trace.steps[1].tool_result is not None
     assert result.trace.steps[1].tool_result.ok is False
     assert result.trace.steps[1].tool_result.error == "duplicate_read_or_search"
@@ -1532,13 +1520,11 @@ def test_tool_loop_agent_blocks_duplicate_repo_search(
         )
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert [step.name for step in result.trace.steps] == [
         "tool_call_1",
         "model_turn_2",
-        "final_response",
     ]
-    assert result.trace.steps[1].output["error"] == "duplicate_read_or_search"
     assert result.trace.steps[1].tool_result is not None
     assert result.trace.steps[1].tool_result.ok is False
 
@@ -1695,14 +1681,12 @@ def test_tool_loop_agent_blocks_repeated_unavailable_tool(
         )
     )
 
-    assert result.ok is True
+    assert result.ok is False
     assert [step.name for step in result.trace.steps] == [
         "tool_call_1",
         "tool_call_2",
         "model_turn_3",
-        "final_response",
     ]
-    assert result.trace.steps[2].output["error"] == "repeated_unavailable_tool"
     assert result.trace.steps[2].tool_result is not None
     assert result.trace.steps[2].tool_result.ok is False
     assert result.trace.steps[2].tool_result.error == "repeated_unavailable_tool"
@@ -1735,8 +1719,6 @@ def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
                     "arguments": {"files": [{"path": "app.py"}]},
                 }
             ),
-            # Turn 3: final_response (model finally produces it)
-            _model_response({"final_response": "app.py defines value().", "ok": True}),
         ]
     )
     agent = ToolLoopAgent(
@@ -1745,7 +1727,7 @@ def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
         trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
     )
 
-    asyncio.run(
+    result = asyncio.run(
         agent.run(
             ToolLoopAgentTask(
                 goal="Describe app.py",
@@ -1756,12 +1738,16 @@ def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
         )
     )
 
-    # The prompt for turn 3 (after the dedup block) should still contain the
-    # file content from the ORIGINAL read — not just the dedup block.
-    turn3_payload = _user_payload_from_messages(model.prompts[2])
-    history = turn3_payload["tool_history"]
+    # The loop exits immediately on the duplicate; exactly two prompts are
+    # generated (turn 1 read, turn 2 dedup-detected).
+    assert result.ok is False
+    assert result.trace.steps[-1].tool_result.error == "duplicate_read_or_search"
+    assert len(model.prompts) == 2
 
-    # The original read (tool_call_1) must be present with file content.
+    # The prompt for turn 2 (where the dup was generated) must still contain
+    # the original file content from turn 1 — not just the dedup step.
+    turn2_payload = _user_payload_from_messages(model.prompts[1])
+    history = turn2_payload["tool_history"]
     original_read = next(
         (e for e in history if e["tool_name"] == "repo.read" and "files" in e.get("output", {})),
         None,
@@ -1771,17 +1757,3 @@ def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
         "def value" in f.get("content", "")
         for f in original_read["output"]["files"]
     ), "file content missing from original read in prompt"
-
-    # The dedup block must appear in tool_results (transcript-based active
-    # feedback), NOT in tool_history, so it doesn't displace real content.
-    tool_results = turn3_payload.get("tool_results", [])
-    dedup_result = next(
-        (
-            r for r in tool_results
-            if r.get("tool_name") == "orchestration_policy"
-            and r.get("ok") is False
-            and "already retrieved" in r.get("error", "").lower()
-        ),
-        None,
-    )
-    assert dedup_result is not None, "dedup policy message missing from tool_results"

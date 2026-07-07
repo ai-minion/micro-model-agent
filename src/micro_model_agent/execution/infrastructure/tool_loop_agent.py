@@ -27,7 +27,6 @@ from micro_model_agent.execution.domain.value_objects import (
 )
 from micro_model_agent.execution.infrastructure.tool_loop_decisions import parse_model_response
 from micro_model_agent.execution.infrastructure.tool_loop_policy import (
-    dedup_block_count_for_call,
     discovery_sufficient_for_final_response,
     has_unresolved_failed_tool_step,
     is_duplicate_read_or_search,
@@ -347,43 +346,34 @@ class ToolLoopAgent:
                 )
                 if tool_call.tool_name not in task.available_tools:
                     if is_repeated_unavailable_tool(tool_call, steps):
-                        # Already told model this tool is unavailable; block and
-                        # ask for a final answer to stop the loop.
-                        unavail_result = ToolResult(
-                            tool_call_id=tool_call.id,
-                            tool_name=tool_call.tool_name,
-                            ok=False,
-                            error="repeated_unavailable_tool",
-                            output={
-                                "duplicate": True,
-                                "message": (
-                                    f"'{tool_call.tool_name}' is not available. "
-                                    "Do not call this tool again. "
-                                    "Answer the user."
-                                ),
-                            },
-                        )
-                        output = self._step_output(
-                            {
-                                "raw_response": decision.raw_response,
-                                "error": "repeated_unavailable_tool",
-                            },
-                            messages=messages,
-                            tools=tools,
-                        )
                         steps.append(
                             WorkflowStep(
                                 name=f"model_turn_{turn_number}",
                                 status=WorkflowStatus.FAILED,
                                 tool_call=tool_call,
-                                tool_result=unavail_result,
-                                output=output,
+                                tool_result=ToolResult(
+                                    tool_call_id=tool_call.id,
+                                    tool_name=tool_call.tool_name,
+                                    ok=False,
+                                    error="repeated_unavailable_tool",
+                                ),
+                                output=self._step_output(
+                                    {"raw_response": decision.raw_response, "error": "repeated_unavailable_tool"},
+                                    messages=messages,
+                                    tools=tools,
+                                ),
                             )
                         )
                         await self._save_progress(trace, steps)
-                        transcript.append({"role": "assistant", "content": decision.raw_response})
-                        turn_number += 1
-                        continue
+                        return await self._finish(
+                            trace=trace,
+                            steps=steps,
+                            run_metadata=task.run_metadata,
+                            ok=False,
+                            response="model repeated a call to an unavailable tool",
+                            tool_calls_made=tool_calls_made,
+                            error="repeated_unavailable_tool",
+                        )
                     tool_result = ToolResult(
                         tool_call_id=tool_call.id,
                         tool_name=tool_call.tool_name,
@@ -391,54 +381,35 @@ class ToolLoopAgent:
                         error=f"tool is not available: {tool_call.tool_name}",
                     )
                 elif is_duplicate_successful_write(tool_call, steps):
-                    dedup_result = ToolResult(
-                        tool_call_id=tool_call.id,
-                        tool_name=tool_call.tool_name,
-                        ok=True,
-                        output={
-                            "applied": False,
-                            "duplicate": True,
-                            "message": (
-                                "File already patched in a previous step. "
-                                "No further writes are needed. "
-                                "Answer the user."
-                            ),
-                        },
-                    )
-                    output = self._step_output(
-                        {
-                            "raw_response": decision.raw_response,
-                            "error": "duplicate_successful_write",
-                        },
-                        messages=messages,
-                        tools=tools,
-                    )
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
                             status=WorkflowStatus.FAILED,
                             tool_call=tool_call,
-                            tool_result=dedup_result,
-                            output=output,
+                            tool_result=ToolResult(
+                                tool_call_id=tool_call.id,
+                                tool_name=tool_call.tool_name,
+                                ok=False,
+                                error="duplicate_successful_write",
+                            ),
+                            output=self._step_output(
+                                {"raw_response": decision.raw_response, "error": "duplicate_successful_write"},
+                                messages=messages,
+                                tools=tools,
+                            ),
                         )
                     )
                     await self._save_progress(trace, steps)
-                    transcript.append({"role": "assistant", "content": decision.raw_response})
-                    turn_number += 1
-                    continue
-                elif is_duplicate_read_or_search(tool_call, steps):
-                    # This is a policy rejection, not a real tool result.
-                    # Add it to the transcript as role="tool" (like other policy
-                    # rejections) so the model sees it as immediate active
-                    # feedback in tool_results, not buried in tool_history.
-                    output = self._step_output(
-                        {
-                            "raw_response": decision.raw_response,
-                            "error": "duplicate_read_or_search",
-                        },
-                        messages=messages,
-                        tools=tools,
+                    return await self._finish(
+                        trace=trace,
+                        steps=steps,
+                        run_metadata=task.run_metadata,
+                        ok=False,
+                        response="model repeated an identical write",
+                        tool_calls_made=tool_calls_made,
+                        error="duplicate_successful_write",
                     )
+                elif is_duplicate_read_or_search(tool_call, steps):
                     steps.append(
                         WorkflowStep(
                             name=f"model_turn_{turn_number}",
@@ -450,33 +421,23 @@ class ToolLoopAgent:
                                 ok=False,
                                 error="duplicate_read_or_search",
                             ),
-                            output=output,
+                            output=self._step_output(
+                                {"raw_response": decision.raw_response, "error": "duplicate_read_or_search"},
+                                messages=messages,
+                                tools=tools,
+                            ),
                         )
                     )
                     await self._save_progress(trace, steps)
-                    transcript.append({"role": "assistant", "content": decision.raw_response})
-                    transcript.append(
-                        {
-                            "role": "tool",
-                            "tool_name": "orchestration_policy",
-                            "ok": False,
-                            "error": (
-                                f"You already retrieved this from {tool_call.tool_name} "
-                                "in a previous step "
-                                "and the content is visible in your tool_history. "
-                                "Do not repeat this call. "
-                                "Use the existing results to answer the user."
-                            ),
-                        }
+                    return await self._finish(
+                        trace=trace,
+                        steps=steps,
+                        run_metadata=task.run_metadata,
+                        ok=False,
+                        response="model repeated an identical read or search call",
+                        tool_calls_made=tool_calls_made,
+                        error="duplicate_read_or_search",
                     )
-                    turn_number += 1
-                    # Hard-stop: if the model has now been blocked on this
-                    # exact call 2+ times, it is stuck in a dedup loop.
-                    # Advance past max_turns so the next iteration runs with
-                    # force_final_response=True (final-answer-only prompt).
-                    if dedup_block_count_for_call(tool_call, steps) >= 2:
-                        turn_number = task.max_turns + 1
-                    continue
                 else:
                     if task.on_turn:
                         await task.on_turn(

@@ -108,14 +108,11 @@ def is_repaired_tool_failure(
 
     if step.tool_call is None:
         return False
-    # Calls to tools that are simply not available, or that were blocked by
-    # orchestration policy, are not real task failures.
+    # A first-time unavailable-tool error is not a real task failure.
+    # Dedup errors (duplicate_read_or_search, repeated_unavailable_tool) DO
+    # count as unresolved failures so the loop result is marked ok=False.
     if step.tool_result is not None and isinstance(step.tool_result.error, str):
         if step.tool_result.error.startswith("tool is not available:"):
-            return True
-        if step.tool_result.error == "duplicate_read_or_search":
-            return True
-        if step.tool_result.error == "repeated_unavailable_tool":
             return True
     tool_name = step.tool_call.tool_name
     if last_success_by_tool.get(tool_name, -1) > step_index:
@@ -225,35 +222,6 @@ def is_duplicate_read_or_search(
     # Allow re-read/re-search if a write happened after the previous matching call.
     return not (last_write_index is not None and last_write_index > last_matching_index)
 
-
-def dedup_block_count_for_call(
-    tool_call: ToolCall,
-    steps: list[WorkflowStep],
-) -> int:
-    """Count how many times this exact (tool_name, args) call has already been
-    dedup-blocked (error='duplicate_read_or_search') in the step history."""
-    import json as _json
-
-    try:
-        call_key = _json.dumps(tool_call.arguments, sort_keys=True)
-    except (TypeError, ValueError):
-        return 0
-
-    count = 0
-    for step in steps:
-        if step.tool_call is None or step.tool_result is None:
-            continue
-        if step.tool_result.error != "duplicate_read_or_search":
-            continue
-        if step.tool_call.tool_name != tool_call.tool_name:
-            continue
-        try:
-            prev_key = _json.dumps(step.tool_call.arguments, sort_keys=True)
-        except (TypeError, ValueError):
-            continue
-        if prev_key == call_key:
-            count += 1
-    return count
 
 
 def is_repeated_unavailable_tool(
