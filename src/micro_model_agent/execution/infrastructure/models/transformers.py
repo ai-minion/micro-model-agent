@@ -35,7 +35,7 @@ class TransformersPeftModelProvider:
         self._model: Any | None = None
         self._torch: Any | None = None
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(self, messages: list[dict[str, Any]]) -> str:
         if self._model is None or self._tokenizer is None:
             # Loading a model can block for a while, so run it in a worker thread
             # instead of blocking the async event loop.
@@ -78,21 +78,13 @@ class TransformersPeftModelProvider:
         self._tokenizer = tokenizer
         self._model = model
 
-    def _generate(self, messages: list[dict[str, str]]) -> str:
+    def _generate(self, messages: list[dict[str, Any]]) -> str:
         """Generate text for one turn using the already-loaded model."""
 
         if self._torch is None or self._model is None or self._tokenizer is None:
             raise RuntimeError("model provider has not been loaded")
 
-        normalized = [
-            {**m, "content": json.dumps(m["output"]) if "output" in m and "content" not in m else m.get("content", "")}
-            for m in messages
-        ]
-        prompt = self._tokenizer.apply_chat_template(
-            normalized,
-            tokenize=False,
-            add_generation_prompt=True,
-        )
+        prompt = _render_prompt(self._tokenizer, _normalize_messages(messages))
         inputs = self._tokenizer(prompt, return_tensors="pt")
         model_device = getattr(self._model, "device", None)
         if model_device is not None and hasattr(inputs, "to"):
@@ -161,3 +153,45 @@ def _contains_complete_json_object(text: str) -> bool:
     except json.JSONDecodeError:
         return False
     return end_index > 0
+
+
+def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
+    """Normalize model messages into role/content pairs."""
+
+    normalized: list[dict[str, str]] = []
+    for message in messages:
+        content = message.get("content")
+        if content is None and "output" in message:
+            content = json.dumps(message["output"])
+        normalized.append(
+            {
+                "role": str(message.get("role", "user")),
+                "content": str(content or ""),
+            }
+        )
+    return normalized
+
+
+def _render_prompt(tokenizer: Any, messages: list[dict[str, str]]) -> str:
+    """Render chat messages with the tokenizer template, or a plain fallback."""
+
+    if getattr(tokenizer, "chat_template", None):
+        return str(
+            tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+        )
+    return _render_plain_chat_prompt(messages)
+
+
+def _render_plain_chat_prompt(messages: list[dict[str, str]]) -> str:
+    """Fallback prompt format for tokenizers without a chat template."""
+
+    rendered = [
+        f"{message.get('role', 'user').upper()}:\n{message.get('content', '')}"
+        for message in messages
+    ]
+    rendered.append("ASSISTANT:\n")
+    return "\n\n".join(rendered)

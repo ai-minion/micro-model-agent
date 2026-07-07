@@ -255,7 +255,7 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
     loaded_trace = asyncio.run(trace_store.get(str(result.trace_id)))
 
     assert loaded_trace is not None
-    # Prompts are always captured to per-step request.txt files.
+    # Prompts are always captured to per-step request.json files.
     assert loaded_trace.steps[0].output["prompt"][0]["role"] == "system"
     assert loaded_trace.final_output["run_metadata"] == {
         "interface": "test",
@@ -267,7 +267,7 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
     step_dir = (
         tmp_path / ".traces" / str(result.trace_id) / str(loaded_trace.steps[0].id)
     )
-    assert (step_dir / "request.txt").exists()
+    assert (step_dir / "request.json").exists()
     assert (step_dir / "workflow.json").exists()
 
 
@@ -1333,8 +1333,16 @@ def test_tool_loop_agent_fires_on_turn_at_start_of_each_turn(tmp_path: Path) -> 
     )
 
     assert result.ok is True
-    thinking_calls = [(t, m) for t, m, msg in on_turn_calls if msg.startswith("thinking") or msg == "finalizing"]
-    tool_calls_fired = [(t, m, msg) for t, m, msg in on_turn_calls if not (msg.startswith("thinking") or msg == "finalizing")]
+    thinking_calls = [
+        (t, m)
+        for t, m, msg in on_turn_calls
+        if msg.startswith("thinking") or msg == "finalizing"
+    ]
+    tool_calls_fired = [
+        (t, m, msg)
+        for t, m, msg in on_turn_calls
+        if not (msg.startswith("thinking") or msg == "finalizing")
+    ]
     # "thinking" / "thinking (N tool calls made)" fires once per turn
     assert thinking_calls == [(1, 4), (2, 4)]
     # tool label fires once, before the tool executes

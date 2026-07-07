@@ -799,7 +799,46 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     assert reviewed["comparison"]["local_model"][0]["response"] == "status is central"
 
 
-def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) -> None:
+def test_mcp_start_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) -> None:
+    registry_root = tmp_path / "registry"
+    workspace_root = tmp_path / "workspace"
+    workspace_root.mkdir()
+    server = create_mcp_server(
+        repository_root=registry_root,
+        expose_init_tool=False,
+        expose_debug_tools=False,
+    )
+    created = asyncio.run(
+        server.call_tool(
+            "micro_agent_init_workspace",
+            {
+                "path": str(workspace_root),
+                "name": "workspace",
+            },
+        )
+    )
+    _, created_data = created
+    workspace_id = created_data["workspace"]["id"]  # type: ignore[index]
+
+    asyncio.run(
+        server.call_tool(
+            "micro_agent_start_trace",
+            {
+                "workspace_id": workspace_id,
+                "goal": "Compare workspace trace storage.",
+            },
+        )
+    )
+
+    assert (
+        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
+    assert not (
+        registry_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
+
+
+def test_mcp_read_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) -> None:
     registry_root = tmp_path / "registry"
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
@@ -824,7 +863,7 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
         run_agent_loop(
             goal="Read README.md and summarize status.",
             repository_root=str(workspace_root),
-            comparison_repository_root=str(registry_root),
+            comparison_repository_root=str(workspace_root),
             available_tools=["repo.read"],
             max_tool_calls=1,
             scripted_responses=[
@@ -852,19 +891,19 @@ def test_mcp_read_trace_uses_central_store_for_workspace_task(tmp_path: Path) ->
     assert read_data["ok"] is True  # type: ignore[index]
     assert read_data["trace"]["final_output"]["response"] == "status is central"  # type: ignore[index]
     assert (
-        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
-    ).exists()
-    assert not (
         workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     ).exists()
+    assert not (
+        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    ).exists()
 
 
-def test_mcp_run_loop_wires_on_turn_callable_to_handler(tmp_path: Path) -> None:
-    """When micro_agent_run_loop runs through the server, on_turn is a callable."""
+def test_mcp_run_loop_wires_on_turn_and_trace_root_to_handler(tmp_path: Path) -> None:
+    """When micro_agent_run_loop runs through the server, handler wiring is project-scoped."""
     received: list[Any] = []
 
     async def mock_handler(**kwargs: Any) -> dict[str, Any]:
-        received.append(kwargs.get("on_turn"))
+        received.append(kwargs)
         return {"ok": True, "response": "done"}
 
     server = FastMCP("test")
@@ -879,4 +918,5 @@ def test_mcp_run_loop_wires_on_turn_callable_to_handler(tmp_path: Path) -> None:
     asyncio.run(server.call_tool("micro_agent_run_loop", {"goal": "test goal"}))
 
     assert len(received) == 1
-    assert callable(received[0])
+    assert callable(received[0]["on_turn"])
+    assert received[0]["comparison_repository_root"] == str(tmp_path)

@@ -117,7 +117,11 @@ def register_mcp_tools(
         )
 
         async def _on_turn(turn_number: int, max_turns: int, message: str) -> None:
-            label = f"[turn {turn_number}/{max_turns}] {message}" if message else f"[turn {turn_number}/{max_turns}]"
+            label = (
+                f"[turn {turn_number}/{max_turns}] {message}"
+                if message
+                else f"[turn {turn_number}/{max_turns}]"
+            )
             try:
                 await ctx.report_progress(turn_number - 1, max_turns, message=label)
                 await ctx.info(label)
@@ -146,7 +150,7 @@ def register_mcp_tools(
             test_command_name=test_command_name,
             test_command_args=test_command_args,
             comparison_session_id=comparison_session_id,
-            comparison_repository_root=default_repository_root,
+            comparison_repository_root=str(resolved_repository_root),
             offline=offline,
             on_turn=_on_turn if ctx is not None else None,
         )
@@ -173,7 +177,7 @@ def register_mcp_tools(
         return await start_comparison_trace(
             goal=goal,
             repository_root=str(resolved_repository_root),
-            comparison_repository_root=default_repository_root,
+            comparison_repository_root=str(resolved_repository_root),
             context=context,
             metadata=metadata,
         )
@@ -201,7 +205,7 @@ def register_mcp_tools(
             payload=payload,
             actor=actor,
             repository_root=str(resolved_repository_root),
-            comparison_repository_root=default_repository_root,
+            comparison_repository_root=str(resolved_repository_root),
         )
 
     @server.tool(
@@ -227,7 +231,7 @@ def register_mcp_tools(
         return await stop_comparison_trace(
             session_id=session_id,
             repository_root=str(resolved_repository_root),
-            comparison_repository_root=default_repository_root,
+            comparison_repository_root=str(resolved_repository_root),
             actual_summary=actual_summary,
             changed_files=changed_files,
             tests=tests,
@@ -258,7 +262,7 @@ def register_mcp_tools(
         return await review_comparison_trace(
             session_id=session_id,
             repository_root=str(resolved_repository_root),
-            comparison_repository_root=default_repository_root,
+            comparison_repository_root=str(resolved_repository_root),
             local_model_quality=local_model_quality,
             local_model_notes=local_model_notes,
             consumer_quality=consumer_quality,
@@ -328,10 +332,14 @@ def register_mcp_tools(
             repository_root: str = default_repository_root,
             workspace_id: str | None = None,
         ) -> dict[str, Any]:
-            _ = workspace_id
+            resolved_repository_root = await resolve_workspace_root(
+                registry_root=Path(default_repository_root),
+                repository_root=repository_root,
+                workspace_id=workspace_id,
+            )
             return await read_trace(
                 trace_id=trace_id,
-                repository_root=repository_root,
+                repository_root=str(resolved_repository_root),
             )
 
         @server.tool(
