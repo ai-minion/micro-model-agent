@@ -10,7 +10,7 @@ from __future__ import annotations
 # DTOs
 # ---------------------------------------------------------------------------
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Any, Protocol
 from uuid import UUID
 
 from micro_model_agent.execution.domain.value_objects import (
@@ -55,7 +55,12 @@ class CodingAgentResult:
 class ModelProvider(Protocol):
     """Anything that can turn a prompt into model text."""
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
         """Generate a model completion from a chat messages list."""
 
 

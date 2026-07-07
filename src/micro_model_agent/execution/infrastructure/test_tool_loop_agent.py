@@ -77,10 +77,17 @@ class SlowModelProvider:
     """Model provider that blocks until cancelled or timed out."""
 
     def __init__(self) -> None:
-        self.prompts: list[list[dict[str, str]]] = []
+        self.prompts: list[list[dict[str, Any]]] = []
+        self.tools: list[list[dict[str, Any]] | None] = []
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
         self.prompts.append(messages)
+        self.tools.append(tools)
         await asyncio.sleep(3600)
         return _model_response({"final_response": "too late", "ok": True})
 
@@ -172,7 +179,9 @@ def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Pa
         for step in loaded_trace.steps
         if step.tool_call is not None
     ] == ["repo.read", "repo.write_patch", "test.run", "git.diff"]
-    assert "arguments_schema" in model.prompts[0][1]["content"]
+    assert model.tools[0] is not None
+    assert model.tools[0][0]["function"]["name"] == "repo.search"
+    assert "tool_schemas" not in model.prompts[0][1]["content"]
     assert "return 1" in model.prompts[1][1]["content"]
     assert "verified" in model.prompts[3][1]["content"]
     assert loaded_trace.final_output == {

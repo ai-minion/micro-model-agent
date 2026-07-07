@@ -82,7 +82,13 @@ class FakeDatasetReader:
 class FakeModelProvider:
     """Minimal model provider for synthetic evaluation tests."""
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> str:
+        del tools
         return '{"ok": true}'
 
 
@@ -93,7 +99,13 @@ class RecordingModelProvider:
         self.responses = responses
         self.prompts: list[list[dict[str, str]]] = []
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        tools: list[dict[str, object]] | None = None,
+    ) -> str:
+        del tools
         self.prompts.append(messages)
         return self.responses.pop(0)
 

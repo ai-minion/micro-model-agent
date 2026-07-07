@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from micro_model_agent.execution.application.tool_loop import PromptContext, ToolLoopAgentTask
 from micro_model_agent.execution.domain.value_objects import WorkflowStep
@@ -21,7 +21,7 @@ def build_prompt(
     orchestration_hints: list[str],
     steps: list[WorkflowStep],
 ) -> list[dict[str, str]]:
-    """Build the prompt that asks the model for one JSON decision."""
+    """Build the chat messages for one model turn."""
 
     payload: dict[str, Any] = {
         "goal": task.goal,
@@ -48,50 +48,48 @@ def build_prompt(
     policy_results = [entry for entry in transcript if entry.get("role") == "tool"]
     if policy_results:
         payload["tool_results"] = policy_results
-    tool_schemas = available_tool_schemas(task)
-    if tool_schemas and not final_response_only:
-        payload["tool_schemas"] = tool_schemas
-
     if final_response_only:
-        # When no more tools are allowed, the system prompt removes tool
-        # choices and asks for a final_response JSON object.
         system_prompt = (
             "You are MicroModelAgent's workflow executor. "
             "No more tool calls are allowed. "
             "Use the provided tool_results to answer the user. "
-            "Respond with exactly one JSON object and no markdown: "
-            '{"final_response":"Concise answer to the user.","ok":true}. '
+            "Respond with a concise final answer. "
             "Final responses must be concise and must not repeat full tool output."
         )
     else:
-        # In normal turns, the model sees available tools and the exact JSON
-        # shapes it can return.
         system_prompt = (
             "You are MicroModelAgent's workflow executor. "
             "Choose safe typed tool calls and follow retrieved context. "
-            "Respond with exactly one JSON object and no markdown. "
-            "Call at least one available tool before final_response. "
+            "Use the provided tool-call format when a tool is needed. "
+            "Call at least one available tool before answering. "
             "This loop has a small fixed turn budget; each turn must either make "
             "new progress or finish. "
             "Track loop_budget carefully; if this is the last turn, prefer "
-            "final_response unless a required tool still has to be called. "
+            "answering unless a required tool still has to be called. "
             "Do not reread the same file or repeat the same write unless the previous "
             "result was missing or failed. "
             "After a useful write succeeds, either run one distinct verification tool "
-            "or return final_response. "
+            "or answer the user. "
             "Final responses must be concise and must not repeat full tool output. "
             "For greenfield creation or scaffolding tasks, prefer repo.write_files over "
             "repo.write_patch. If repo.search or repo.semantic_search repeatedly returns "
             "no matches for a creation task, stop searching and create the requested files. "
-            "For a tool call, return "
-            '{"tool_name":"repo.read","arguments":{"files":[{"path":"README.md"}]},'
-            '"reason":"..."}. '
-            "When the task is complete, return "
-            '{"final_response":"Concise answer to the user.","ok":true}.'
+            "When the task is complete, respond with a concise final answer."
         )
     return [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": json.dumps(payload, sort_keys=True)},
+    ]
+
+
+def prompt_tools(task: ToolLoopAgentTask, *, final_response_only: bool) -> list[dict[str, Any]]:
+    """Return native chat-template tool definitions for the available tools."""
+
+    if final_response_only:
+        return []
+    return [
+        _native_tool_schema(tool_name, schema)
+        for tool_name, schema in available_tool_schemas(task).items()
     ]
 
 
@@ -103,6 +101,30 @@ def available_tool_schemas(task: ToolLoopAgentTask) -> dict[str, Any]:
         for tool_name in task.available_tools
         if tool_name in task.tool_schemas
     }
+
+
+def _native_tool_schema(tool_name: str, schema: dict[str, Any]) -> dict[str, Any]:
+    description = str(schema.get("description", ""))
+    parameters = dict(schema.get("arguments_schema") or {"type": "object"})
+    allowed_command_names = schema.get("allowed_command_names")
+    if isinstance(allowed_command_names, list) and allowed_command_names:
+        parameters = _schema_with_command_enum(parameters, allowed_command_names)
+    return {
+        "type": "function",
+        "function": {
+            "name": tool_name,
+            "description": description,
+            "parameters": parameters,
+        },
+    }
+
+
+def _schema_with_command_enum(schema: dict[str, Any], allowed: list[Any]) -> dict[str, Any]:
+    updated = json.loads(json.dumps(schema))
+    properties = updated.setdefault("properties", {})
+    command_name = properties.setdefault("command_name", {})
+    command_name["enum"] = [str(name) for name in allowed]
+    return cast(dict[str, Any], updated)
 
 
 def loop_budget_payload(

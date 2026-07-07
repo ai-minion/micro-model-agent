@@ -154,7 +154,8 @@ class RepoWritePatchRequest(StrictBaseModel):
         description=(
             "A unified diff in standard format. Must include file headers: "
             "'--- a/path/to/file' and '+++ b/path/to/file' followed by @@ hunks. "
-            "Example: '--- a/src/foo.py\n+++ b/src/foo.py\n@@ -10,0 +11,3 @@\n+def bar():\n+    return 1\n'"
+            "Example: '--- a/src/foo.py\n+++ b/src/foo.py\n@@ -10,0 +11,3 @@\n"
+            "+def bar():\n+    return 1\n'"
         ),
     )
     dry_run: bool = True
@@ -163,7 +164,7 @@ class RepoWritePatchRequest(StrictBaseModel):
 
     @field_validator("expected_changed_files", mode="before")
     @classmethod
-    def coerce_expected_changed_files(cls, value: object) -> list[str]:
+    def coerce_expected_changed_files(cls, value: object) -> object:
         """Accept list[str] or list[dict] (model sometimes outputs {"path":"..."}})."""
         if not isinstance(value, list):
             return value  # let pydantic report the type error

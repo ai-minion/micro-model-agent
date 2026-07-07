@@ -27,9 +27,9 @@ from micro_model_agent.execution.domain.value_objects import (
 )
 from micro_model_agent.execution.infrastructure.tool_loop_decisions import parse_model_response
 from micro_model_agent.execution.infrastructure.tool_loop_policy import (
+    dedup_block_count_for_call,
     discovery_sufficient_for_final_response,
     has_unresolved_failed_tool_step,
-    dedup_block_count_for_call,
     is_duplicate_read_or_search,
     is_duplicate_successful_write,
     is_repeated_unavailable_tool,
@@ -39,7 +39,10 @@ from micro_model_agent.execution.infrastructure.tool_loop_policy import (
     should_allow_extra_finalization_turn,
     tool_budget_exhausted,
 )
-from micro_model_agent.execution.infrastructure.tool_loop_prompting import build_prompt
+from micro_model_agent.execution.infrastructure.tool_loop_prompting import (
+    build_prompt,
+    prompt_tools,
+)
 
 __all__ = [
     "DEFAULT_TOOL_NAMES",
@@ -66,7 +69,11 @@ class ToolLoopAgent:
         if task.max_turns < 1:
             raise ValueError("max_turns must be at least 1")
 
-        trace = WorkflowTrace(goal=task.goal, status=WorkflowStatus.RUNNING, run_metadata=task.run_metadata)
+        trace = WorkflowTrace(
+            goal=task.goal,
+            status=WorkflowStatus.RUNNING,
+            run_metadata=task.run_metadata,
+        )
         await self.trace_store.save(trace)
         # transcript is the compact prompt history fed back to the model; steps
         # is the richer audit trail saved for users.
@@ -114,8 +121,9 @@ class ToolLoopAgent:
                     orchestration_hints=orchestration_hints(task, steps),
                     steps=steps,
                 )
+                tools = prompt_tools(task, final_response_only=final_response_only)
                 try:
-                    raw_response = await self._complete_model(task, messages)
+                    raw_response = await self._complete_model(task, messages, tools=tools)
                 except TimeoutError:
                     steps.append(
                         WorkflowStep(
@@ -127,6 +135,7 @@ class ToolLoopAgent:
                                     "timeout_seconds": task.model_timeout_seconds,
                                 },
                                 messages=messages,
+                                tools=tools,
                             ),
                         )
                     )
@@ -150,6 +159,7 @@ class ToolLoopAgent:
                                 "error": "final_response_before_tool_call",
                             },
                             messages=messages,
+                            tools=tools,
                         )
                         steps.append(
                             WorkflowStep(
@@ -166,7 +176,7 @@ class ToolLoopAgent:
                                 "tool_name": "orchestration_policy",
                                 "ok": False,
                                 "error": (
-                                    "At least one tool call is required before final_response. "
+                                    "At least one tool call is required before answering. "
                                     "Choose an available tool and provide valid arguments."
                                 ),
                             }
@@ -182,6 +192,7 @@ class ToolLoopAgent:
                                 "missing_required_tools": list(missing_required),
                             },
                             messages=messages,
+                            tools=tools,
                         )
                         steps.append(
                             WorkflowStep(
@@ -198,7 +209,7 @@ class ToolLoopAgent:
                                 "tool_name": "orchestration_policy",
                                 "ok": False,
                                 "error": (
-                                    "Before final_response, call these required tools: "
+                                    "Before answering, call these required tools: "
                                     + ", ".join(missing_required)
                                 ),
                             }
@@ -213,6 +224,7 @@ class ToolLoopAgent:
                                 "error": "final_response_before_verification",
                             },
                             messages=messages,
+                            tools=tools,
                         )
                         steps.append(
                             WorkflowStep(
@@ -231,7 +243,7 @@ class ToolLoopAgent:
                                 "error": (
                                     "A write succeeded during this repair task, but verification "
                                     "has not passed after the latest write. Run test.run before "
-                                    "final_response."
+                                    "answering."
                                 ),
                             }
                         )
@@ -254,6 +266,7 @@ class ToolLoopAgent:
                                         "ok": final_ok,
                                     },
                                     messages=messages,
+                                    tools=tools,
                                 ),
                             ),
                         ],
@@ -270,6 +283,7 @@ class ToolLoopAgent:
                             "error": decision.error,
                         },
                         messages=messages,
+                        tools=tools,
                     )
                     steps.append(
                         WorkflowStep(
@@ -302,6 +316,7 @@ class ToolLoopAgent:
                             ),
                         },
                         messages=messages,
+                        tools=tools,
                     )
                     steps.append(
                         WorkflowStep(
@@ -319,7 +334,7 @@ class ToolLoopAgent:
                             "ok": False,
                             "error": (
                                 "No more tool calls are allowed. Use the existing tool_results "
-                                "and return final_response."
+                                "and answer the user."
                             ),
                         }
                     )
@@ -333,7 +348,7 @@ class ToolLoopAgent:
                 if tool_call.tool_name not in task.available_tools:
                     if is_repeated_unavailable_tool(tool_call, steps):
                         # Already told model this tool is unavailable; block and
-                        # ask for final_response to stop the loop.
+                        # ask for a final answer to stop the loop.
                         unavail_result = ToolResult(
                             tool_call_id=tool_call.id,
                             tool_name=tool_call.tool_name,
@@ -344,7 +359,7 @@ class ToolLoopAgent:
                                 "message": (
                                     f"'{tool_call.tool_name}' is not available. "
                                     "Do not call this tool again. "
-                                    "Respond with final_response."
+                                    "Answer the user."
                                 ),
                             },
                         )
@@ -354,6 +369,7 @@ class ToolLoopAgent:
                                 "error": "repeated_unavailable_tool",
                             },
                             messages=messages,
+                            tools=tools,
                         )
                         steps.append(
                             WorkflowStep(
@@ -385,7 +401,7 @@ class ToolLoopAgent:
                             "message": (
                                 "File already patched in a previous step. "
                                 "No further writes are needed. "
-                                "Respond with final_response."
+                                "Answer the user."
                             ),
                         },
                     )
@@ -395,6 +411,7 @@ class ToolLoopAgent:
                             "error": "duplicate_successful_write",
                         },
                         messages=messages,
+                        tools=tools,
                     )
                     steps.append(
                         WorkflowStep(
@@ -420,6 +437,7 @@ class ToolLoopAgent:
                             "error": "duplicate_read_or_search",
                         },
                         messages=messages,
+                        tools=tools,
                     )
                     steps.append(
                         WorkflowStep(
@@ -443,10 +461,11 @@ class ToolLoopAgent:
                             "tool_name": "orchestration_policy",
                             "ok": False,
                             "error": (
-                                f"You already retrieved this from {tool_call.tool_name} in a previous step "
+                                f"You already retrieved this from {tool_call.tool_name} "
+                                "in a previous step "
                                 "and the content is visible in your tool_history. "
                                 "Do not repeat this call. "
-                                "Use the existing results to answer and respond with final_response."
+                                "Use the existing results to answer the user."
                             ),
                         }
                     )
@@ -482,6 +501,7 @@ class ToolLoopAgent:
                                 "reason": decision.reason,
                             },
                             messages=messages,
+                            tools=tools,
                         ),
                     )
                 )
@@ -509,6 +529,7 @@ class ToolLoopAgent:
                 error="cancelled",
                 status=WorkflowStatus.CANCELLED,
             )
+
     async def _finish(
         self,
         *,
@@ -550,10 +571,16 @@ class ToolLoopAgent:
             trace=trace,
         )
 
-    async def _complete_model(self, task: ToolLoopAgentTask, messages: list[dict[str, str]]) -> str:
+    async def _complete_model(
+        self,
+        task: ToolLoopAgentTask,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]],
+    ) -> str:
         """Complete one model turn, optionally bounded by a per-turn timeout."""
 
-        completion = self.model_provider.complete(messages)
+        completion = self.model_provider.complete(messages, tools=tools or None)
         if task.model_timeout_seconds is None:
             return await completion
         return await asyncio.wait_for(completion, timeout=task.model_timeout_seconds)
@@ -578,12 +605,15 @@ class ToolLoopAgent:
         self,
         output: dict[str, Any],
         *,
-        messages: list[dict[str, str]],
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Attach the turn messages and (if present) raw_response to a trace step."""
 
-        return {**output, "prompt": messages}
-
+        prompt: list[dict[str, Any]] | dict[str, Any] = (
+            {"messages": messages, "tools": tools} if tools else messages
+        )
+        return {**output, "prompt": prompt}
 
 
 def _thinking_message(tool_calls_made: int, final_response_only: bool) -> str:

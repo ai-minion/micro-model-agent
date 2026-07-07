@@ -164,7 +164,9 @@ def is_duplicate_successful_write(
             # Block if applied=True (real write) or preview_complete=True
             # (forced dry_run via apply_patches=False).
             prev_output = step.tool_result.output or {}
-            if not prev_output.get("applied", False) and not prev_output.get("preview_complete", False):
+            if not prev_output.get("applied", False) and not prev_output.get(
+                "preview_complete", False
+            ):
                 continue
             # Same file paths alone are not enough: a repair loop may need a
             # second, distinct patch to the same file after verification. Only
@@ -221,9 +223,7 @@ def is_duplicate_read_or_search(
     if last_matching_index is None:
         return False
     # Allow re-read/re-search if a write happened after the previous matching call.
-    if last_write_index is not None and last_write_index > last_matching_index:
-        return False
-    return True
+    return not (last_write_index is not None and last_write_index > last_matching_index)
 
 
 def dedup_block_count_for_call(
@@ -365,7 +365,7 @@ def orchestration_hints(
         hints.append(
             "This task is about a failing test/import/verification issue. A file write "
             "has succeeded, but no test.run has passed after the latest write. Run "
-            "test.run before final_response."
+            "test.run before answering."
         )
     successful_writes = [
         step
@@ -378,7 +378,7 @@ def orchestration_hints(
     if successful_writes:
         hints.append(
             "A repo.write_files call already succeeded. Do not repeat the same write. "
-            "Return final_response, or run a distinct verification tool if one is available."
+            "Answer the user, or run a distinct verification tool if one is available."
         )
     return hints
 
