@@ -49,6 +49,19 @@ def _patch() -> str:
     )
 
 
+def _return_patch(old: int, new: int) -> str:
+    return (
+        "diff --git a/app.py b/app.py\n"
+        "index 041b5f7..be082e7 100644\n"
+        "--- a/app.py\n"
+        "+++ b/app.py\n"
+        "@@ -1,2 +1,2 @@\n"
+        " def value():\n"
+        f"-    return {old}\n"
+        f"+    return {new}\n"
+    )
+
+
 def _model_response(payload: dict[str, Any]) -> str:
     return json.dumps(payload, sort_keys=True)
 
@@ -874,6 +887,62 @@ def test_tool_loop_agent_blocks_duplicate_successful_write_files(
     assert "tool_results" not in third_payload
 
 
+def test_tool_loop_agent_allows_distinct_patch_to_same_file(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.write_patch",
+                    "arguments": {
+                        "patch": _return_patch(1, 2),
+                        "dry_run": False,
+                        "require_approval": False,
+                        "expected_changed_files": ["app.py"],
+                    },
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.write_patch",
+                    "arguments": {
+                        "patch": _return_patch(2, 3),
+                        "dry_run": False,
+                        "require_approval": False,
+                        "expected_changed_files": ["app.py"],
+                    },
+                }
+            ),
+            _model_response({"final_response": "Updated app.py twice.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Update app.py in two steps.",
+                available_tools=("repo.write_patch",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert (tmp_path / "app.py").read_text(encoding="utf-8") == "def value():\n    return 3\n"
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "tool_call_2",
+        "final_response",
+    ]
+
+
 def test_tool_loop_agent_keeps_latest_read_write_history_per_path(
     tmp_path: Path,
 ) -> None:
@@ -1264,12 +1333,12 @@ def test_tool_loop_agent_fires_on_turn_at_start_of_each_turn(tmp_path: Path) -> 
     )
 
     assert result.ok is True
-    thinking_calls = [(t, m) for t, m, msg in on_turn_calls if msg == "thinking"]
-    tool_calls_fired = [(t, m, msg) for t, m, msg in on_turn_calls if msg != "thinking"]
-    # "thinking" fires once per turn: turn 1 (tool call) and turn 2 (final response)
+    thinking_calls = [(t, m) for t, m, msg in on_turn_calls if msg.startswith("thinking") or msg == "finalizing"]
+    tool_calls_fired = [(t, m, msg) for t, m, msg in on_turn_calls if not (msg.startswith("thinking") or msg == "finalizing")]
+    # "thinking" / "thinking (N tool calls made)" fires once per turn
     assert thinking_calls == [(1, 4), (2, 4)]
-    # tool name fires once, before the tool executes
-    assert tool_calls_fired == [(1, 4, "repo.read")]
+    # tool label fires once, before the tool executes
+    assert tool_calls_fired == [(1, 4, "repo.read: app.py")]
 
 
 def test_tool_loop_agent_on_turn_fires_before_tool_execution(tmp_path: Path) -> None:
@@ -1319,7 +1388,7 @@ def test_tool_loop_agent_on_turn_fires_before_tool_execution(tmp_path: Path) -> 
     )
 
     # on_turn with the tool name must be recorded strictly before execute
-    tool_on_turn_idx = order.index("on_turn:repo.read")
+    tool_on_turn_idx = next(i for i, s in enumerate(order) if s.startswith("on_turn:repo.read"))
     execute_idx = order.index("execute:repo.read")
     assert tool_on_turn_idx < execute_idx
 
@@ -1355,3 +1424,347 @@ def test_tool_loop_agent_propagates_on_turn_exception(tmp_path: Path) -> None:
         assert str(exc) == "callback failure"
     else:
         raise AssertionError("expected on_turn exception to propagate")
+
+
+def test_tool_loop_agent_blocks_duplicate_repo_read(
+    tmp_path: Path,
+) -> None:
+    """A repeated repo.read with identical arguments is blocked with a dedup message."""
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "The file defines value().", "ok": True}),
+        ]
+    )
+    _init_repo(tmp_path)
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Describe app.py",
+                available_tools=("repo.read",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "final_response",
+    ]
+    assert result.trace.steps[1].output["error"] == "duplicate_read_or_search"
+    # The policy message goes to transcript (tool_results), not as a tool result.
+    assert result.trace.steps[1].tool_result is not None
+    assert result.trace.steps[1].tool_result.ok is False
+    assert result.trace.steps[1].tool_result.error == "duplicate_read_or_search"
+
+
+def test_tool_loop_agent_blocks_duplicate_repo_search(
+    tmp_path: Path,
+) -> None:
+    """A repeated repo.search with identical arguments is blocked with a dedup message."""
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py"},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"glob": "**/*.py"},
+                }
+            ),
+            _model_response({"final_response": "Found app.py.", "ok": True}),
+        ]
+    )
+    _init_repo(tmp_path)
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="List Python files.",
+                available_tools=("repo.search",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "final_response",
+    ]
+    assert result.trace.steps[1].output["error"] == "duplicate_read_or_search"
+    assert result.trace.steps[1].tool_result is not None
+    assert result.trace.steps[1].tool_result.ok is False
+
+
+def test_tool_loop_agent_allows_reread_after_write(
+    tmp_path: Path,
+) -> None:
+    """repo.read is NOT blocked if a write occurred between the first and second read."""
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.write_files",
+                    "arguments": {
+                        "dry_run": False,
+                        "require_approval": False,
+                        "files": [{"path": "app.py", "content": "def value():\n    return 2\n"}],
+                    },
+                }
+            ),
+            # Second read after write — should be allowed.
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response({"final_response": "Done.", "ok": True}),
+        ]
+    )
+    _init_repo(tmp_path)
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Update app.py and verify.",
+                available_tools=("repo.read", "repo.write_files"),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    # All 3 tool calls should succeed (no dedup block on the second read).
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "tool_call_2",
+        "tool_call_3",
+        "final_response",
+    ]
+
+
+def test_tool_loop_agent_final_result_ok_after_unavailable_tool_call(
+    tmp_path: Path,
+) -> None:
+    """final_response ok=True is allowed even when the model called an unavailable tool."""
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            _model_response(
+                {
+                    "tool_name": "repo.verify",  # not in available_tools
+                    "arguments": {"path": "app.py"},
+                }
+            ),
+            _model_response({"final_response": "Read app.py successfully.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Read app.py.",
+                available_tools=("repo.read",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.response == "Read app.py successfully."
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "tool_call_2",
+        "final_response",
+    ]
+
+
+def test_tool_loop_agent_blocks_repeated_unavailable_tool(
+    tmp_path: Path,
+) -> None:
+    """Calling an unavailable tool a second time is dedup-blocked with a stronger message."""
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            # First call to unavailable tool — gets "not available" response.
+            _model_response(
+                {
+                    "tool_name": "repo.verify",
+                    "arguments": {"path": "app.py"},
+                }
+            ),
+            # Second call to the same unavailable tool — should be dedup-blocked.
+            _model_response(
+                {
+                    "tool_name": "repo.verify",
+                    "arguments": {"path": "app.py"},
+                }
+            ),
+            _model_response({"final_response": "Done.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Describe app.py",
+                available_tools=("repo.read",),
+                max_tool_calls=8,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "tool_call_2",
+        "model_turn_3",
+        "final_response",
+    ]
+    assert result.trace.steps[2].output["error"] == "repeated_unavailable_tool"
+    assert result.trace.steps[2].tool_result is not None
+    assert result.trace.steps[2].tool_result.ok is False
+    assert result.trace.steps[2].tool_result.error == "repeated_unavailable_tool"
+
+
+def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
+    tmp_path: Path,
+) -> None:
+    """After a dedup-blocked read, the original file content must still be in the prompt.
+
+    Regression: compact_path_tool_history was treating the dedup block as the
+    'latest' entry for src/stats.py, dropping the real read result with file
+    content. The model was then told 'you already have this' but couldn't see
+    what 'this' was, causing it to loop forever.
+    """
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            # Turn 1: read the file
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            # Turn 2: try to read the same file again (will be dedup-blocked)
+            _model_response(
+                {
+                    "tool_name": "repo.read",
+                    "arguments": {"files": [{"path": "app.py"}]},
+                }
+            ),
+            # Turn 3: final_response (model finally produces it)
+            _model_response({"final_response": "app.py defines value().", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Describe app.py",
+                available_tools=("repo.read",),
+                max_tool_calls=8,
+                capture_prompts=True,
+            )
+        )
+    )
+
+    # The prompt for turn 3 (after the dedup block) should still contain the
+    # file content from the ORIGINAL read — not just the dedup block.
+    turn3_payload = _user_payload_from_messages(model.prompts[2])
+    history = turn3_payload["tool_history"]
+
+    # The original read (tool_call_1) must be present with file content.
+    original_read = next(
+        (e for e in history if e["tool_name"] == "repo.read" and "files" in e.get("output", {})),
+        None,
+    )
+    assert original_read is not None, "original read result with file content was compacted away"
+    assert any(
+        "def value" in f.get("content", "")
+        for f in original_read["output"]["files"]
+    ), "file content missing from original read in prompt"
+
+    # The dedup block must appear in tool_results (transcript-based active
+    # feedback), NOT in tool_history, so it doesn't displace real content.
+    tool_results = turn3_payload.get("tool_results", [])
+    dedup_result = next(
+        (
+            r for r in tool_results
+            if r.get("tool_name") == "orchestration_policy"
+            and r.get("ok") is False
+            and "already retrieved" in r.get("error", "").lower()
+        ),
+        None,
+    )
+    assert dedup_result is not None, "dedup policy message missing from tool_results"

@@ -49,7 +49,12 @@ class PatchPolicyToolExecutor:
             "dry_run": True,
             "require_approval": True,
         }
-        return await self.wrapped.execute(replace(tool_call, arguments=arguments))
+        result = await self.wrapped.execute(replace(tool_call, arguments=arguments))
+        # Signal to the dedup policy that a successful preview counts as "done".
+        # Without this, the loop never terminates because applied=False always.
+        if result.ok:
+            result = replace(result, output={**result.output, "preview_complete": True})
+        return result
 
 
 def allowed_test_commands(

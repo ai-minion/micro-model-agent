@@ -120,6 +120,14 @@ def compact_path_tool_history(
 def history_entry_paths(entry: dict[str, Any]) -> list[str]:
     """Return repository paths represented by one prompt history entry."""
 
+    # Dedup-blocked entries contain no real content — don't let them displace
+    # the actual read/write result that holds the file content.
+    output = entry.get("output")
+    if isinstance(output, dict) and output.get("duplicate"):
+        return []
+    if entry.get("error") == "duplicate_read_or_search":
+        return []
+
     tool_name = entry.get("tool_name")
     arguments = entry.get("arguments")
     if not isinstance(arguments, dict):

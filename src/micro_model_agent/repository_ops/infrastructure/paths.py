@@ -121,6 +121,11 @@ class RepositoryRoot:
             raise RepositoryPathError("glob must be repository-relative")
         if "/../" in f"/{normalized}/":
             raise RepositoryPathError("glob must not contain parent traversal")
+        # A bare extension glob like *.py only matches root-level files in
+        # Python's Path.glob(). Expand to **/*.py so models get the expected
+        # recursive behaviour when they emit {"glob": "*.py"}.
+        if "/" not in normalized and normalized.startswith("*") and not normalized.startswith("**"):
+            normalized = "**/" + normalized
         return normalized.removeprefix("./")
 
 

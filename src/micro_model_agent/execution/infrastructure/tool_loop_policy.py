@@ -56,7 +56,7 @@ def is_duplicate_write_block_step(step: WorkflowStep | None) -> bool:
     return (
         step is not None
         and step.tool_call is not None
-        and step.tool_call.tool_name == "repo.write_files"
+        and step.tool_call.tool_name in {"repo.write_files", "repo.write_patch"}
         and step.output.get("error") == "duplicate_successful_write"
     )
 
@@ -108,6 +108,15 @@ def is_repaired_tool_failure(
 
     if step.tool_call is None:
         return False
+    # Calls to tools that are simply not available, or that were blocked by
+    # orchestration policy, are not real task failures.
+    if step.tool_result is not None and isinstance(step.tool_result.error, str):
+        if step.tool_result.error.startswith("tool is not available:"):
+            return True
+        if step.tool_result.error == "duplicate_read_or_search":
+            return True
+        if step.tool_result.error == "repeated_unavailable_tool":
+            return True
     tool_name = step.tool_call.tool_name
     if last_success_by_tool.get(tool_name, -1) > step_index:
         return True
@@ -140,7 +149,9 @@ def is_duplicate_successful_write(
 
     if tool_call.tool_name == "repo.write_patch":
         requested_paths = write_patch_paths(tool_call.arguments)
-        if not requested_paths:
+        requested_patch = str(tool_call.arguments.get("patch", ""))
+        # Need at least one identity signal to avoid false positives.
+        if not requested_paths and not requested_patch:
             return False
         for step in steps:
             if (
@@ -150,14 +161,117 @@ def is_duplicate_successful_write(
                 or step.tool_call.tool_name != "repo.write_patch"
             ):
                 continue
-            # Only block if the previous patch was actually applied (not dry_run).
+            # Block if applied=True (real write) or preview_complete=True
+            # (forced dry_run via apply_patches=False).
             prev_output = step.tool_result.output or {}
-            if not prev_output.get("applied", False):
+            if not prev_output.get("applied", False) and not prev_output.get("preview_complete", False):
                 continue
-            if write_patch_paths(step.tool_call.arguments) == requested_paths:
-                return True
+            # Same file paths alone are not enough: a repair loop may need a
+            # second, distinct patch to the same file after verification. Only
+            # block when the patch body is the same too.
+            if str(step.tool_call.arguments.get("patch", "")) != requested_patch:
+                continue
+            if requested_paths:
+                if write_patch_paths(step.tool_call.arguments) == requested_paths:
+                    return True
+                continue
+            return True
         return False
 
+    return False
+
+
+
+def is_duplicate_read_or_search(
+    tool_call: ToolCall,
+    steps: list[WorkflowStep],
+) -> bool:
+    """Return true when repo.read or repo.search repeats an already-seen query.
+
+    Only blocks if no write has occurred since the last identical call, so the
+    model can legitimately re-read a file it just modified.
+    """
+
+    if tool_call.tool_name not in {"repo.read", "repo.search"}:
+        return False
+
+    # Stable key for this call (sorted JSON of arguments).
+    import json as _json
+    try:
+        call_key = _json.dumps(tool_call.arguments, sort_keys=True)
+    except (TypeError, ValueError):
+        return False
+
+    last_matching_index: int | None = None
+    last_write_index: int | None = None
+
+    for idx, step in enumerate(steps):
+        if step.tool_call is None or step.tool_result is None or not step.tool_result.ok:
+            continue
+        if step.tool_call.tool_name in {"repo.write_patch", "repo.write_files"}:
+            last_write_index = idx
+        if step.tool_call.tool_name == tool_call.tool_name:
+            try:
+                prev_key = _json.dumps(step.tool_call.arguments, sort_keys=True)
+            except (TypeError, ValueError):
+                continue
+            if prev_key == call_key:
+                last_matching_index = idx
+
+    if last_matching_index is None:
+        return False
+    # Allow re-read/re-search if a write happened after the previous matching call.
+    if last_write_index is not None and last_write_index > last_matching_index:
+        return False
+    return True
+
+
+def dedup_block_count_for_call(
+    tool_call: ToolCall,
+    steps: list[WorkflowStep],
+) -> int:
+    """Count how many times this exact (tool_name, args) call has already been
+    dedup-blocked (error='duplicate_read_or_search') in the step history."""
+    import json as _json
+
+    try:
+        call_key = _json.dumps(tool_call.arguments, sort_keys=True)
+    except (TypeError, ValueError):
+        return 0
+
+    count = 0
+    for step in steps:
+        if step.tool_call is None or step.tool_result is None:
+            continue
+        if step.tool_result.error != "duplicate_read_or_search":
+            continue
+        if step.tool_call.tool_name != tool_call.tool_name:
+            continue
+        try:
+            prev_key = _json.dumps(step.tool_call.arguments, sort_keys=True)
+        except (TypeError, ValueError):
+            continue
+        if prev_key == call_key:
+            count += 1
+    return count
+
+
+def is_repeated_unavailable_tool(
+    tool_call: ToolCall,
+    steps: list[WorkflowStep],
+) -> bool:
+    """Return true when the model calls a tool it has already been told is not available."""
+
+    for step in steps:
+        if (
+            step.tool_call is not None
+            and step.tool_call.tool_name == tool_call.tool_name
+            and step.tool_result is not None
+            and not step.tool_result.ok
+            and isinstance(step.tool_result.error, str)
+            and step.tool_result.error.startswith("tool is not available:")
+        ):
+            return True
     return False
 
 
@@ -205,6 +319,10 @@ def orchestration_hints(
                 "repo.write_files to create the requested files."
             )
 
+    _PATCH_WRITE_ERRORS = {
+        "tool argument validation failed",
+        "patch does not contain changed file headers",
+    }
     failed_patch_writes = [
         step
         for step in steps
@@ -212,14 +330,21 @@ def orchestration_hints(
         and step.tool_call.tool_name == "repo.write_patch"
         and step.tool_result is not None
         and not step.tool_result.ok
-        and step.tool_result.error == "tool argument validation failed"
+        and step.tool_result.error in _PATCH_WRITE_ERRORS
     ]
-    if failed_patch_writes and "repo.write_files" in task.available_tools:
-        hints.append(
-            "A repo.write_patch call failed validation. For new files and scaffolds, "
-            "use repo.write_files with explicit path/content entries instead of "
-            "hand-authoring unified diffs."
-        )
+    if failed_patch_writes:
+        if "repo.write_files" in task.available_tools:
+            hints.append(
+                "A repo.write_patch call failed. For new files and scaffolds, "
+                "use repo.write_files with explicit path/content entries instead of "
+                "hand-authoring unified diffs."
+            )
+        else:
+            hints.append(
+                "A repo.write_patch call failed. Ensure the patch starts with "
+                "file headers: '--- a/path/to/file' and '+++ b/path/to/file' "
+                "before the @@ hunk lines."
+            )
     failed_write_files = [
         step
         for step in steps
@@ -392,3 +517,28 @@ def looks_like_dry_run_or_proposal_task(task: ToolLoopAgentTask) -> bool:
             "dry run",
         )
     )
+
+
+def consecutive_tool_failure_count(steps: list[WorkflowStep]) -> int:
+    """Count consecutive real tool failures at the tail of the step list.
+
+    Only counts actual executor failures (tool argument validation failed,
+    tool execution errors, etc.) — not policy rejections like dedup blocks or
+    'tool is not available' which are handled separately.
+    """
+    real_failure_errors = {
+        "tool argument validation failed",
+    }
+    count = 0
+    for step in reversed(steps):
+        if step.tool_result is None:
+            break
+        err = step.tool_result.error or ""
+        if step.tool_result.ok:
+            break
+        if err in real_failure_errors or err.startswith("executor error"):
+            count += 1
+        else:
+            # Policy rejection — stop counting
+            break
+    return count

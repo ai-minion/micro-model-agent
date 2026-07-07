@@ -149,7 +149,14 @@ class SemanticSearchResultContract(StrictBaseModel):
 class RepoWritePatchRequest(StrictBaseModel):
     """Arguments accepted by repo.write_patch."""
 
-    patch: str = Field(min_length=1)
+    patch: str = Field(
+        min_length=1,
+        description=(
+            "A unified diff in standard format. Must include file headers: "
+            "'--- a/path/to/file' and '+++ b/path/to/file' followed by @@ hunks. "
+            "Example: '--- a/src/foo.py\n+++ b/src/foo.py\n@@ -10,0 +11,3 @@\n+def bar():\n+    return 1\n'"
+        ),
+    )
     dry_run: bool = True
     require_approval: bool = True
     expected_changed_files: list[str] = Field(default_factory=list, max_length=100)
@@ -173,9 +180,11 @@ class RepoWritePatchRequest(StrictBaseModel):
     @field_validator("patch")
     @classmethod
     def require_unified_diff(cls, value: str) -> str:
-        """Require the basic file headers used by unified diffs."""
+        """Require the patch to look like a unified diff or a bare hunk sequence."""
 
-        if "--- " not in value or "+++ " not in value:
+        has_file_headers = "--- " in value and "+++ " in value
+        has_hunks = "@@ " in value
+        if not has_file_headers and not has_hunks:
             raise ValueError("patch must look like a unified diff")
         return value
 

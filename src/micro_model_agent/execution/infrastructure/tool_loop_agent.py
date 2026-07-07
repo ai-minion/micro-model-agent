@@ -29,7 +29,10 @@ from micro_model_agent.execution.infrastructure.tool_loop_decisions import parse
 from micro_model_agent.execution.infrastructure.tool_loop_policy import (
     discovery_sufficient_for_final_response,
     has_unresolved_failed_tool_step,
+    dedup_block_count_for_call,
+    is_duplicate_read_or_search,
     is_duplicate_successful_write,
+    is_repeated_unavailable_tool,
     missing_required_tools,
     missing_verification_after_write,
     orchestration_hints,
@@ -80,8 +83,6 @@ class ToolLoopAgent:
                 not used_extra_finalization_turn
                 and should_allow_extra_finalization_turn(task, tool_calls_made, steps)
             ):
-                if task.on_turn:
-                    await task.on_turn(turn_number, task.max_turns, "thinking")
                 force_final_response = turn_number > task.max_turns
                 if force_final_response:
                     used_extra_finalization_turn = True
@@ -97,6 +98,12 @@ class ToolLoopAgent:
                 final_response_only = (
                     force_final_response or budget_exhausted or discovery_sufficient
                 )
+                if task.on_turn:
+                    await task.on_turn(
+                        turn_number,
+                        task.max_turns,
+                        _thinking_message(tool_calls_made, final_response_only),
+                    )
                 messages = build_prompt(
                     task,
                     transcript,
@@ -324,6 +331,43 @@ class ToolLoopAgent:
                     arguments=decision.arguments,
                 )
                 if tool_call.tool_name not in task.available_tools:
+                    if is_repeated_unavailable_tool(tool_call, steps):
+                        # Already told model this tool is unavailable; block and
+                        # ask for final_response to stop the loop.
+                        unavail_result = ToolResult(
+                            tool_call_id=tool_call.id,
+                            tool_name=tool_call.tool_name,
+                            ok=False,
+                            error="repeated_unavailable_tool",
+                            output={
+                                "duplicate": True,
+                                "message": (
+                                    f"'{tool_call.tool_name}' is not available. "
+                                    "Do not call this tool again. "
+                                    "Respond with final_response."
+                                ),
+                            },
+                        )
+                        output = self._step_output(
+                            {
+                                "raw_response": decision.raw_response,
+                                "error": "repeated_unavailable_tool",
+                            },
+                            messages=messages,
+                        )
+                        steps.append(
+                            WorkflowStep(
+                                name=f"model_turn_{turn_number}",
+                                status=WorkflowStatus.FAILED,
+                                tool_call=tool_call,
+                                tool_result=unavail_result,
+                                output=output,
+                            )
+                        )
+                        await self._save_progress(trace, steps)
+                        transcript.append({"role": "assistant", "content": decision.raw_response})
+                        turn_number += 1
+                        continue
                     tool_result = ToolResult(
                         tool_call_id=tool_call.id,
                         tool_name=tool_call.tool_name,
@@ -365,9 +409,62 @@ class ToolLoopAgent:
                     transcript.append({"role": "assistant", "content": decision.raw_response})
                     turn_number += 1
                     continue
+                elif is_duplicate_read_or_search(tool_call, steps):
+                    # This is a policy rejection, not a real tool result.
+                    # Add it to the transcript as role="tool" (like other policy
+                    # rejections) so the model sees it as immediate active
+                    # feedback in tool_results, not buried in tool_history.
+                    output = self._step_output(
+                        {
+                            "raw_response": decision.raw_response,
+                            "error": "duplicate_read_or_search",
+                        },
+                        messages=messages,
+                    )
+                    steps.append(
+                        WorkflowStep(
+                            name=f"model_turn_{turn_number}",
+                            status=WorkflowStatus.FAILED,
+                            tool_call=tool_call,
+                            tool_result=ToolResult(
+                                tool_call_id=tool_call.id,
+                                tool_name=tool_call.tool_name,
+                                ok=False,
+                                error="duplicate_read_or_search",
+                            ),
+                            output=output,
+                        )
+                    )
+                    await self._save_progress(trace, steps)
+                    transcript.append({"role": "assistant", "content": decision.raw_response})
+                    transcript.append(
+                        {
+                            "role": "tool",
+                            "tool_name": "orchestration_policy",
+                            "ok": False,
+                            "error": (
+                                f"You already retrieved this from {tool_call.tool_name} in a previous step "
+                                "and the content is visible in your tool_history. "
+                                "Do not repeat this call. "
+                                "Use the existing results to answer and respond with final_response."
+                            ),
+                        }
+                    )
+                    turn_number += 1
+                    # Hard-stop: if the model has now been blocked on this
+                    # exact call 2+ times, it is stuck in a dedup loop.
+                    # Advance past max_turns so the next iteration runs with
+                    # force_final_response=True (final-answer-only prompt).
+                    if dedup_block_count_for_call(tool_call, steps) >= 2:
+                        turn_number = task.max_turns + 1
+                    continue
                 else:
                     if task.on_turn:
-                        await task.on_turn(turn_number, task.max_turns, tool_call.tool_name)
+                        await task.on_turn(
+                            turn_number,
+                            task.max_turns,
+                            _tool_call_label(tool_call.tool_name, tool_call.arguments),
+                        )
                     tool_result = await self.tool_executor.execute(tool_call)
 
                 tool_calls_made += 1
@@ -486,3 +583,52 @@ class ToolLoopAgent:
         """Attach the turn messages and (if present) raw_response to a trace step."""
 
         return {**output, "prompt": messages}
+
+
+
+def _thinking_message(tool_calls_made: int, final_response_only: bool) -> str:
+    """Return a turn-start progress label for MCP consumers."""
+    if final_response_only:
+        return "finalizing"
+    if tool_calls_made == 1:
+        return "thinking (1 tool call made)"
+    if tool_calls_made > 1:
+        return f"thinking ({tool_calls_made} tool calls made)"
+    return "thinking"
+
+
+def _tool_call_label(tool_name: str, arguments: dict[str, Any]) -> str:
+    """Return a concise label for a tool call to surface to MCP consumers."""
+    detail = _tool_call_detail(tool_name, arguments)
+    return f"{tool_name}: {detail}" if detail else tool_name
+
+
+def _tool_call_detail(tool_name: str, arguments: dict[str, Any]) -> str:
+    if tool_name == "repo.read":
+        files = arguments.get("files", [])
+        paths = [f["path"] if isinstance(f, dict) else str(f) for f in files]
+        return _join_with_limit([p for p in paths if p])
+    if tool_name == "repo.search":
+        return str(arguments.get("query") or arguments.get("glob") or "")
+    if tool_name == "repo.write_patch":
+        changed = arguments.get("expected_changed_files", [])
+        return _join_with_limit([str(f) for f in changed])
+    if tool_name == "repo.write_files":
+        files = arguments.get("files", [])
+        paths = [f["path"] if isinstance(f, dict) else str(f) for f in files]
+        return _join_with_limit([p for p in paths if p])
+    if tool_name == "test.run":
+        return str(arguments.get("command_name") or "")
+    if tool_name == "git.diff":
+        paths = arguments.get("paths", [])
+        return _join_with_limit([str(p) for p in paths])
+    return ""
+
+
+def _join_with_limit(items: list[str], limit: int = 3) -> str:
+    if not items:
+        return ""
+    shown = items[:limit]
+    extra = len(items) - limit
+    result = ", ".join(shown)
+    return f"{result} +{extra} more" if extra > 0 else result

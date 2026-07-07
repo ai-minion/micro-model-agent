@@ -37,6 +37,7 @@ class RepoWritePatchTool:
 
     def run(self, request: RepoWritePatchRequest) -> RepoWritePatchResult:
         patch = self._normalized_patch(request.patch)
+        patch = self._ensure_file_headers(patch, request.expected_changed_files)
         changed_files, path_errors = self._changed_files(patch)
         errors = path_errors
 
@@ -60,22 +61,31 @@ class RepoWritePatchTool:
             )
 
         # git apply --check validates the patch without changing files.
+        # Fall back to -C0 (no context requirement) when the strict check fails,
+        # since model-generated context lines sometimes have minor whitespace
+        # or blank-line differences that don't affect correctness.
         check = self._git_apply(patch, check=True)
+        relaxed_context = False
         if check.returncode != 0:
-            return RepoWritePatchResult(
-                ok=False,
-                dry_run=request.dry_run,
-                applied=False,
-                preview=patch,
-                changed_files=changed_files,
-                errors=[
-                    ToolError(
-                        code="patch_check_failed",
-                        message=check.stderr.strip() or "git apply --check failed",
-                        details={"returncode": check.returncode},
-                    )
-                ],
-            )
+            check_c0 = self._git_apply(patch, check=True, context_lines=0)
+            if check_c0.returncode == 0:
+                relaxed_context = True
+                check = check_c0
+            else:
+                return RepoWritePatchResult(
+                    ok=False,
+                    dry_run=request.dry_run,
+                    applied=False,
+                    preview=patch,
+                    changed_files=changed_files,
+                    errors=[
+                        ToolError(
+                            code="patch_check_failed",
+                            message=check.stderr.strip() or "git apply --check failed",
+                            details={"returncode": check.returncode},
+                        )
+                    ],
+                )
 
         if request.dry_run:
             # A dry run stops after validation and returns the patch preview.
@@ -105,7 +115,7 @@ class RepoWritePatchTool:
                 ],
             )
 
-        apply_result = self._git_apply(patch, check=False)
+        apply_result = self._git_apply(patch, check=False, context_lines=0 if relaxed_context else None)
         if apply_result.returncode != 0:
             return RepoWritePatchResult(
                 ok=False,
@@ -129,6 +139,23 @@ class RepoWritePatchTool:
             preview=patch,
             changed_files=changed_files,
         )
+
+    def _ensure_file_headers(self, patch: str, expected_changed_files: list[str]) -> str:
+        """Synthesize --- a/ +++ b/ headers when the model emits bare hunks.
+
+        Models sometimes emit a valid @@ hunk without file headers.  When
+        expected_changed_files names exactly one file we can safely add the
+        headers so git apply has a target path.
+        """
+        if "--- " in patch:
+            return patch  # already has headers
+        if "@@ " not in patch:
+            return patch  # not a recognisable hunk at all
+        if len(expected_changed_files) != 1:
+            return patch  # ambiguous target; let git apply fail with context
+        file_path = expected_changed_files[0].lstrip("/")
+        header = f"--- a/{file_path}\n+++ b/{file_path}\n"
+        return header + patch
 
     def _normalized_patch(self, patch: str) -> str:
         """Normalize patch: fix @@ hunk headers and ensure trailing newline.
@@ -258,12 +285,14 @@ class RepoWritePatchTool:
             return path[2:]
         return path
 
-    def _git_apply(self, patch: str, check: bool) -> subprocess.CompletedProcess[str]:
+    def _git_apply(self, patch: str, check: bool, context_lines: int | None = None) -> subprocess.CompletedProcess[str]:
         """Run git apply or git apply --check with the patch on stdin."""
 
         args = [self.git_executable, "apply", "--whitespace=nowarn", "--unidiff-zero"]
         if check:
             args.append("--check")
+        if context_lines is not None:
+            args.append(f"-C{context_lines}")
         env = os.environ.copy()
         ceiling = str(self.repository.root.parent)
         existing_ceiling = env.get("GIT_CEILING_DIRECTORIES")
