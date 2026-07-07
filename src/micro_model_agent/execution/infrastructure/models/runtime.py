@@ -317,7 +317,10 @@ def mcp_effective_profile_budget(
         )
 
     settings = run_profile_settings(run_profile)
-    profile_max_turns = int(settings["max_turns"])
+    raw_profile_max_turns = settings["max_turns"]
+    if raw_profile_max_turns is None:
+        raise ValueError(f"run profile {run_profile!r} must define max_turns")
+    profile_max_turns = int(raw_profile_max_turns)
     raw_profile_max_tool_calls = settings["max_tool_calls"]
     profile_max_tool_calls = (
         int(raw_profile_max_tool_calls)
@@ -427,7 +430,11 @@ async def run_configured_tool_loop(
         trace_store=workflow_trace_store(trace_repository_root or repository),
     )
     workflow = RunToolLoopWorkflow(agent)
-    request = replace(prepared.request, on_turn=on_turn) if on_turn is not None else prepared.request
+    request = (
+        replace(prepared.request, on_turn=on_turn)
+        if on_turn is not None
+        else prepared.request
+    )
     result = await workflow.run(request)
 
     return ConfiguredToolLoopResult(

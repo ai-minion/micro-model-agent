@@ -6,6 +6,7 @@ small ModelProvider protocol used by the rest of the application.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping
 from typing import Any, cast
 
@@ -28,12 +29,18 @@ class OllamaModelProvider:
         self.options = dict(options or {})
         self.client = AsyncClient(host=base_url)
 
-    async def complete(self, messages: list[dict[str, str]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
         # Use the chat endpoint so Ollama applies the model's own chat template.
         result = await self.client.chat(
             model=self.model_name,
             messages=messages,
-            format="json" if self.json_mode else None,
+            tools=tools,
+            format="json" if self.json_mode and not tools else None,
             options=self.options or None,
         )
         response = self._response_text(cast(object, result))
@@ -42,12 +49,38 @@ class OllamaModelProvider:
         return response
 
     def _response_text(self, result: object) -> str | None:
-        """Read completion text from either dict-like or object-like chat responses."""
+        """Read completion text from either dict-like or object-like chat responses.
+
+        When the model returns a native tool call (``tool_calls`` populated,
+        ``content`` empty) the first tool call is serialised to the
+        ``{"name": ..., "arguments": ...}`` format that the decision parser
+        already handles, so the rest of the pipeline needs no changes.
+        """
 
         if isinstance(result, Mapping):
             message = result.get("message") or {}
-            response = message.get("content") if isinstance(message, Mapping) else None
+            content = message.get("content") if isinstance(message, Mapping) else None
+            if content:
+                return str(content)
+            tool_calls = message.get("tool_calls") if isinstance(message, Mapping) else None
         else:
             message = getattr(result, "message", None)
-            response = getattr(message, "content", None) if message is not None else None
-        return response if isinstance(response, str) else None
+            content = getattr(message, "content", None) if message is not None else None
+            if content:
+                return str(content)
+            tool_calls = getattr(message, "tool_calls", None) if message is not None else None
+
+        if tool_calls:
+            first = tool_calls[0] if isinstance(tool_calls, (list, tuple)) else tool_calls
+            if isinstance(first, Mapping):
+                func = first.get("function") or {}
+                name = func.get("name") if isinstance(func, Mapping) else None
+                arguments = func.get("arguments") if isinstance(func, Mapping) else None
+            else:
+                func = getattr(first, "function", None)
+                name = getattr(func, "name", None) if func is not None else None
+                arguments = getattr(func, "arguments", None) if func is not None else None
+            if isinstance(name, str):
+                args = arguments if isinstance(arguments, dict) else {}
+                return json.dumps({"name": name, "arguments": args})
+        return None

@@ -35,12 +35,17 @@ class TransformersPeftModelProvider:
         self._model: Any | None = None
         self._torch: Any | None = None
 
-    async def complete(self, messages: list[dict[str, Any]]) -> str:
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
         if self._model is None or self._tokenizer is None:
             # Loading a model can block for a while, so run it in a worker thread
             # instead of blocking the async event loop.
             await asyncio.to_thread(self._load)
-        return await asyncio.to_thread(self._generate, messages)
+        return await asyncio.to_thread(self._generate, messages, tools=tools)
 
     def _load(self) -> None:
         """Load tokenizer, base model, and optional PEFT adapter lazily."""
@@ -78,13 +83,22 @@ class TransformersPeftModelProvider:
         self._tokenizer = tokenizer
         self._model = model
 
-    def _generate(self, messages: list[dict[str, Any]]) -> str:
+    def _generate(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
         """Generate text for one turn using the already-loaded model."""
 
         if self._torch is None or self._model is None or self._tokenizer is None:
             raise RuntimeError("model provider has not been loaded")
 
-        prompt = _render_prompt(self._tokenizer, _normalize_messages(messages))
+        prompt = _render_prompt(
+            self._tokenizer,
+            _normalize_messages(messages),
+            tools=tools,
+        )
         inputs = self._tokenizer(prompt, return_tensors="pt")
         model_device = getattr(self._model, "device", None)
         if model_device is not None and hasattr(inputs, "to"):
@@ -172,26 +186,47 @@ def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     return normalized
 
 
-def _render_prompt(tokenizer: Any, messages: list[dict[str, str]]) -> str:
+def _render_prompt(
+    tokenizer: Any,
+    messages: list[dict[str, str]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+) -> str:
     """Render chat messages with the tokenizer template, or a plain fallback."""
 
     if getattr(tokenizer, "chat_template", None):
+        template_kwargs: dict[str, Any] = {}
+        if tools:
+            template_kwargs["tools"] = tools
         return str(
             tokenizer.apply_chat_template(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True,
+                **template_kwargs,
             )
         )
-    return _render_plain_chat_prompt(messages)
+    return _render_plain_chat_prompt(messages, tools=tools)
 
 
-def _render_plain_chat_prompt(messages: list[dict[str, str]]) -> str:
-    """Fallback prompt format for tokenizers without a chat template."""
+def _render_plain_chat_prompt(
+    messages: list[dict[str, str]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+) -> str:
+    """Fallback prompt format for tokenizers without a chat template.
 
-    rendered = [
+    When ``tools`` is provided (native tool-schema list), the schemas are
+    rendered as a ``TOOLS:`` section so the model can still read argument
+    names and types even without a tokenizer chat template.
+    """
+
+    parts: list[str] = []
+    if tools:
+        parts.append(f"TOOLS:\n{json.dumps(tools, separators=(',', ':'))}")
+    parts.extend(
         f"{message.get('role', 'user').upper()}:\n{message.get('content', '')}"
         for message in messages
-    ]
-    rendered.append("ASSISTANT:\n")
-    return "\n\n".join(rendered)
+    )
+    parts.append("ASSISTANT:\n")
+    return "\n\n".join(parts)
