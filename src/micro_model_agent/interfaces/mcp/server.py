@@ -34,8 +34,7 @@ def create_mcp_server(
             "that matches the task size. One run loop has a limited turn budget; split large "
             "tasks into scaffold, repair, and test passes rather than asking one loop to do "
             "everything. Do the real work yourself, call micro_agent_stop_trace, and finish "
-            "with micro_agent_review_trace. Patch writes are dry-run unless apply_patches is "
-            "explicitly true."
+            "with micro_agent_review_trace."
         ),
     )
     enable_tool_list_changed_capability(server)

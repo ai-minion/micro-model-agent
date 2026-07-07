@@ -347,7 +347,6 @@ def test_run_agent_loop_applies_extended_profile_budget(tmp_path: Path) -> None:
             repository_root=str(tmp_path),
             available_tools=["repo.write_files"],
             run_profile="extended",
-            apply_patches=True,
             scripted_responses=[
                 _model_response(
                     {
@@ -452,7 +451,6 @@ def test_run_agent_loop_applies_write_files_when_patches_enabled(tmp_path: Path)
             goal="Create a tiny project file.",
             repository_root=str(tmp_path),
             available_tools=["repo.write_files"],
-            apply_patches=True,
             max_tool_calls=1,
             scripted_responses=[
                 _model_response(
@@ -493,7 +491,6 @@ def test_run_agent_loop_normalizes_legacy_tool_names(tmp_path: Path) -> None:
             repository_root=str(tmp_path),
             available_tools=["shell", "apply_patch"],
             required_tools=["apply_patch"],
-            apply_patches=True,
             max_tool_calls=1,
             scripted_responses=[
                 _model_response(
@@ -616,19 +613,19 @@ def test_run_agent_loop_adds_default_pytest_command_when_tests_allowed(
         read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
     )
     first_prompt = trace["trace"]["steps"][0]["output"]["prompt"]
-    if isinstance(first_prompt, list):
-        user_message = next(
-            message for message in first_prompt if message.get("role") == "user"
-        )
-        payload = json.loads(user_message["content"])
-    else:
-        payload = json.loads(
-            first_prompt.split("<|user|>\n", 1)[1].split("\n<|assistant|>", 1)[0]
-        )
+    assert isinstance(first_prompt, dict)
+    user_message = next(
+        message for message in first_prompt["messages"] if message.get("role") == "user"
+    )
+    payload = json.loads(user_message["content"])
+    test_tool = next(
+        tool for tool in first_prompt["tools"] if tool["function"]["name"] == "test.run"
+    )
 
     assert result["ok"] is True
     assert trace["trace"]["final_output"]["run_metadata"]["allowed_test_commands"] == ["pytest"]
-    assert payload["tool_schemas"]["test.run"]["allowed_command_names"] == ["pytest"]
+    assert "tool_schemas" not in payload
+    assert test_tool["function"]["parameters"]["properties"]["command_name"]["enum"] == ["pytest"]
 
 
 def test_run_agent_loop_uses_selected_adapter_config_with_scripted_smoke(

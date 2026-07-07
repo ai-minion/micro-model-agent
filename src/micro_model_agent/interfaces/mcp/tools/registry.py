@@ -102,13 +102,12 @@ def register_mcp_tools(
         run_profile: RunProfile | None = None,
         schema_prompt: bool = True,
         capture_prompts: bool = False,
-        apply_patches: bool = False,
         allow_test_run: bool = False,
         test_command_name: str | None = None,
         test_command_args: list[str] | None = None,
         comparison_session_id: str | None = None,
         offline: bool = True,
-        ctx: Context | None = None,
+        ctx: Context[Any, Any, Any] | None = None,
     ) -> dict[str, Any]:
         resolved_repository_root = await resolve_workspace_root(
             registry_root=Path(default_repository_root),
@@ -116,15 +115,19 @@ def register_mcp_tools(
             workspace_id=workspace_id,
         )
 
+        progress_ctx = ctx
+
         async def _on_turn(turn_number: int, max_turns: int, message: str) -> None:
+            if progress_ctx is None:
+                return
             label = (
                 f"[turn {turn_number}/{max_turns}] {message}"
                 if message
                 else f"[turn {turn_number}/{max_turns}]"
             )
             try:
-                await ctx.report_progress(turn_number - 1, max_turns, message=label)
-                await ctx.info(label)
+                await progress_ctx.report_progress(turn_number - 1, max_turns, message=label)
+                await progress_ctx.info(label)
             except Exception:
                 pass
 
@@ -145,7 +148,7 @@ def register_mcp_tools(
             run_profile=run_profile,
             schema_prompt=schema_prompt,
             capture_prompts=capture_prompts,
-            apply_patches=apply_patches,
+            apply_patches=True,
             allow_test_run=allow_test_run,
             test_command_name=test_command_name,
             test_command_args=test_command_args,

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -38,65 +37,14 @@ __all__ = [
 ]
 
 
-async def run_agent_loop(
-    *,
-    goal: str,
-    repository_root: str = ".",
-    context: str = "",
-    adapter_path: str | None = None,
-    base_model: str | None = None,
-    use_adapter: bool = True,
-    available_tools: list[str] | None = None,
-    required_tools: list[str] | None = None,
-    max_turns: int = 4,
-    max_tool_calls: int | None = 1,
-    max_new_tokens: int = 350,
-    max_tool_result_prompt_chars: int = 2500,
-    model_timeout_seconds: float | None = None,
-    run_profile: RunProfile | None = None,
-    schema_prompt: bool = True,
-    capture_prompts: bool = False,
-    apply_patches: bool = False,
-    allow_test_run: bool = False,
-    test_command_name: str | None = None,
-    test_command_args: list[str] | None = None,
-    scripted_responses: list[str] | None = None,
-    comparison_session_id: str | None = None,
-    comparison_repository_root: str | None = None,
-    offline: bool = True,
-    on_turn: Callable[[int, int, str], Awaitable[None]] | None = None,
-) -> dict[str, Any]:
+async def run_agent_loop(**kwargs: Any) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
-
     return await run_mcp_agent_loop(
-        goal=goal,
-        repository_root=repository_root,
-        context=context,
-        adapter_path=adapter_path,
-        base_model=base_model,
-        use_adapter=use_adapter,
-        available_tools=available_tools,
-        required_tools=required_tools,
-        max_turns=max_turns,
-        max_tool_calls=max_tool_calls,
-        max_new_tokens=max_new_tokens,
-        max_tool_result_prompt_chars=max_tool_result_prompt_chars,
-        model_timeout_seconds=model_timeout_seconds,
-        run_profile=run_profile,
-        schema_prompt=schema_prompt,
-        capture_prompts=capture_prompts,
-        apply_patches=apply_patches,
-        allow_test_run=allow_test_run,
-        test_command_name=test_command_name,
-        test_command_args=test_command_args,
-        scripted_responses=scripted_responses,
-        comparison_session_id=comparison_session_id,
-        comparison_repository_root=comparison_repository_root,
-        offline=offline,
+        **kwargs,
+        apply_patches=True,
         default_available_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
         tool_aliases=COMPAT_TOOL_ALIASES,
         required_tool_aliases=COMPAT_REQUIRED_TOOL_ALIASES,
-        on_turn=on_turn,
     )
 
 

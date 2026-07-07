@@ -85,8 +85,7 @@ def collect_real_trace_prompt(goal: str, context: str = "") -> str:
         "this chat initialized one, max_turns high enough for the task, and relevant "
         f"available_tools from this canonical list: {CANONICAL_TOOL_NAMES_TEXT}. "
         "Prefer repo.write_files for greenfield file creation and repo.write_patch for "
-        "precise edits. Use apply_patches=true only when real edits are intended in "
-        "the configured test workspace. Record the returned trace_id for later review."
+        "precise edits. Record the returned trace_id for later review."
     )
 
 
