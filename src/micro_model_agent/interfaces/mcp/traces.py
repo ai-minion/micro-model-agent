@@ -12,7 +12,6 @@ from micro_model_agent.interfaces.composition import (
     stop_comparison_trace_session,
     workflow_trace_record,
 )
-from micro_model_agent.interfaces.mcp.compat import TRACE_DIR_NAME
 
 
 async def read_trace(*, trace_id: str, repository_root: str = ".") -> dict[str, Any]:
@@ -21,7 +20,6 @@ async def read_trace(*, trace_id: str, repository_root: str = ".") -> dict[str, 
     trace = await workflow_trace_record(
         repository_root=repository_root,
         trace_id=trace_id,
-        trace_dir_name=TRACE_DIR_NAME,
     )
     if trace is None:
         return {"ok": False, "error": f"trace not found: {trace_id}"}
@@ -32,7 +30,7 @@ async def start_comparison_trace(
     *,
     goal: str,
     repository_root: str = ".",
-    comparison_repository_root: str | None = None,
+    task_repository_root: str | None = None,
     context: str = "",
     metadata: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -40,11 +38,10 @@ async def start_comparison_trace(
 
     session = await start_comparison_trace_session(
         goal=goal,
-        repository_root=repository_root,
-        comparison_repository_root=comparison_repository_root,
+        repository_root=task_repository_root or repository_root,
+        comparison_repository_root=repository_root,
         context=context,
         metadata=metadata or {},
-        trace_dir_name=TRACE_DIR_NAME,
     )
     return {"ok": True, "session": session}
 
@@ -56,12 +53,11 @@ async def record_comparison_event(
     payload: dict[str, Any] | None = None,
     actor: str = "consumer",
     repository_root: str = ".",
-    comparison_repository_root: str | None = None,
 ) -> dict[str, Any]:
     """Append one event to a comparison trace session."""
 
     session = await append_comparison_event(
-        repository_root=Path(comparison_repository_root or repository_root),
+        repository_root=Path(repository_root),
         session_id=session_id,
         event_type=event_type,
         actor=actor,
@@ -76,7 +72,6 @@ async def stop_comparison_trace(
     *,
     session_id: str,
     repository_root: str = ".",
-    comparison_repository_root: str | None = None,
     actual_summary: str = "",
     changed_files: list[str] | None = None,
     tests: list[str] | None = None,
@@ -85,7 +80,7 @@ async def stop_comparison_trace(
     """Stop a comparison trace and attach the consumer's actual result."""
 
     session = await stop_comparison_trace_session(
-        repository_root=Path(comparison_repository_root or repository_root),
+        repository_root=Path(repository_root),
         session_id=session_id,
         actual_result={
             "summary": actual_summary,
@@ -93,7 +88,6 @@ async def stop_comparison_trace(
             "tests": tests or [],
             "notes": notes,
         },
-        trace_dir_name=TRACE_DIR_NAME,
     )
     if session is None:
         return {"ok": False, "error": f"comparison trace not found: {session_id}"}
@@ -104,7 +98,7 @@ async def review_comparison_trace(
     *,
     session_id: str,
     repository_root: str = ".",
-    comparison_repository_root: str | None = None,
+    task_repository_root: str | None = None,
     local_model_quality: str = "unknown",
     local_model_notes: str = "",
     consumer_quality: str = "unknown",
@@ -113,8 +107,8 @@ async def review_comparison_trace(
     """Attach review details and return a compact comparison summary."""
 
     reviewed = await review_comparison_trace_session(
-        repository_root=repository_root,
-        comparison_repository_root=comparison_repository_root,
+        repository_root=task_repository_root or repository_root,
+        comparison_repository_root=repository_root,
         session_id=session_id,
         review={
             "local_model_quality": local_model_quality,
@@ -122,7 +116,6 @@ async def review_comparison_trace(
             "consumer_quality": consumer_quality,
             "comparison_notes": comparison_notes,
         },
-        trace_dir_name=TRACE_DIR_NAME,
     )
     if reviewed is None:
         return {"ok": False, "error": f"comparison trace not found: {session_id}"}
@@ -149,5 +142,4 @@ async def append_comparison_event(
         event_type=event_type,
         actor=actor,
         payload=payload,
-        trace_dir_name=TRACE_DIR_NAME,
     )

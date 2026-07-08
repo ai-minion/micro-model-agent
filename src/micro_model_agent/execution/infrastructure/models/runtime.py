@@ -43,7 +43,7 @@ from micro_model_agent.execution.infrastructure.persistence_runtime import (
 )
 from micro_model_agent.repository_ops.infrastructure.catalog import (
     BUILTIN_TOOL_SPECS,
-    builtin_tool_prompt_schemas,
+    builtin_native_tool_schemas,
 )
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
 from micro_model_agent.repository_ops.infrastructure.metadata import load_repository_config
@@ -64,6 +64,7 @@ __all__ = [
     "build_loop_model_provider",
     "build_model_provider",
     "loop_budget_response",
+    "native_tool_schemas",
     "path_config_value",
     "path_env",
     "path_or_none",
@@ -75,7 +76,6 @@ __all__ = [
     "runtime_model_metadata",
     "select_evaluation_model",
     "string_config_value",
-    "tool_prompt_schemas",
 ]
 
 _MODEL_CACHE: dict[tuple[str, str | None, int], TransformersPeftModelProvider] = {}
@@ -371,9 +371,8 @@ async def run_configured_tool_loop(
     model_timeout_seconds: float | None = None,
     run_profile: RunProfile | None = None,
     context: str = "",
-    schema_prompt: bool = True,
+    expose_tool_schemas: bool = True,
     require_tool_call: bool = True,
-    capture_prompts: bool = False,
     allowed_commands: Mapping[str, AllowedTestCommand | Sequence[str]] | None = None,
     trace_repository_root: str | Path | None = None,
     executor_wrapper: Callable[[ToolExecutor], ToolExecutor] | None = None,
@@ -402,12 +401,11 @@ async def run_configured_tool_loop(
                 model_timeout_seconds=model_timeout_seconds,
             ),
             context=context,
-            schema_prompt=schema_prompt,
+            expose_tool_schemas=expose_tool_schemas,
             require_tool_call=require_tool_call,
-            capture_prompts=capture_prompts,
             run_metadata=run_metadata or {},
         ),
-        tool_schema_builder=lambda tool_names: tool_prompt_schemas(
+        tool_schema_builder=lambda tool_names: native_tool_schemas(
             tool_names,
             allowed_test_commands=command_allowlist,
         ),
@@ -463,15 +461,14 @@ async def run_mcp_agent_loop(
     max_tool_result_prompt_chars: int = 2500,
     model_timeout_seconds: float | None = None,
     run_profile: RunProfile | None = None,
-    schema_prompt: bool = True,
-    capture_prompts: bool = False,
+    expose_tool_schemas: bool = True,
     apply_patches: bool = False,
     allow_test_run: bool = False,
     test_command_name: str | None = None,
     test_command_args: Sequence[str] | None = None,
     scripted_responses: Sequence[str] | None = None,
     comparison_session_id: str | None = None,
-    comparison_repository_root: str | Path | None = None,
+    server_repository_root: str | Path | None = None,
     offline: bool = True,
     default_available_tools: tuple[str, ...] = DEFAULT_TOOL_NAMES,
     tool_aliases: Mapping[str, Sequence[str]] | None = None,
@@ -481,6 +478,7 @@ async def run_mcp_agent_loop(
     """Run the MCP-flavored model tool loop and return its response record."""
 
     repository = Path(repository_root)
+    server_repository = Path(server_repository_root) if server_repository_root else repository
     test_commands = allowed_test_commands(
         test_command_name,
         test_command_args,
@@ -549,10 +547,9 @@ async def run_mcp_agent_loop(
         model_timeout_seconds=effective_model_timeout_seconds,
         run_profile=effective_run_profile,
         context=context,
-        schema_prompt=schema_prompt,
-        capture_prompts=capture_prompts,
+        expose_tool_schemas=expose_tool_schemas,
         allowed_commands=test_commands,
-        trace_repository_root=comparison_repository_root or repository,
+        trace_repository_root=server_repository,
         executor_wrapper=lambda executor: PatchPolicyToolExecutor(
             executor,
             apply_patches=apply_patches,
@@ -563,7 +560,7 @@ async def run_mcp_agent_loop(
     result = configured.result
     if comparison_session_id:
         await append_comparison_trace_event(
-            repository_root=Path(comparison_repository_root or repository),
+            repository_root=server_repository,
             session_id=comparison_session_id,
             event_type="local_model_run",
             actor="micro_model_agent",
@@ -615,8 +612,7 @@ async def run_cli_tool_loop(
     max_tool_calls: int | None,
     max_tool_result_prompt_chars: int,
     context: str = "",
-    schema_prompt: bool = True,
-    capture_prompts: bool = False,
+    expose_tool_schemas: bool = True,
     require_tool_call: bool = True,
     verification_command: str | None = None,
     test_command: Sequence[str] | None = None,
@@ -656,9 +652,8 @@ async def run_cli_tool_loop(
         max_tool_calls=max_tool_calls,
         max_tool_result_prompt_chars=max_tool_result_prompt_chars,
         context=context,
-        schema_prompt=schema_prompt,
+        expose_tool_schemas=expose_tool_schemas,
         require_tool_call=require_tool_call,
-        capture_prompts=capture_prompts,
         allowed_commands=allowed_commands,
         run_metadata={
             "interface": "cli.loop",
@@ -772,14 +767,14 @@ def base_model_from_adapter(adapter_path: Path | None) -> str:
     return base_model
 
 
-def tool_prompt_schemas(
+def native_tool_schemas(
     allowed_tool_names: tuple[str, ...],
     *,
     allowed_test_commands: Mapping[str, object],
 ) -> dict[str, Any]:
     """Return tool schemas enriched with runtime command allowlists."""
 
-    schemas = builtin_tool_prompt_schemas(allowed_tool_names)
+    schemas = builtin_native_tool_schemas(allowed_tool_names)
     test_schema = schemas.get("test.run")
     if test_schema is not None:
         test_schema["allowed_command_names"] = list(allowed_test_commands)

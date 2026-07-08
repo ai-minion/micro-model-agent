@@ -133,8 +133,7 @@ micro-agent loop PROMPT [OPTIONS]
 | `--required-tool TEXT` | None | Tool that must run before the model can return a final response. Can be passed more than once. |
 | `--max-turns INTEGER` | `8` | Maximum model turns before failing. |
 | `--context TEXT` | Empty string | Extra model-facing task context. |
-| `--schema-prompt / --no-schema-prompt` | `--schema-prompt` | Include built-in tool argument schemas in the model prompt. |
-| `--capture-prompts` | Disabled | Store exact model prompts in the workflow trace for data collection review. |
+| `--expose-tool-schemas / --no-expose-tool-schemas` | `--expose-tool-schemas` | Expose native built-in tool schemas to the model. |
 | `--allow-no-tool-final` | Disabled | Allow a final response before any tool call has run. |
 | `--verification-command TEXT` | None | Allowed test command name that `test.run` can select. |
 | `--test-command TEXT` | None | Shell-free command tokens for the verification command name. Can be passed more than once. |

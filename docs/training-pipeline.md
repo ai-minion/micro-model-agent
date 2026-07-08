@@ -290,13 +290,13 @@ The next collection path should run the base coder model, not a trained adapter:
 
 ```text
 Qwen/Qwen2.5-Coder-7B-Instruct
-+ explicit current tool schemas in the runtime prompt
++ explicit current native tool schemas at runtime
 + MCP or CLI workflow trace logging
 + human review labels
 ```
 
-Use `--no-adapter --schema-prompt --capture-prompts` for CLI collection, or
-`use_adapter=false`, `schema_prompt=true`, and `capture_prompts=true` through
+Use `--no-adapter --expose-tool-schemas` for CLI collection, or
+`use_adapter=false` and `expose_tool_schemas=true` through
 MCP. Accepted and corrected real traces should be recorded with
 `micro-agent dataset review-trace`, then exported with `dataset export-traces
 --label-mode reviewed --outcome accepted --quality good`. Rejected raw traces are

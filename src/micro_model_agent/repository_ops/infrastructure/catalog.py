@@ -1,7 +1,7 @@
 """Catalog metadata for built-in tools.
 
 The catalog is the single place that maps public tool names to descriptions and
-Pydantic argument contracts. Agents use it to build model prompts.
+Pydantic argument contracts. Agents use it to expose native tool schemas.
 """
 
 from __future__ import annotations
@@ -79,8 +79,8 @@ TOOL_ARGUMENT_CONTRACTS: dict[str, type[BaseModel]] = {
 }
 
 
-def builtin_tool_prompt_schemas(tool_names: Iterable[str] | None = None) -> dict[str, Any]:
-    """Return JSON-serializable tool descriptions and argument schemas for prompting."""
+def builtin_native_tool_schemas(tool_names: Iterable[str] | None = None) -> dict[str, Any]:
+    """Return JSON-serializable tool descriptions and argument schemas."""
 
     selected_names = list(tool_names) if tool_names is not None else list(BUILTIN_TOOL_SPECS)
     schemas: dict[str, Any] = {}

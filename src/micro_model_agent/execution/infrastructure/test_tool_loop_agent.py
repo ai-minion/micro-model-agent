@@ -16,7 +16,7 @@ from micro_model_agent.execution.infrastructure.tool_loop_agent import (
     ToolLoopAgentTask,
 )
 from micro_model_agent.execution.infrastructure.trace_store import JsonlTraceStore
-from micro_model_agent.repository_ops.infrastructure.catalog import builtin_tool_prompt_schemas
+from micro_model_agent.repository_ops.infrastructure.catalog import builtin_native_tool_schemas
 from micro_model_agent.repository_ops.infrastructure.command_runner import AllowedTestCommand
 from micro_model_agent.repository_ops.infrastructure.executor import BuiltinToolExecutor
 
@@ -156,7 +156,7 @@ def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Pa
         agent.run(
             ToolLoopAgentTask(
                 goal="Change value() in app.py to return 2",
-                tool_schemas=builtin_tool_prompt_schemas(),
+                tool_schemas=builtin_native_tool_schemas(),
             )
         )
     )
@@ -216,7 +216,7 @@ def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> 
         agent.run(
             ToolLoopAgentTask(
                 goal="Read app.py and tell me what value() returns.",
-                tool_schemas=builtin_tool_prompt_schemas(),
+                tool_schemas=builtin_native_tool_schemas(),
             )
         )
     )
@@ -232,7 +232,7 @@ def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> 
     assert result.trace.steps[0].output["error"] == "final_response_before_tool_call"
 
 
-def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) -> None:
+def test_tool_loop_agent_records_prompts_and_run_metadata(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(
         [
@@ -257,7 +257,7 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
             ToolLoopAgentTask(
                 goal="Read app.py and tell me what value() returns.",
                 available_tools=("repo.read",),
-                run_metadata={"interface": "test", "schema_prompt": True},
+                run_metadata={"interface": "test", "expose_tool_schemas": True},
             )
         )
     )
@@ -268,10 +268,10 @@ def test_tool_loop_agent_can_capture_prompts_and_run_metadata(tmp_path: Path) ->
     assert loaded_trace.steps[0].output["prompt"][0]["role"] == "system"
     assert loaded_trace.final_output["run_metadata"] == {
         "interface": "test",
-        "schema_prompt": True,
+        "expose_tool_schemas": True,
     }
     # run_metadata is also on the trace itself.
-    assert loaded_trace.run_metadata == {"interface": "test", "schema_prompt": True}
+    assert loaded_trace.run_metadata == {"interface": "test", "expose_tool_schemas": True}
     # Per-step files exist on disk.
     step_dir = (
         tmp_path / ".traces" / str(result.trace_id) / str(loaded_trace.steps[0].id)
@@ -581,7 +581,7 @@ def test_tool_loop_agent_uses_first_json_object_from_overeager_response(tmp_path
         agent.run(
             ToolLoopAgentTask(
                 goal="Read app.py and tell me what value() returns.",
-                tool_schemas=builtin_tool_prompt_schemas(),
+                tool_schemas=builtin_native_tool_schemas(),
             )
         )
     )
@@ -1733,7 +1733,6 @@ def test_tool_loop_agent_dedup_read_does_not_displace_original_content(
                 goal="Describe app.py",
                 available_tools=("repo.read",),
                 max_tool_calls=8,
-                capture_prompts=True,
             )
         )
     )

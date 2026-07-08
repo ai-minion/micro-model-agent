@@ -21,11 +21,9 @@ class OllamaModelProvider:
         model_name: str,
         *,
         base_url: str | None = None,
-        json_mode: bool = True,
         options: Mapping[str, Any] | None = None,
     ) -> None:
         self.model_name = model_name
-        self.json_mode = json_mode
         self.options = dict(options or {})
         self.client = AsyncClient(host=base_url)
 
@@ -40,7 +38,6 @@ class OllamaModelProvider:
             model=self.model_name,
             messages=messages,
             tools=tools,
-            format="json" if self.json_mode and not tools else None,
             options=self.options or None,
         )
         response = self._response_text(cast(object, result))

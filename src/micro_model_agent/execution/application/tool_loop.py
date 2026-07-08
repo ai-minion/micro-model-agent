@@ -41,7 +41,6 @@ class ToolLoopAgentTask:
     # the tool results it already has.
     max_tool_calls: int | None = None
     required_tools: tuple[str, ...] = ()
-    capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
     model_timeout_seconds: float | None = None
     on_turn: TurnProgressCallback | None = None
@@ -79,7 +78,6 @@ class RunToolLoopRequest:
     require_tool_call: bool = True
     max_tool_result_prompt_chars: int = 12_000
     max_tool_calls: int | None = None
-    capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
     model_timeout_seconds: float | None = None
     on_turn: TurnProgressCallback | None = None
@@ -110,9 +108,8 @@ class PrepareToolLoopRequest:
     run_profile: RunProfile | None = None
     budget: ToolLoopBudget = field(default_factory=ToolLoopBudget)
     context: PromptContext = field(default_factory=dict)
-    schema_prompt: bool = True
+    expose_tool_schemas: bool = True
     require_tool_call: bool = True
-    capture_prompts: bool = False
     run_metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -273,13 +270,12 @@ def prepare_tool_loop_run(
     )
     tool_schemas = (
         tool_schema_builder(available_tools)
-        if request.schema_prompt and tool_schema_builder is not None
+        if request.expose_tool_schemas and tool_schema_builder is not None
         else {}
     )
     run_metadata = {
         **request.run_metadata,
-        "schema_prompt": request.schema_prompt,
-        "capture_prompts": request.capture_prompts,
+        "expose_tool_schemas": request.expose_tool_schemas,
         "available_tools": list(available_tools),
         "required_tools": list(required_tools),
     }
@@ -299,7 +295,6 @@ def prepare_tool_loop_run(
             require_tool_call=request.require_tool_call,
             max_tool_result_prompt_chars=budget.max_tool_result_prompt_chars,
             max_tool_calls=budget.max_tool_calls,
-            capture_prompts=request.capture_prompts,
             run_metadata=run_metadata,
             model_timeout_seconds=budget.model_timeout_seconds,
         ),
@@ -329,7 +324,6 @@ class RunToolLoopWorkflow:
                 require_tool_call=request.require_tool_call,
                 max_tool_result_prompt_chars=request.max_tool_result_prompt_chars,
                 max_tool_calls=request.max_tool_calls,
-                capture_prompts=request.capture_prompts,
                 run_metadata=request.run_metadata,
                 model_timeout_seconds=request.model_timeout_seconds,
                 on_turn=request.on_turn,

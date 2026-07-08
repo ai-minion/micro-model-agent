@@ -41,7 +41,6 @@ MCP_DEBUG_TOOLS_ENV = "MICRO_MODEL_AGENT_MCP_DEBUG_TOOLS"
 MCP_EXPOSE_INIT_ENV = "MICRO_MODEL_AGENT_MCP_EXPOSE_INIT"
 MCP_REPOSITORY_ROOT_ENV = "MICRO_MODEL_AGENT_REPOSITORY_ROOT"
 MCP_INIT_TOOL_NAME = "micro_agent_init"
-TRACE_DIR_NAME = ".micro_model_agent/traces"
 WINDOWS_ABSOLUTE_PATH_RE = re.compile(r"^(?P<drive>[A-Za-z]):[\\/](?P<rest>.*)$")
 type McpTransport = Literal["stdio", "sse", "streamable-http"]
 type RunProfile = Literal["quick", "standard", "extended"]

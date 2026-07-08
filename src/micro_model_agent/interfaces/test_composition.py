@@ -61,7 +61,7 @@ FACADE_EXPORTS_BY_OWNER: dict[ModuleType, tuple[str, ...]] = {
         "runtime_model_metadata",
         "select_evaluation_model",
         "string_config_value",
-        "tool_prompt_schemas",
+        "native_tool_schemas",
     ),
     persistence_runtime: (
         "DEFAULT_TRACE_DIR",        "append_comparison_trace_event",

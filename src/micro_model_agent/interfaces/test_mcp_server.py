@@ -595,7 +595,6 @@ def test_run_agent_loop_adds_default_pytest_command_when_tests_allowed(
             repository_root=str(tmp_path),
             available_tools=["test.run"],
             allow_test_run=True,
-            capture_prompts=True,
             max_tool_calls=1,
             scripted_responses=[
                 _model_response(
@@ -737,8 +736,8 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     started = asyncio.run(
         start_comparison_trace(
             goal="Read README.md and summarize status.",
-            repository_root=str(workspace_root),
-            comparison_repository_root=str(registry_root),
+            repository_root=str(registry_root),
+            task_repository_root=str(workspace_root),
             context="consumer will solve this too",
         )
     )
@@ -748,7 +747,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
         run_agent_loop(
             goal="Read README.md and summarize status.",
             repository_root=str(workspace_root),
-            comparison_repository_root=str(registry_root),
+            server_repository_root=str(registry_root),
             available_tools=["repo.read"],
             max_tool_calls=1,
             scripted_responses=[
@@ -766,8 +765,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     stopped = asyncio.run(
         stop_comparison_trace(
             session_id=session_id,
-            repository_root=str(workspace_root),
-            comparison_repository_root=str(registry_root),
+            repository_root=str(registry_root),
             actual_summary="Codex read README.md and saw status central.",
         )
     )
@@ -775,8 +773,8 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     reviewed = asyncio.run(
         review_comparison_trace(
             session_id=session_id,
-            repository_root=str(workspace_root),
-            comparison_repository_root=str(registry_root),
+            repository_root=str(registry_root),
+            task_repository_root=str(workspace_root),
             local_model_quality="good",
             consumer_quality="good",
         )
@@ -796,7 +794,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     assert reviewed["comparison"]["local_model"][0]["response"] == "status is central"
 
 
-def test_mcp_start_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) -> None:
+def test_mcp_start_trace_uses_server_store_for_workspace_task(tmp_path: Path) -> None:
     registry_root = tmp_path / "registry"
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
@@ -828,14 +826,14 @@ def test_mcp_start_trace_uses_workspace_store_for_workspace_task(tmp_path: Path)
     )
 
     assert (
-        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
-    ).exists()
-    assert not (
         registry_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
+    assert not (
+        workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
 
 
-def test_mcp_read_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) -> None:
+def test_mcp_read_trace_uses_server_store_for_workspace_task(tmp_path: Path) -> None:
     registry_root = tmp_path / "registry"
     workspace_root = tmp_path / "workspace"
     workspace_root.mkdir()
@@ -860,7 +858,7 @@ def test_mcp_read_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) 
         run_agent_loop(
             goal="Read README.md and summarize status.",
             repository_root=str(workspace_root),
-            comparison_repository_root=str(workspace_root),
+            server_repository_root=str(registry_root),
             available_tools=["repo.read"],
             max_tool_calls=1,
             scripted_responses=[
@@ -888,10 +886,10 @@ def test_mcp_read_trace_uses_workspace_store_for_workspace_task(tmp_path: Path) 
     assert read_data["ok"] is True  # type: ignore[index]
     assert read_data["trace"]["final_output"]["response"] == "status is central"  # type: ignore[index]
     assert (
-        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     ).exists()
     assert not (
-        registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+        workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     ).exists()
 
 
@@ -916,4 +914,4 @@ def test_mcp_run_loop_wires_on_turn_and_trace_root_to_handler(tmp_path: Path) ->
 
     assert len(received) == 1
     assert callable(received[0]["on_turn"])
-    assert received[0]["comparison_repository_root"] == str(tmp_path)
+    assert received[0]["server_repository_root"] == str(tmp_path)

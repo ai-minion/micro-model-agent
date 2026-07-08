@@ -33,6 +33,7 @@ from micro_model_agent.execution.infrastructure.models.runtime import (
     build_loop_model_provider,
     build_model_provider,
     loop_budget_response,
+    native_tool_schemas,
     path_config_value,
     path_env,
     path_or_none,
@@ -44,7 +45,6 @@ from micro_model_agent.execution.infrastructure.models.runtime import (
     runtime_model_metadata,
     select_evaluation_model,
     string_config_value,
-    tool_prompt_schemas,
 )
 from micro_model_agent.execution.infrastructure.persistence_runtime import (
     DEFAULT_TRACE_DIR,
@@ -128,6 +128,7 @@ __all__ = [
     "initialize_local_repository",
     "local_repository_initialized",
     "loop_budget_response",
+    "native_tool_schemas",
     "path_config_value",
     "path_env",
     "path_or_none",
@@ -144,7 +145,6 @@ __all__ = [
     "start_comparison_trace_session",
     "stop_comparison_trace_session",
     "string_config_value",
-    "tool_prompt_schemas",
     "trace_dir",
     "workflow_trace_record",
     "workflow_trace_store",

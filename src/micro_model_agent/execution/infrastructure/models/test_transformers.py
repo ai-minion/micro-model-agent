@@ -1,7 +1,6 @@
 """Tests for the Transformers-backed model provider helpers."""
 
 from micro_model_agent.execution.infrastructure.models.transformers import (
-    _contains_complete_json_object,
     _normalize_messages,
     _render_plain_chat_prompt,
     _render_prompt,
@@ -27,17 +26,6 @@ class TemplateTokenizer:
 
 class PlainTokenizer:
     chat_template = None
-
-
-def test_contains_complete_json_object_detects_finished_turn() -> None:
-    assert _contains_complete_json_object('{"final_response":"done","ok":true}') is True
-    assert _contains_complete_json_object('prefix {"tool_name":"repo.read","arguments":{}}') is True
-
-
-def test_contains_complete_json_object_rejects_incomplete_turn() -> None:
-    assert _contains_complete_json_object("") is False
-    assert _contains_complete_json_object("thinking...") is False
-    assert _contains_complete_json_object('{"tool_name":"repo.write_files","arguments":') is False
 
 
 def test_normalize_messages_uses_output_when_content_is_missing() -> None:

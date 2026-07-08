@@ -100,20 +100,17 @@ def test_load_dotenv_sets_values_without_overriding_existing_env(
                 "# local secrets",
                 "HF_TOKEN='from-file'",
                 "MICRO_MODEL_AGENT_DEFAULT_MODEL=from-file",
-                "export MICRO_MODEL_AGENT_TRACE_DIR=.traces",
             ]
         ),
         encoding="utf-8",
     )
     monkeypatch.delenv("HF_TOKEN", raising=False)
-    monkeypatch.delenv("MICRO_MODEL_AGENT_TRACE_DIR", raising=False)
     monkeypatch.setenv("MICRO_MODEL_AGENT_DEFAULT_MODEL", "already-set")
 
     _load_dotenv(env_file)
 
     assert os.environ["HF_TOKEN"] == "from-file"
     assert os.environ["MICRO_MODEL_AGENT_DEFAULT_MODEL"] == "already-set"
-    assert os.environ["MICRO_MODEL_AGENT_TRACE_DIR"] == ".traces"
 
 
 def test_cli_init_creates_idempotent_repository_metadata(tmp_path: Path) -> None:

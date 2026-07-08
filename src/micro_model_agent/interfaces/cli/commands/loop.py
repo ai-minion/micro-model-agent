@@ -91,15 +91,10 @@ def loop(
         "--context",
         help="Extra model-facing task context.",
     ),
-    schema_prompt: bool = typer.Option(
+    expose_tool_schemas: bool = typer.Option(
         True,
-        "--schema-prompt/--no-schema-prompt",
-        help="Include built-in tool argument schemas in the model prompt.",
-    ),
-    capture_prompts: bool = typer.Option(
-        False,
-        "--capture-prompts",
-        help="Store exact model prompts in the workflow trace for data collection review.",
+        "--expose-tool-schemas/--no-expose-tool-schemas",
+        help="Expose native built-in tool schemas to the model.",
     ),
     allow_no_tool_final: bool = typer.Option(
         False,
@@ -139,8 +134,7 @@ def loop(
                 max_tool_calls=max_tool_calls,
                 max_tool_result_prompt_chars=max_tool_result_prompt_chars,
                 context=context,
-                schema_prompt=schema_prompt,
-                capture_prompts=capture_prompts,
+                expose_tool_schemas=expose_tool_schemas,
                 require_tool_call=not allow_no_tool_final,
                 verification_command=verification_command,
                 test_command=test_command,

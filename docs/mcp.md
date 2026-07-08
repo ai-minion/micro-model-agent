@@ -126,7 +126,7 @@ boundary accepts a few legacy aliases for compatibility, but prompts and traces
 should use the canonical names above.
 
 Patch application remains dry-run unless `apply_patches` is explicitly true.
-MCP model runs also default `schema_prompt` to true so the model sees the exact
+MCP model runs also default `expose_tool_schemas` to true so the model sees the exact
 tool argument schemas. Prefer `repo.write_files` for greenfield scaffolds and
 new files; use `repo.write_patch` for precise edits to existing files.
 
@@ -149,7 +149,7 @@ Run profiles provide larger preset budgets:
 
 When `allow_test_run=true` and no explicit `test_command_name` /
 `test_command_args` are supplied, MCP allowlists a default command named
-`pytest` that runs `python3 -m pytest -q`. The prompt schema for `test.run`
+`pytest` that runs `python3 -m pytest -q`. The native schema for `test.run`
 includes `allowed_command_names`; the model must use one of those names exactly.
 For repair prompts that mention pytest, failing imports, or verification, the
 loop requires a passing `test.run` after the latest write before it accepts a
@@ -176,13 +176,14 @@ instead of a trained adapter:
 ```text
 Use micro_agent_run_loop with goal "<repo task>".
 Set base_model "Qwen/Qwen2.5-Coder-7B-Instruct", use_adapter false,
-capture_prompts true, apply_patches true when you want real edits, and include
+apply_patches true when you want real edits, and include
 the canonical tools needed for the task, such as `repo.search`, `repo.read`,
 `repo.write_files`, `repo.write_patch`, `test.run`, or `git.diff`.
-`schema_prompt` is true by default.
+`expose_tool_schemas` is true by default.
 ```
 
-This stores workflow traces under:
+For MCP runs, workflow traces are stored under the MCP server's repository root,
+even when the loop operates on a registered workspace:
 
 ```text
 .micro_model_agent/traces/workflows.jsonl
@@ -236,8 +237,7 @@ goal: "<repo task>"
 comparison_session_id: "<session id>"
 base_model: "Qwen/Qwen2.5-Coder-7B-Instruct"
 use_adapter: false
-schema_prompt: true
-capture_prompts: true
+expose_tool_schemas: true
 ```
 
 3. The MCP consumer does the real work using its normal tools.
@@ -292,7 +292,7 @@ tool:
 
 ```text
 Use micro_agent_run_loop with goal "Read docs/architecture.md and summarize the dependency direction."
-Use available_tools ["repo.read"], max_tool_calls 1, max_turns 4, and schema_prompt true.
+Use available_tools ["repo.read"], max_tool_calls 1, max_turns 4, and expose_tool_schemas true.
 ```
 
 Verify that the response is concise, `tool_calls_made` is `1`, the single tool

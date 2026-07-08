@@ -5,7 +5,7 @@ from __future__ import annotations
 from micro_model_agent.repository_ops.infrastructure.catalog import (
     BUILTIN_TOOL_SPECS,
     TOOL_ARGUMENT_CONTRACTS,
-    builtin_tool_prompt_schemas,
+    builtin_native_tool_schemas,
 )
 
 # ---------------------------------------------------------------------------
@@ -44,35 +44,35 @@ def test_each_spec_has_argument_contract() -> None:
 
 
 # ---------------------------------------------------------------------------
-# builtin_tool_prompt_schemas
+# builtin_native_tool_schemas
 # ---------------------------------------------------------------------------
 
 
 def test_schemas_returns_all_tools_when_none() -> None:
-    schemas = builtin_tool_prompt_schemas()
+    schemas = builtin_native_tool_schemas()
     assert set(schemas.keys()) == set(BUILTIN_TOOL_SPECS.keys())
 
 
 def test_schemas_filtered_by_names() -> None:
-    schemas = builtin_tool_prompt_schemas(["repo.read", "git.diff"])
+    schemas = builtin_native_tool_schemas(["repo.read", "git.diff"])
     assert set(schemas.keys()) == {"repo.read", "git.diff"}
 
 
 def test_schemas_ignores_unknown_names() -> None:
-    schemas = builtin_tool_prompt_schemas(["repo.read", "unknown.tool"])
+    schemas = builtin_native_tool_schemas(["repo.read", "unknown.tool"])
     assert "repo.read" in schemas
     assert "unknown.tool" not in schemas
 
 
 def test_each_schema_has_description() -> None:
-    schemas = builtin_tool_prompt_schemas()
+    schemas = builtin_native_tool_schemas()
     for name, schema in schemas.items():
         assert "description" in schema, f"{name} schema missing description"
         assert isinstance(schema["description"], str)
 
 
 def test_each_schema_has_arguments_schema() -> None:
-    schemas = builtin_tool_prompt_schemas()
+    schemas = builtin_native_tool_schemas()
     for name, schema in schemas.items():
         assert "arguments_schema" in schema, f"{name} schema missing arguments_schema"
         assert isinstance(schema["arguments_schema"], dict)
@@ -80,17 +80,17 @@ def test_each_schema_has_arguments_schema() -> None:
 
 def test_schema_is_json_serializable() -> None:
     import json
-    schemas = builtin_tool_prompt_schemas()
+    schemas = builtin_native_tool_schemas()
     json.dumps(schemas)  # should not raise
 
 
 def test_empty_name_list_returns_empty_dict() -> None:
-    schemas = builtin_tool_prompt_schemas([])
+    schemas = builtin_native_tool_schemas([])
     assert schemas == {}
 
 
 def test_repo_read_schema_has_expected_fields() -> None:
-    schemas = builtin_tool_prompt_schemas(["repo.read"])
+    schemas = builtin_native_tool_schemas(["repo.read"])
     schema = schemas["repo.read"]["arguments_schema"]
     # The repo.read contract has a 'files' property in its JSON schema
     properties = schema.get("properties", {})

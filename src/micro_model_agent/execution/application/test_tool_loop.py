@@ -58,7 +58,6 @@ def test_run_tool_loop_workflow_maps_request_to_runner_task() -> None:
                 require_tool_call=False,
                 max_tool_result_prompt_chars=512,
                 max_tool_calls=1,
-                capture_prompts=True,
                 run_metadata={"interface": "test"},
                 model_timeout_seconds=2.5,
             )
@@ -75,7 +74,6 @@ def test_run_tool_loop_workflow_maps_request_to_runner_task() -> None:
     assert task.require_tool_call is False
     assert task.max_tool_result_prompt_chars == 512
     assert task.max_tool_calls == 1
-    assert task.capture_prompts is True
     assert task.run_metadata == {"interface": "test"}
     assert task.model_timeout_seconds == 2.5
     assert result.ok is True
@@ -99,8 +97,7 @@ def test_prepare_tool_loop_run_applies_profile_and_selects_tools() -> None:
                 max_new_tokens=64,
                 max_tool_result_prompt_chars=256,
             ),
-            schema_prompt=True,
-            capture_prompts=True,
+            expose_tool_schemas=True,
             run_metadata={"interface": "test"},
         ),
         tool_schema_builder=lambda names: {name: {"schema": name} for name in names},
@@ -119,8 +116,7 @@ def test_prepare_tool_loop_run_applies_profile_and_selects_tools() -> None:
     }
     assert prepared.request.run_metadata == {
         "interface": "test",
-        "schema_prompt": True,
-        "capture_prompts": True,
+        "expose_tool_schemas": True,
         "available_tools": ["repo.read", "test.run"],
         "required_tools": ["repo.read"],
         "model_timeout_seconds": 180.0,

@@ -111,37 +111,11 @@ class TransformersPeftModelProvider:
                 max_new_tokens=self.max_new_tokens,
                 do_sample=False,
                 pad_token_id=self._tokenizer.eos_token_id,
-                stopping_criteria=self._json_stopping_criteria(
-                    prompt_token_count=inputs["input_ids"].shape[1]
-                ),
             )
         generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]
         # Slice off the prompt tokens so callers only receive newly generated text.
         decoded = self._tokenizer.decode(generated_ids, skip_special_tokens=True)
         return str(decoded).strip()
-
-    def _json_stopping_criteria(self, *, prompt_token_count: int) -> Any:
-        """Stop generation once the model has emitted one complete JSON object."""
-
-        from transformers import StoppingCriteria, StoppingCriteriaList
-
-        if self._tokenizer is None:
-            raise RuntimeError("model provider has not been loaded")
-        tokenizer: Any = self._tokenizer
-
-        class CompleteJsonObjectCriteria(StoppingCriteria):  # type: ignore[misc]
-            def __call__(
-                self,
-                input_ids: Any,
-                scores: Any,
-                **kwargs: Any,
-            ) -> bool:
-                del scores, kwargs
-                generated_ids = input_ids[0][prompt_token_count:]
-                text = tokenizer.decode(generated_ids, skip_special_tokens=True)
-                return _contains_complete_json_object(str(text))
-
-        return StoppingCriteriaList([CompleteJsonObjectCriteria()])
 
     def _torch_dtype(self, torch: Any) -> Any:
         """Translate a small string option into the torch dtype object."""
@@ -151,23 +125,6 @@ class TransformersPeftModelProvider:
         if self.dtype == "float32":
             return torch.float32
         return torch.float16
-
-
-def _contains_complete_json_object(text: str) -> bool:
-    """Return true once text contains a syntactically complete first JSON object."""
-
-    stripped = text.strip()
-    if not stripped:
-        return False
-    first_brace = stripped.find("{")
-    if first_brace < 0:
-        return False
-    try:
-        _, end_index = json.JSONDecoder().raw_decode(stripped[first_brace:])
-    except json.JSONDecodeError:
-        return False
-    return end_index > 0
-
 
 def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize model messages into role/content pairs."""

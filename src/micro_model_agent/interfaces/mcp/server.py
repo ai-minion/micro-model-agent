@@ -30,7 +30,7 @@ def create_mcp_server(
             "workflow: call micro_agent_init_workspace when a chat needs its own directory, "
             "then call micro_agent_start_trace, call micro_agent_run_loop with workspace_id, "
             "comparison_session_id, base_model='Qwen/Qwen2.5-Coder-7B-Instruct', "
-            "use_adapter=false, schema_prompt=true, capture_prompts=true, and a run_profile "
+            "use_adapter=false, expose_tool_schemas=true, and a run_profile "
             "that matches the task size. One run loop has a limited turn budget; split large "
             "tasks into scaffold, repair, and test passes rather than asking one loop to do "
             "everything. Do the real work yourself, call micro_agent_stop_trace, and finish "

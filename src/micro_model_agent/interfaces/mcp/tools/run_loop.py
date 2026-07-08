@@ -18,7 +18,7 @@ from micro_model_agent.interfaces.composition import (
     loop_budget_response as build_loop_budget_response,
 )
 from micro_model_agent.interfaces.composition import (
-    tool_prompt_schemas as build_tool_prompt_schemas,
+    native_tool_schemas as build_native_tool_schemas,
 )
 from micro_model_agent.interfaces.mcp.compat import (
     COMPAT_REQUIRED_TOOL_ALIASES,
@@ -33,7 +33,7 @@ __all__ = [
     "resolve_model_settings",
     "run_agent_loop",
     "string_config_value",
-    "tool_prompt_schemas",
+    "native_tool_schemas",
 ]
 
 
@@ -41,7 +41,6 @@ async def run_agent_loop(**kwargs: Any) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
     return await run_mcp_agent_loop(
         **kwargs,
-        apply_patches=True,
         default_available_tools=DEFAULT_MCP_AVAILABLE_TOOLS,
         tool_aliases=COMPAT_TOOL_ALIASES,
         required_tool_aliases=COMPAT_REQUIRED_TOOL_ALIASES,
@@ -96,14 +95,14 @@ def resolve_model_settings(
     )
 
 
-def tool_prompt_schemas(
+def native_tool_schemas(
     allowed_tool_names: tuple[str, ...],
     *,
     allowed_test_commands: dict[str, object],
 ) -> dict[str, Any]:
     """Compatibility wrapper for shared tool schema enrichment."""
 
-    return build_tool_prompt_schemas(
+    return build_native_tool_schemas(
         allowed_tool_names,
         allowed_test_commands=allowed_test_commands,
     )

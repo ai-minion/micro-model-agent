@@ -48,6 +48,8 @@ def register_mcp_tools(
 ) -> None:
     """Register MicroModelAgent's public and conditional MCP tools."""
 
+    trace_repository_root = str(Path(default_repository_root))
+
     @server.tool(
         name="micro_agent_init_workspace",
         description=(
@@ -100,8 +102,7 @@ def register_mcp_tools(
         max_tool_result_prompt_chars: int = 2500,
         model_timeout_seconds: float | None = None,
         run_profile: RunProfile | None = None,
-        schema_prompt: bool = True,
-        capture_prompts: bool = False,
+        expose_tool_schemas: bool = True,
         allow_test_run: bool = False,
         test_command_name: str | None = None,
         test_command_args: list[str] | None = None,
@@ -146,14 +147,13 @@ def register_mcp_tools(
             max_tool_result_prompt_chars=max_tool_result_prompt_chars,
             model_timeout_seconds=model_timeout_seconds,
             run_profile=run_profile,
-            schema_prompt=schema_prompt,
-            capture_prompts=capture_prompts,
+            expose_tool_schemas=expose_tool_schemas,
             apply_patches=True,
             allow_test_run=allow_test_run,
             test_command_name=test_command_name,
             test_command_args=test_command_args,
             comparison_session_id=comparison_session_id,
-            comparison_repository_root=str(resolved_repository_root),
+            server_repository_root=trace_repository_root,
             offline=offline,
             on_turn=_on_turn if ctx is not None else None,
         )
@@ -179,8 +179,8 @@ def register_mcp_tools(
         )
         return await start_comparison_trace(
             goal=goal,
-            repository_root=str(resolved_repository_root),
-            comparison_repository_root=str(resolved_repository_root),
+            repository_root=trace_repository_root,
+            task_repository_root=str(resolved_repository_root),
             context=context,
             metadata=metadata,
         )
@@ -197,7 +197,7 @@ def register_mcp_tools(
         repository_root: str = default_repository_root,
         workspace_id: str | None = None,
     ) -> dict[str, Any]:
-        resolved_repository_root = await resolve_workspace_root(
+        await resolve_workspace_root(
             registry_root=Path(default_repository_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
@@ -207,8 +207,7 @@ def register_mcp_tools(
             event_type=event_type,
             payload=payload,
             actor=actor,
-            repository_root=str(resolved_repository_root),
-            comparison_repository_root=str(resolved_repository_root),
+            repository_root=trace_repository_root,
         )
 
     @server.tool(
@@ -226,15 +225,14 @@ def register_mcp_tools(
         tests: list[str] | None = None,
         notes: str = "",
     ) -> dict[str, Any]:
-        resolved_repository_root = await resolve_workspace_root(
+        await resolve_workspace_root(
             registry_root=Path(default_repository_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
         return await stop_comparison_trace(
             session_id=session_id,
-            repository_root=str(resolved_repository_root),
-            comparison_repository_root=str(resolved_repository_root),
+            repository_root=trace_repository_root,
             actual_summary=actual_summary,
             changed_files=changed_files,
             tests=tests,
@@ -264,8 +262,8 @@ def register_mcp_tools(
         )
         return await review_comparison_trace(
             session_id=session_id,
-            repository_root=str(resolved_repository_root),
-            comparison_repository_root=str(resolved_repository_root),
+            repository_root=trace_repository_root,
+            task_repository_root=str(resolved_repository_root),
             local_model_quality=local_model_quality,
             local_model_notes=local_model_notes,
             consumer_quality=consumer_quality,
@@ -335,14 +333,14 @@ def register_mcp_tools(
             repository_root: str = default_repository_root,
             workspace_id: str | None = None,
         ) -> dict[str, Any]:
-            resolved_repository_root = await resolve_workspace_root(
+            await resolve_workspace_root(
                 registry_root=Path(default_repository_root),
                 repository_root=repository_root,
                 workspace_id=workspace_id,
             )
             return await read_trace(
                 trace_id=trace_id,
-                repository_root=str(resolved_repository_root),
+                repository_root=trace_repository_root,
             )
 
         @server.tool(

@@ -44,50 +44,36 @@ DEFAULT_TRACE_DIR = Path(".micro_model_agent/traces")
 
 def trace_dir(
     repository_root: str | Path,
-    *,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> Path:
     """Return the centralized trace/log directory for one repository."""
 
-    return Path(repository_root) / trace_dir_name
+    return Path(repository_root) / DEFAULT_TRACE_DIR
 
 
 def workflow_trace_store(
     repository_root: str | Path,
-    *,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> JsonlTraceStore:
     """Return the workflow trace store for one repository."""
 
-    return JsonlTraceStore(
-        trace_dir(repository_root, trace_dir_name=trace_dir_name) / "workflows.jsonl"
-    )
+    return JsonlTraceStore(trace_dir(repository_root) / "workflows.jsonl")
 
 
 def comparison_trace_store(
     repository_root: str | Path,
-    *,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> JsonlComparisonTraceStore:
     """Return the comparison trace store for one repository."""
 
-    return JsonlComparisonTraceStore(
-        trace_dir(repository_root, trace_dir_name=trace_dir_name) / "comparison_sessions.jsonl"
-    )
+    return JsonlComparisonTraceStore(trace_dir(repository_root) / "comparison_sessions.jsonl")
 
 
 async def workflow_trace_record(
     *,
     repository_root: str | Path,
     trace_id: str,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> dict[str, Any] | None:
     """Load a workflow trace and return its JSON-ready record."""
 
-    trace = await workflow_trace_store(
-        repository_root,
-        trace_dir_name=trace_dir_name,
-    ).get(trace_id)
+    trace = await workflow_trace_store(repository_root).get(trace_id)
     if trace is None:
         return None
     return workflow_trace_to_record(trace)
@@ -100,7 +86,6 @@ async def start_comparison_trace_session(
     comparison_repository_root: str | Path | None = None,
     context: str = "",
     metadata: dict[str, Any] | None = None,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> dict[str, Any]:
     """Create and persist a comparison trace session record."""
 
@@ -111,10 +96,7 @@ async def start_comparison_trace_session(
         context=context,
         metadata=metadata or {},
     )
-    await comparison_trace_store(
-        comparison_repository_root or repository,
-        trace_dir_name=trace_dir_name,
-    ).save(session)
+    await comparison_trace_store(comparison_repository_root or repository).save(session)
     return comparison_session_to_record(session)
 
 
@@ -125,11 +107,10 @@ async def append_comparison_trace_event(
     event_type: str,
     actor: str,
     payload: dict[str, Any],
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> dict[str, Any] | None:
     """Append one event to a comparison trace session and return the record."""
 
-    store = comparison_trace_store(repository_root, trace_dir_name=trace_dir_name)
+    store = comparison_trace_store(repository_root)
     session = await store.get(session_id)
     if session is None:
         return None
@@ -148,11 +129,10 @@ async def stop_comparison_trace_session(
     repository_root: str | Path,
     session_id: str,
     actual_result: dict[str, Any],
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> dict[str, Any] | None:
     """Stop a comparison trace session and return the updated record."""
 
-    store = comparison_trace_store(repository_root, trace_dir_name=trace_dir_name)
+    store = comparison_trace_store(repository_root)
     session = await store.get(session_id)
     if session is None:
         return None
@@ -167,13 +147,12 @@ async def review_comparison_trace_session(
     session_id: str,
     review: dict[str, Any],
     comparison_repository_root: str | Path | None = None,
-    trace_dir_name: str | Path = DEFAULT_TRACE_DIR,
 ) -> dict[str, Any] | None:
     """Attach review details and return the reviewed session plus trace summary."""
 
     repository = Path(repository_root)
     comparison_root = Path(comparison_repository_root or repository)
-    store = comparison_trace_store(comparison_root, trace_dir_name=trace_dir_name)
+    store = comparison_trace_store(comparison_root)
     session = await store.get(session_id)
     if session is None:
         return None
@@ -188,7 +167,6 @@ async def review_comparison_trace_session(
             trace_record = await workflow_trace_record(
                 repository_root=trace_root,
                 trace_id=trace_id,
-                trace_dir_name=trace_dir_name,
             )
             if trace_record is not None:
                 local_traces.append(trace_record)

@@ -32,10 +32,10 @@ def synthetic_prompt_payload(
     }
     if include_tool_schemas:
         from micro_model_agent.repository_ops.infrastructure.catalog import (
-            builtin_tool_prompt_schemas,
+            builtin_native_tool_schemas,
         )
 
-        payload["tool_schemas"] = builtin_tool_prompt_schemas(available_tools)
+        payload["tool_schemas"] = builtin_native_tool_schemas(available_tools)
     return payload
 
 

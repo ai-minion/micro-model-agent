@@ -73,7 +73,7 @@ RETIRED_MCP_SERVER_COMPAT_NAMES = (
     "_resolve_model_settings",
     "_run_profile_settings",
     "_string_config_value",
-    "_tool_prompt_schemas",
+    "_native_tool_schemas",
     "_workflow_trace_store",
 )
 RETIRED_MCP_POLICY_PATHS = {
@@ -117,7 +117,7 @@ MODEL_RUNTIME_HELPER_NAMES = (
     "runtime_model_metadata",
     "select_evaluation_model",
     "string_config_value",
-    "tool_prompt_schemas",
+    "native_tool_schemas",
 )
 INFRASTRUCTURE_RUNTIME_FACTORY_NAMES = (
     "build_static_coding_workflow",

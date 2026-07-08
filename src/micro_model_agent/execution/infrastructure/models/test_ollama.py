@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import types
@@ -18,6 +19,30 @@ def _make_provider() -> object:
         OllamaModelProvider,
     )
     return OllamaModelProvider.__new__(OllamaModelProvider)
+
+
+class RecordingClient:
+    def __init__(self, result: object) -> None:
+        self.result = result
+        self.kwargs: dict[str, object] | None = None
+
+    async def chat(self, **kwargs: object) -> object:
+        self.kwargs = kwargs
+        return self.result
+
+
+def test_complete_does_not_force_json_format_without_tools() -> None:
+    p = _make_provider()
+    client = RecordingClient({"message": {"content": "plain final answer"}})
+    p.model_name = "model"  # type: ignore[attr-defined]
+    p.options = {}  # type: ignore[attr-defined]
+    p.client = client  # type: ignore[attr-defined]
+
+    response = asyncio.run(p.complete([{"role": "user", "content": "answer"}]))  # type: ignore[attr-defined]
+
+    assert response == "plain final answer"
+    assert client.kwargs is not None
+    assert "format" not in client.kwargs
 
 
 class TestResponseTextFromDictResult:
