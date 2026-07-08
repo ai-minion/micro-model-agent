@@ -42,13 +42,14 @@ def register_mcp_tools(
     server: FastMCP,
     *,
     default_repository_root: str,
+    registry_root: str,
     expose_debug_tools: bool | None,
     expose_init_tool: bool | None,
     run_agent_loop_handler: RunAgentLoopHandler,
 ) -> None:
     """Register MicroModelAgent's public and conditional MCP tools."""
 
-    trace_repository_root = str(Path(default_repository_root))
+    trace_repository_root = str(Path(registry_root))
 
     @server.tool(
         name="micro_agent_init_workspace",
@@ -65,7 +66,7 @@ def register_mcp_tools(
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return await init_workspace(
-            registry_root=default_repository_root,
+            registry_root=registry_root,
             path=path,
             name=name,
             create=create,
@@ -111,7 +112,7 @@ def register_mcp_tools(
         ctx: Context[Any, Any, Any] | None = None,
     ) -> dict[str, Any]:
         resolved_repository_root = await resolve_workspace_root(
-            registry_root=Path(default_repository_root),
+            registry_root=Path(registry_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
@@ -173,7 +174,7 @@ def register_mcp_tools(
         metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         resolved_repository_root = await resolve_workspace_root(
-            registry_root=Path(default_repository_root),
+            registry_root=Path(registry_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
@@ -198,7 +199,7 @@ def register_mcp_tools(
         workspace_id: str | None = None,
     ) -> dict[str, Any]:
         await resolve_workspace_root(
-            registry_root=Path(default_repository_root),
+            registry_root=Path(registry_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
@@ -226,7 +227,7 @@ def register_mcp_tools(
         notes: str = "",
     ) -> dict[str, Any]:
         await resolve_workspace_root(
-            registry_root=Path(default_repository_root),
+            registry_root=Path(registry_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
@@ -256,7 +257,7 @@ def register_mcp_tools(
         comparison_notes: str = "",
     ) -> dict[str, Any]:
         resolved_repository_root = await resolve_workspace_root(
-            registry_root=Path(default_repository_root),
+            registry_root=Path(registry_root),
             repository_root=repository_root,
             workspace_id=workspace_id,
         )
@@ -270,7 +271,7 @@ def register_mcp_tools(
             comparison_notes=comparison_notes,
         )
 
-    if should_expose_init_tool(default_repository_root, expose_init_tool):
+    if should_expose_init_tool(registry_root, expose_init_tool):
 
         @server.tool(
             name=MCP_INIT_TOOL_NAME,
@@ -311,7 +312,7 @@ def register_mcp_tools(
             test_command_args: list[str] | None = None,
         ) -> dict[str, Any]:
             resolved_repository_root = await resolve_workspace_root(
-                registry_root=Path(default_repository_root),
+                registry_root=Path(registry_root),
                 repository_root=repository_root,
                 workspace_id=workspace_id,
             )
@@ -334,7 +335,7 @@ def register_mcp_tools(
             workspace_id: str | None = None,
         ) -> dict[str, Any]:
             await resolve_workspace_root(
-                registry_root=Path(default_repository_root),
+                registry_root=Path(registry_root),
                 repository_root=repository_root,
                 workspace_id=workspace_id,
             )
