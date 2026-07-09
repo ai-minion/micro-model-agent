@@ -39,6 +39,7 @@ __all__ = [
 
 async def run_agent_loop(**kwargs: Any) -> dict[str, Any]:
     """Run the model-driven tool loop and return a JSON-serializable result."""
+    kwargs.setdefault("apply_patches", True)
     return await run_mcp_agent_loop(
         **kwargs,
         default_available_tools=DEFAULT_MCP_AVAILABLE_TOOLS,

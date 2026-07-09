@@ -111,6 +111,40 @@ class SlowModelProvider:
         return _model_response({"final_response": "too late", "ok": True})
 
 
+class TimeoutAwareModelProvider:
+    """Model provider that records the timeout passed by ToolLoopAgent."""
+
+    def __init__(self) -> None:
+        self.timeout_seconds: float | None = None
+        self.calls = 0
+
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> str:
+        return await self.complete_with_timeout(messages, tools=tools, timeout_seconds=None)
+
+    async def complete_with_timeout(
+        self,
+        _messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> str:
+        self.timeout_seconds = timeout_seconds
+        self.calls += 1
+        if self.calls > 1:
+            return _model_response({"final_response": "searched", "ok": True})
+        return _model_response(
+            {
+                "tool_name": "repo.search",
+                "arguments": {"query": "value"},
+            }
+        )
+
+
 def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(
@@ -210,6 +244,31 @@ def test_tool_loop_agent_runs_tool_calls_and_returns_final_response(tmp_path: Pa
     }
 
 
+def test_tool_loop_agent_passes_timeout_to_timeout_aware_provider(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    model = TimeoutAwareModelProvider()
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Search for value.",
+                available_tools=("repo.search",),
+                max_tool_calls=1,
+                model_timeout_seconds=3.5,
+            )
+        )
+    )
+
+    assert result.ok is True
+    assert result.response == "searched"
+    assert model.timeout_seconds == 3.5
+
+
 def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     model = ScriptedModelProvider(
@@ -249,6 +308,51 @@ def test_tool_loop_agent_requires_tool_before_final_response(tmp_path: Path) -> 
         "final_response",
     ]
     assert result.trace.steps[0].output["error"] == "final_response_before_tool_call"
+
+
+def test_tool_loop_agent_fails_fast_when_required_tool_remains_unsatisfied(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            _model_response(
+                {
+                    "tool_name": "repo.search",
+                    "arguments": {"query": "missing symbol"},
+                }
+            ),
+            "I found no concrete file to read yet.",
+            "I still cannot identify a safe file to read.",
+            _model_response({"final_response": "this response should not be used", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Search for the implementation, then read it.",
+                available_tools=("repo.search", "repo.read"),
+                required_tools=("repo.search", "repo.read"),
+                max_turns=8,
+            )
+        )
+    )
+
+    assert result.ok is False
+    assert result.response == "model could not satisfy required tools before answering: repo.read"
+    assert result.tool_calls_made == 1
+    assert [step.name for step in result.trace.steps] == [
+        "tool_call_1",
+        "model_turn_2",
+        "model_turn_3",
+    ]
+    assert result.trace.final_output["error"] == "required_tools_unsatisfied"
 
 
 def test_tool_loop_agent_records_prompts_and_run_metadata(tmp_path: Path) -> None:

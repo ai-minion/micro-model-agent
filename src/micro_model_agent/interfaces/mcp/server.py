@@ -39,13 +39,13 @@ def create_mcp_server(
     )
     enable_tool_list_changed_capability(server)
     default_repository_root = str(Path(repository_root))
-    _registry_root = str(Path(__file__).resolve().parents[4])
+    registry_root = default_repository_root
 
     register_workflow_prompts(server)
     register_mcp_tools(
         server,
         default_repository_root=default_repository_root,
-        registry_root=_registry_root,
+        registry_root=registry_root,
         expose_debug_tools=expose_debug_tools,
         expose_init_tool=expose_init_tool,
         run_agent_loop_handler=run_agent_loop,

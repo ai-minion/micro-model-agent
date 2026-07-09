@@ -141,7 +141,11 @@ class GeneratingTokenizer(TemplateTokenizer):
 class GeneratingModel:
     device = "cpu"
 
-    def generate(self, **_kwargs: object) -> list[list[int]]:
+    def __init__(self) -> None:
+        self.kwargs: dict[str, object] = {}
+
+    def generate(self, **kwargs: object) -> list[list[int]]:
+        self.kwargs = kwargs
         return [[1, 2, 3]]
 
 
@@ -161,7 +165,8 @@ class FakeTorch:
 def test_generate_records_rendered_request_text_before_tokenization() -> None:
     provider = TransformersPeftModelProvider("base")
     provider._tokenizer = GeneratingTokenizer()
-    provider._model = GeneratingModel()
+    model = GeneratingModel()
+    provider._model = model
     provider._torch = FakeTorch()
 
     response = provider._generate(
@@ -172,6 +177,24 @@ def test_generate_records_rendered_request_text_before_tokenization() -> None:
     assert response == "done"
     assert provider.last_request_text == "templated:user:hello:tools=1"
     assert provider.last_response_text == "done<|im_end|>"
+    assert "max_time" not in model.kwargs
+
+
+def test_generate_passes_timeout_to_transformers_max_time() -> None:
+    provider = TransformersPeftModelProvider("base")
+    provider._tokenizer = GeneratingTokenizer()
+    model = GeneratingModel()
+    provider._model = model
+    provider._torch = FakeTorch()
+
+    response = provider._generate(
+        [{"role": "user", "content": "hello"}],
+        tools=[{"type": "function", "function": {"name": "repo.read"}}],
+        timeout_seconds=2.5,
+    )
+
+    assert response == "done"
+    assert model.kwargs["max_time"] == 2.5
 
 
 class FakeTokenizer:

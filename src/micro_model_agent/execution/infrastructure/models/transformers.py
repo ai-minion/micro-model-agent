@@ -43,11 +43,25 @@ class TransformersPeftModelProvider:
         *,
         tools: list[dict[str, Any]] | None = None,
     ) -> str:
+        return await self.complete_with_timeout(messages, tools=tools, timeout_seconds=None)
+
+    async def complete_with_timeout(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        tools: list[dict[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
+    ) -> str:
         if self._model is None or self._tokenizer is None:
             # Loading a model can block for a while, so run it in a worker thread
             # instead of blocking the async event loop.
             await asyncio.to_thread(self._load)
-        return await asyncio.to_thread(self._generate, messages, tools=tools)
+        return await asyncio.to_thread(
+            self._generate,
+            messages,
+            tools=tools,
+            timeout_seconds=timeout_seconds,
+        )
 
     def _load(self) -> None:
         """Load tokenizer, base model, and optional PEFT adapter lazily."""
@@ -90,6 +104,7 @@ class TransformersPeftModelProvider:
         messages: list[dict[str, Any]],
         *,
         tools: list[dict[str, Any]] | None = None,
+        timeout_seconds: float | None = None,
     ) -> str:
         """Generate text for one turn using the already-loaded model."""
 
@@ -109,12 +124,18 @@ class TransformersPeftModelProvider:
 
         with self._torch.no_grad():
             # do_sample=False makes generation deterministic for repeatable runs.
-            output_ids = self._model.generate(
+            generate_kwargs: dict[str, Any] = {
                 **inputs,
-                max_new_tokens=self.max_new_tokens,
-                do_sample=False,
-                pad_token_id=self._tokenizer.eos_token_id,
-            )
+                "max_new_tokens": self.max_new_tokens,
+                "do_sample": False,
+                "pad_token_id": self._tokenizer.eos_token_id,
+            }
+            if timeout_seconds is not None:
+                # Hugging Face generation checks max_time between decoding steps.
+                # This bounds the worker thread itself; asyncio cancellation alone
+                # cannot stop a thread already inside model.generate().
+                generate_kwargs["max_time"] = timeout_seconds
+            output_ids = self._model.generate(**generate_kwargs)
         generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]
         # Slice off the prompt tokens so callers only receive newly generated text.
         decoded = self._tokenizer.decode(generated_ids, skip_special_tokens=False)

@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import replace
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 from micro_model_agent.execution.application.ports import ModelProvider, ToolExecutor, TraceStore
 from micro_model_agent.execution.application.tool_loop import (
@@ -184,6 +184,10 @@ class ToolLoopAgent:
                         continue
                     missing_required = missing_required_tools(task, steps)
                     if missing_required:
+                        prior_required_tool_rejections = _policy_error_count(
+                            steps,
+                            "final_response_before_required_tools",
+                        )
                         output = self._step_output(
                             {
                                 "raw_response": decision.raw_response,
@@ -201,6 +205,19 @@ class ToolLoopAgent:
                             )
                         )
                         await self._save_progress(trace, steps)
+                        if force_final_response or prior_required_tool_rejections >= 1:
+                            return await self._finish(
+                                trace=trace,
+                                steps=steps,
+                                run_metadata=task.run_metadata,
+                                ok=False,
+                                response=(
+                                    "model could not satisfy required tools before answering: "
+                                    + ", ".join(missing_required)
+                                ),
+                                tool_calls_made=tool_calls_made,
+                                error="required_tools_unsatisfied",
+                            )
                         transcript.append({"role": "assistant", "content": decision.raw_response})
                         transcript.append(
                             {
@@ -551,13 +568,21 @@ class ToolLoopAgent:
         """Complete one model turn, optionally bounded by a per-turn timeout."""
 
         if hasattr(self.model_provider, "last_request_text"):
-            self.model_provider.last_request_text = None  # type: ignore[attr-defined]
+            self.model_provider.last_request_text = None
         if hasattr(self.model_provider, "last_response_text"):
-            self.model_provider.last_response_text = None  # type: ignore[attr-defined]
-        completion = self.model_provider.complete(messages, tools=tools or None)
+            self.model_provider.last_response_text = None
+        complete_with_timeout = getattr(self.model_provider, "complete_with_timeout", None)
+        if callable(complete_with_timeout):
+            completion = complete_with_timeout(
+                messages,
+                tools=tools or None,
+                timeout_seconds=task.model_timeout_seconds,
+            )
+        else:
+            completion = self.model_provider.complete(messages, tools=tools or None)
         if task.model_timeout_seconds is None:
-            return await completion
-        return await asyncio.wait_for(completion, timeout=task.model_timeout_seconds)
+            return cast(str, await completion)
+        return cast(str, await asyncio.wait_for(completion, timeout=task.model_timeout_seconds))
 
     async def _save_progress(
         self,
@@ -634,6 +659,16 @@ def _tool_call_detail(tool_name: str, arguments: dict[str, Any]) -> str:
         paths = arguments.get("paths", [])
         return _join_with_limit([str(p) for p in paths])
     return ""
+
+
+def _policy_error_count(steps: list[WorkflowStep], error: str) -> int:
+    """Count prior policy rejections with a specific error code."""
+
+    return sum(
+        1
+        for step in steps
+        if step.tool_call is None and step.output.get("error") == error
+    )
 
 
 def _join_with_limit(items: list[str], limit: int = 3) -> str:
