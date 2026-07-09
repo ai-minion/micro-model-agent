@@ -36,20 +36,19 @@ def tool_history(
     for step in steps:
         if step.tool_call is None or step.tool_result is None:
             continue
-        history.append(
-            {
-                "step": step.name,
-                "tool_call_id": str(step.tool_call.id),
-                "tool_name": step.tool_call.tool_name,
-                "arguments": summarize_tool_arguments(
-                    step.tool_call.tool_name,
-                    step.tool_call.arguments,
-                ),
-                "ok": step.tool_result.ok,
-                "output": step.tool_result.output,
-                "error": step.tool_result.error,
-            }
-        )
+        entry: dict[str, Any] = {
+            "tool_name": step.tool_call.tool_name,
+            "arguments": summarize_tool_arguments(
+                step.tool_call.tool_name,
+                step.tool_call.arguments,
+            ),
+            "ok": step.tool_result.ok,
+        }
+        if step.tool_result.ok:
+            entry["output"] = step.tool_result.output
+        else:
+            entry["error"] = concise_tool_error(step.tool_result)
+        history.append(entry)
 
     if not history:
         return []
@@ -232,6 +231,21 @@ def summarize_tool_arguments(
         "file_count": len(paths),
         "paths": list(paths),
     }
+
+
+def concise_tool_error(tool_result: ToolResult) -> str:
+    """Return the shortest useful error for a failed tool result."""
+
+    if tool_result.error:
+        return tool_result.error
+    errors = tool_result.output.get("errors")
+    if isinstance(errors, list) and errors:
+        first = errors[0]
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, str) and message:
+                return message
+    return "tool failed"
 
 
 def summarize_tool_output(output: dict[str, Any]) -> dict[str, Any]:

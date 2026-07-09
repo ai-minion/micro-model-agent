@@ -612,18 +612,19 @@ def test_run_agent_loop_adds_default_pytest_command_when_tests_allowed(
         read_trace(trace_id=str(result["trace_id"]), repository_root=str(tmp_path))
     )
     first_prompt = trace["trace"]["steps"][0]["output"]["prompt"]
+    if isinstance(first_prompt, str):
+        first_prompt = json.loads(first_prompt)
     assert isinstance(first_prompt, dict)
     user_message = next(
         message for message in first_prompt["messages"] if message.get("role") == "user"
     )
-    payload = json.loads(user_message["content"])
     test_tool = next(
         tool for tool in first_prompt["tools"] if tool["function"]["name"] == "test.run"
     )
 
     assert result["ok"] is True
     assert trace["trace"]["final_output"]["run_metadata"]["allowed_test_commands"] == ["pytest"]
-    assert "tool_schemas" not in payload
+    assert user_message["content"] == "Run pytest."
     assert test_tool["function"]["parameters"]["properties"]["command_name"]["enum"] == ["pytest"]
 
 
