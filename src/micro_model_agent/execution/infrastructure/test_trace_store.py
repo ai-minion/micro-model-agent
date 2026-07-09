@@ -90,6 +90,7 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
                         {"role": "user", "content": "{}"},
                     ],
                     "raw_response": '{"final_response":"done","ok":true}',
+                    "response_text": '{"final_response":"done","ok":true}<|im_end|>',
                     "response": "done",
                 },
             )
@@ -109,19 +110,26 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
     index_record = json.loads((tmp_path / "traces" / "workflows.jsonl").read_text())
 
     assert metadata_file.exists()
-    assert (step_dir / "request.json").read_text(encoding="utf-8") == json.dumps(
+    request_text = (step_dir / "request.txt").read_text(encoding="utf-8")
+    assert request_text == json.dumps(
         [{"role": "system", "content": "request"}, {"role": "user", "content": "{}"}]
     )
-    assert (step_dir / "response.json").read_text(encoding="utf-8") == (
+    response_text = (step_dir / "response.txt").read_text(encoding="utf-8")
+    assert response_text == (
+        '{"final_response":"done","ok":true}<|im_end|>'
+    )
+    assert response_text != (
         '{"final_response":"done","ok":true}'
     )
-    assert not (step_dir / "request.txt").exists()
-    assert not (step_dir / "response.txt").exists()
+    assert not (step_dir / "request.json").exists()
+    assert not (step_dir / "response.json").exists()
 
     # Metadata files must not embed raw blobs.
     assert "prompt" not in stored_meta["steps"][0].get("output", {})
+    assert "response_text" not in stored_meta["steps"][0].get("output", {})
     assert "raw_response" not in stored_meta["steps"][0].get("output", {})
     assert "prompt" not in index_record["steps"][0].get("output", {})
+    assert "response_text" not in index_record["steps"][0].get("output", {})
     assert "raw_response" not in index_record["steps"][0].get("output", {})
 
     # run_metadata is preserved.
@@ -144,39 +152,6 @@ def test_jsonl_trace_store_writes_trace_file_and_raw_io_sidecars(tmp_path: Path)
     loaded = asyncio.run(store.get(str(trace.id)))
 
     assert loaded is not None
-    assert loaded.steps[0].output["prompt"] == [
-        {"role": "system", "content": "request"},
-        {"role": "user", "content": "{}"},
-    ]
-    assert loaded.steps[0].output["raw_response"] == '{"final_response":"done","ok":true}'
+    assert loaded.steps[0].output["prompt"] == request_text
+    assert loaded.steps[0].output["raw_response"] == response_text
     assert loaded.run_metadata == {"interface": "test"}
-
-
-def test_jsonl_trace_store_reads_legacy_txt_sidecars(tmp_path: Path) -> None:
-    store = JsonlTraceStore(tmp_path / "traces" / "workflows.jsonl")
-    trace = WorkflowTrace(
-        goal="Read docs",
-        status=WorkflowStatus.SUCCEEDED,
-        steps=[
-            WorkflowStep(
-                name="final_response",
-                status=WorkflowStatus.SUCCEEDED,
-                output={
-                    "prompt": [{"role": "user", "content": "{}"}],
-                    "raw_response": '{"final_response":"done","ok":true}',
-                },
-            )
-        ],
-    )
-
-    asyncio.run(store.save(trace))
-
-    step_dir = tmp_path / "traces" / str(trace.id) / str(trace.steps[0].id)
-    (step_dir / "request.json").rename(step_dir / "request.txt")
-    (step_dir / "response.json").rename(step_dir / "response.txt")
-
-    loaded = asyncio.run(store.get(str(trace.id)))
-
-    assert loaded is not None
-    assert loaded.steps[0].output["prompt"] == [{"role": "user", "content": "{}"}]
-    assert loaded.steps[0].output["raw_response"] == '{"final_response":"done","ok":true}'

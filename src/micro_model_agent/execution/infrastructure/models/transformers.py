@@ -34,6 +34,8 @@ class TransformersPeftModelProvider:
         self._tokenizer: Any | None = None
         self._model: Any | None = None
         self._torch: Any | None = None
+        self.last_request_text: str | None = None
+        self.last_response_text: str | None = None
 
     async def complete(
         self,
@@ -99,6 +101,7 @@ class TransformersPeftModelProvider:
             _normalize_messages(messages),
             tools=tools,
         )
+        self.last_request_text = prompt
         inputs = self._tokenizer(prompt, return_tensors="pt")
         model_device = getattr(self._model, "device", None)
         if model_device is not None and hasattr(inputs, "to"):
@@ -114,7 +117,9 @@ class TransformersPeftModelProvider:
             )
         generated_ids = output_ids[0][inputs["input_ids"].shape[1] :]
         # Slice off the prompt tokens so callers only receive newly generated text.
-        decoded = self._tokenizer.decode(generated_ids, skip_special_tokens=True)
+        decoded = self._tokenizer.decode(generated_ids, skip_special_tokens=False)
+        self.last_response_text = str(decoded)
+        decoded = _strip_end_tokens(decoded, self._tokenizer)
         return str(decoded).strip()
 
     def _torch_dtype(self, torch: Any) -> Any:
@@ -125,6 +130,26 @@ class TransformersPeftModelProvider:
         if self.dtype == "float32":
             return torch.float32
         return torch.float16
+
+
+# Qwen and similar models register <tool_call>/<tool_response> as
+# additional_special_tokens, so they are stripped by skip_special_tokens=True.
+# We instead decode without skipping and remove only the known end-of-turn
+# chat markers that are never meaningful content.
+_CHAT_END_TOKENS: frozenset[str] = frozenset(["<|im_end|>", "<|endoftext|>"])
+
+
+def _strip_end_tokens(text: str, tokenizer: Any) -> str:
+    """Remove terminal chat-format markers without touching tool-call delimiters."""
+
+    eos = getattr(tokenizer, "eos_token", None)
+    tokens_to_strip = set(_CHAT_END_TOKENS)
+    if eos:
+        tokens_to_strip.add(eos)
+    for tok in tokens_to_strip:
+        text = text.replace(tok, "")
+    return text
+
 
 def _normalize_messages(messages: list[dict[str, Any]]) -> list[dict[str, str]]:
     """Normalize model messages into role/content pairs."""

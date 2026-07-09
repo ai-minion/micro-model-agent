@@ -8,8 +8,8 @@ Each trace is stored as a directory tree under the store's root:
         metadata.json               # trace-level: id, goal, status, run_metadata, timestamps
         <step-id>/                  # one folder per model turn
           metadata.json             # step-level: id, name, status, turn_index, tool_name
-          request.json              # raw prompt sent to the model
-          response.json             # raw model response
+          request.txt               # raw prompt text sent to the model
+          response.txt              # raw model response text
           workflow.json             # ordered event sequence for this turn
 
 Saving the same trace ID again overwrites the per-trace files and appends a
@@ -75,7 +75,7 @@ def _workflow_step_to_record(step: WorkflowStep) -> dict[str, Any]:
         "status": step.status.value,
         "tool_call": _tool_call_to_record(step.tool_call) if step.tool_call else None,
         "tool_result": _tool_result_to_record(step.tool_result) if step.tool_result else None,
-        "output": step.output,
+        "output": dict(step.output),
     }
 
 
@@ -151,8 +151,8 @@ class JsonlTraceStore:
             metadata.json               # trace-level: id, goal, status, run_metadata, timestamps
             <step-id>/                  # one folder per model turn
               metadata.json             # step-level: id, name, status, turn_index, tool_name
-              request.json              # raw prompt sent to the model (if captured)
-              response.json             # raw model response (if captured)
+              request.txt               # raw prompt text sent to the model (if captured)
+              response.txt              # raw model response text (if captured)
               workflow.json             # ordered event sequence for this turn
     """
 
@@ -249,16 +249,25 @@ class JsonlTraceStore:
 
             output = dict(step.get("output") or {})
             prompt = output.pop("prompt", None)
+            request_text = output.pop("request_text", None)
+            response_text = output.pop("response_text", None)
             raw_response = output.pop("raw_response", None)
 
-            # request.json / response.json
-            if isinstance(prompt, (str, list, dict)):
-                prompt_text = json.dumps(prompt) if isinstance(prompt, (list, dict)) else prompt
-                (step_dir / "request.json").write_text(prompt_text, encoding="utf-8")
-                (step_dir / "request.txt").unlink(missing_ok=True)
-            if isinstance(raw_response, str):
-                (step_dir / "response.json").write_text(raw_response, encoding="utf-8")
-                (step_dir / "response.txt").unlink(missing_ok=True)
+            # request.txt / response.txt
+            if isinstance(request_text, str) or isinstance(prompt, (str, list, dict)):
+                prompt_text = (
+                    request_text
+                    if isinstance(request_text, str)
+                    else _prompt_sidecar_text(prompt)
+                )
+                (step_dir / "request.txt").write_text(prompt_text, encoding="utf-8")
+                (step_dir / "request.json").unlink(missing_ok=True)
+            if isinstance(response_text, str) or isinstance(raw_response, str):
+                sidecar_response = (
+                    response_text if isinstance(response_text, str) else raw_response
+                )
+                (step_dir / "response.txt").write_text(sidecar_response, encoding="utf-8")
+                (step_dir / "response.json").unlink(missing_ok=True)
 
             # workflow.json — ordered event sequence for this turn
             workflow_events = _build_workflow_events(
@@ -326,24 +335,14 @@ class JsonlTraceStore:
             if not step_id:
                 continue
             step_dir = self._trace_dir(trace_id) / step_id
-            request_file = _first_existing(
-                step_dir / "request.json",
-                step_dir / "request.txt",
-            )
-            response_file = _first_existing(
-                step_dir / "response.json",
-                step_dir / "response.txt",
-            )
+            request_file = step_dir / "request.txt"
+            response_file = step_dir / "response.txt"
             output = step.setdefault("output", {})
             if not isinstance(output, dict):
                 continue
-            if request_file is not None:
-                raw = request_file.read_text(encoding="utf-8")
-                try:
-                    output["prompt"] = json.loads(raw)
-                except json.JSONDecodeError:
-                    output["prompt"] = raw
-            if response_file is not None:
+            if request_file.exists():
+                output["prompt"] = request_file.read_text(encoding="utf-8")
+            if response_file.exists():
                 output["raw_response"] = response_file.read_text(encoding="utf-8")
 
 
@@ -356,16 +355,17 @@ def _strip_prompt_fields(record: dict[str, Any]) -> None:
         output = step.get("output")
         if isinstance(output, dict):
             output.pop("prompt", None)
+            output.pop("request_text", None)
+            output.pop("response_text", None)
             output.pop("raw_response", None)
 
 
-def _first_existing(*paths: Path) -> Path | None:
-    """Return the first existing path, with legacy sidecar fallback."""
+def _prompt_sidecar_text(prompt: list[dict[str, Any]] | dict[str, Any] | str | None) -> str:
+    """Return a text sidecar representation for non-rendered prompt payloads."""
 
-    for path in paths:
-        if path.exists():
-            return path
-    return None
+    if isinstance(prompt, str):
+        return prompt
+    return json.dumps(prompt)
 
 
 def _build_workflow_events(

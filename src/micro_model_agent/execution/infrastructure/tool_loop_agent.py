@@ -358,7 +358,10 @@ class ToolLoopAgent:
                                     error="repeated_unavailable_tool",
                                 ),
                                 output=self._step_output(
-                                    {"raw_response": decision.raw_response, "error": "repeated_unavailable_tool"},
+                                    {
+                                        "raw_response": decision.raw_response,
+                                        "error": "repeated_unavailable_tool",
+                                    },
                                     messages=messages,
                                     tools=tools,
                                 ),
@@ -393,7 +396,10 @@ class ToolLoopAgent:
                                 error="duplicate_successful_write",
                             ),
                             output=self._step_output(
-                                {"raw_response": decision.raw_response, "error": "duplicate_successful_write"},
+                                {
+                                    "raw_response": decision.raw_response,
+                                    "error": "duplicate_successful_write",
+                                },
                                 messages=messages,
                                 tools=tools,
                             ),
@@ -422,7 +428,10 @@ class ToolLoopAgent:
                                 error="duplicate_read_or_search",
                             ),
                             output=self._step_output(
-                                {"raw_response": decision.raw_response, "error": "duplicate_read_or_search"},
+                                {
+                                    "raw_response": decision.raw_response,
+                                    "error": "duplicate_read_or_search",
+                                },
                                 messages=messages,
                                 tools=tools,
                             ),
@@ -541,6 +550,10 @@ class ToolLoopAgent:
     ) -> str:
         """Complete one model turn, optionally bounded by a per-turn timeout."""
 
+        if hasattr(self.model_provider, "last_request_text"):
+            self.model_provider.last_request_text = None  # type: ignore[attr-defined]
+        if hasattr(self.model_provider, "last_response_text"):
+            self.model_provider.last_response_text = None  # type: ignore[attr-defined]
         completion = self.model_provider.complete(messages, tools=tools or None)
         if task.model_timeout_seconds is None:
             return await completion
@@ -574,7 +587,14 @@ class ToolLoopAgent:
         prompt: list[dict[str, Any]] | dict[str, Any] = (
             {"messages": messages, "tools": tools} if tools else messages
         )
-        return {**output, "prompt": prompt}
+        enriched_output = dict(output)
+        request_text = getattr(self.model_provider, "last_request_text", None)
+        response_text = getattr(self.model_provider, "last_response_text", None)
+        if isinstance(request_text, str):
+            enriched_output["request_text"] = request_text
+        if isinstance(response_text, str):
+            enriched_output["response_text"] = response_text
+        return {**enriched_output, "prompt": prompt}
 
 
 def _thinking_message(tool_calls_made: int, final_response_only: bool) -> str:

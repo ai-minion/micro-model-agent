@@ -188,8 +188,8 @@ even when the loop operates on a registered workspace:
 ```text
 .micro_model_agent/traces/workflows.jsonl
 .micro_model_agent/traces/<trace-id>/metadata.json
-.micro_model_agent/traces/<trace-id>/<request-step-id>/request.json
-.micro_model_agent/traces/<trace-id>/<request-step-id>/response.json
+.micro_model_agent/traces/<trace-id>/<request-step-id>/request.txt
+.micro_model_agent/traces/<trace-id>/<request-step-id>/response.txt
 ```
 
 Review labels are stored separately from the raw trace log:

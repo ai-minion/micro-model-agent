@@ -1,9 +1,11 @@
 """Tests for the Transformers-backed model provider helpers."""
 
 from micro_model_agent.execution.infrastructure.models.transformers import (
+    TransformersPeftModelProvider,
     _normalize_messages,
     _render_plain_chat_prompt,
     _render_prompt,
+    _strip_end_tokens,
 )
 
 
@@ -110,3 +112,100 @@ def test_render_prompt_passes_tools_to_plain_fallback() -> None:
 
     assert "TOOLS:" in rendered
     assert "repo.search" in rendered
+
+
+class FakeInputIds:
+    shape = (1, 2)
+
+
+class FakeInputs(dict):
+    def to(self, _device: object) -> "FakeInputs":
+        return self
+
+
+class GeneratingTokenizer(TemplateTokenizer):
+    eos_token = "<|endoftext|>"
+    eos_token_id = 0
+
+    def __call__(self, prompt: str, *, return_tensors: str) -> FakeInputs:
+        assert prompt == "templated:user:hello:tools=1"
+        assert return_tensors == "pt"
+        return FakeInputs({"input_ids": FakeInputIds()})
+
+    def decode(self, generated_ids: list[int], *, skip_special_tokens: bool) -> str:
+        assert generated_ids == [3]
+        assert skip_special_tokens is False
+        return "done<|im_end|>"
+
+
+class GeneratingModel:
+    device = "cpu"
+
+    def generate(self, **_kwargs: object) -> list[list[int]]:
+        return [[1, 2, 3]]
+
+
+class NoGrad:
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
+
+class FakeTorch:
+    def no_grad(self) -> NoGrad:
+        return NoGrad()
+
+
+def test_generate_records_rendered_request_text_before_tokenization() -> None:
+    provider = TransformersPeftModelProvider("base")
+    provider._tokenizer = GeneratingTokenizer()
+    provider._model = GeneratingModel()
+    provider._torch = FakeTorch()
+
+    response = provider._generate(
+        [{"role": "user", "content": "hello"}],
+        tools=[{"type": "function", "function": {"name": "repo.read"}}],
+    )
+
+    assert response == "done"
+    assert provider.last_request_text == "templated:user:hello:tools=1"
+    assert provider.last_response_text == "done<|im_end|>"
+
+
+class FakeTokenizer:
+    eos_token = "<|endoftext|>"
+
+
+def test_strip_end_tokens_removes_im_end() -> None:
+    text = "<tool_call>\n{\"name\": \"repo.search\"}\n</tool_call><|im_end|>"
+    assert _strip_end_tokens(text, FakeTokenizer()) == (
+        "<tool_call>\n{\"name\": \"repo.search\"}\n</tool_call>"
+    )
+
+
+def test_strip_end_tokens_removes_endoftext() -> None:
+    text = "some response<|endoftext|>"
+    assert _strip_end_tokens(text, FakeTokenizer()) == "some response"
+
+
+def test_strip_end_tokens_removes_eos_token_from_tokenizer() -> None:
+    class CustomTokenizer:
+        eos_token = "<custom_eos>"
+
+    text = "hello<custom_eos>"
+    assert _strip_end_tokens(text, CustomTokenizer()) == "hello"
+
+
+def test_strip_end_tokens_preserves_tool_call_delimiters() -> None:
+    text = "<tool_call>{\"name\": \"repo.read\", \"arguments\": {}}</tool_call>"
+    assert _strip_end_tokens(text, FakeTokenizer()) == text
+
+
+def test_strip_end_tokens_handles_tokenizer_with_no_eos_token() -> None:
+    class NoEosTokenizer:
+        eos_token = None
+
+    text = "plain response<|im_end|>"
+    assert _strip_end_tokens(text, NoEosTokenizer()) == "plain response"
