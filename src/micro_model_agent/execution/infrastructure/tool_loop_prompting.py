@@ -100,9 +100,14 @@ def timeline_messages(
 
     messages: list[dict[str, str]] = []
     for step in steps:
-        raw_response = step.output.get("raw_response")
-        if isinstance(raw_response, str) and raw_response:
-            messages.append({"role": "assistant", "content": raw_response})
+        if step.tool_call is not None:
+            messages.append(
+                {"role": "assistant", "content": canonical_tool_call_content(step)}
+            )
+        else:
+            raw_response = step.output.get("raw_response")
+            if isinstance(raw_response, str) and raw_response:
+                messages.append({"role": "assistant", "content": raw_response})
 
         if step.tool_call is not None and step.tool_result is not None:
             messages.append(
@@ -131,7 +136,23 @@ def timeline_messages(
                     ),
                 }
             )
+
     return messages
+
+
+def canonical_tool_call_content(step: WorkflowStep) -> str:
+    """Render executed tool calls in the native format expected by chat templates."""
+
+    assert step.tool_call is not None
+    payload = {
+        "name": step.tool_call.tool_name,
+        "arguments": step.tool_call.arguments,
+    }
+    return (
+        "<tool_call>\n"
+        + json.dumps(payload, sort_keys=True)
+        + "\n</tool_call>"
+    )
 
 
 def tool_result_payload(

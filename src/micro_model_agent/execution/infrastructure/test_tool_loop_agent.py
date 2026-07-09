@@ -348,6 +348,46 @@ def test_tool_loop_agent_prompt_includes_prior_tool_call_arguments(
     }
 
 
+def test_tool_loop_agent_canonicalizes_fenced_json_tool_call_history(
+    tmp_path: Path,
+) -> None:
+    _init_repo(tmp_path)
+    model = ScriptedModelProvider(
+        [
+            "```json\n"
+            '{"name":"repo.search","arguments":{"query":"value"}}'
+            "\n```",
+            _model_response({"final_response": "Searched for value.", "ok": True}),
+        ]
+    )
+    agent = ToolLoopAgent(
+        model_provider=model,
+        tool_executor=BuiltinToolExecutor(tmp_path, allowed_test_commands={}),
+        trace_store=JsonlTraceStore(tmp_path / ".traces" / "workflows.jsonl"),
+    )
+
+    result = asyncio.run(
+        agent.run(
+            ToolLoopAgentTask(
+                goal="Search for value.",
+                available_tools=("repo.search",),
+                max_tool_calls=2,
+            )
+        )
+    )
+    assistant_history = [
+        message["content"]
+        for message in model.prompts[1]
+        if message["role"] == "assistant"
+    ]
+
+    assert result.ok is True
+    assert assistant_history == [
+        '<tool_call>\n{"arguments": {"query": "value"}, "name": "repo.search"}\n</tool_call>'
+    ]
+    assert "```" not in assistant_history[0]
+
+
 def test_tool_loop_agent_compacts_tool_history_outputs_near_budget(
     tmp_path: Path,
 ) -> None:
