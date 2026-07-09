@@ -165,15 +165,16 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
     assert started_data["session"]["repository_root"] == str(workspace_root.resolve())  # type: ignore[index]
 
 
-def test_mcp_trace_store_prefers_scripts_directory_when_present(tmp_path: Path) -> None:
+def test_mcp_trace_store_uses_workspace_root_when_scripts_directory_exists(
+    tmp_path: Path,
+) -> None:
     scripts_root = tmp_path / "scripts"
     scripts_root.mkdir()
 
-    assert trace_store_root(tmp_path) == scripts_root
-    assert trace_store_root(scripts_root) == scripts_root
+    assert trace_store_root(tmp_path) == tmp_path
 
 
-def test_mcp_start_trace_uses_scripts_trace_store_from_repository_root(
+def test_mcp_start_trace_creates_trace_store_under_workspace_root(
     tmp_path: Path,
 ) -> None:
     scripts_root = tmp_path / "scripts"
@@ -191,10 +192,10 @@ def test_mcp_start_trace_uses_scripts_trace_store_from_repository_root(
     assert data["ok"] is True  # type: ignore[index]
     assert data["session"]["repository_root"] == str(tmp_path)  # type: ignore[index]
     assert (
-        scripts_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+        tmp_path / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
     assert not (
-        tmp_path / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+        scripts_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
 
 
@@ -951,7 +952,9 @@ def test_mcp_run_loop_wires_on_turn_and_trace_root_to_handler(tmp_path: Path) ->
     assert received[0]["server_repository_root"] == str(tmp_path)
 
 
-def test_mcp_run_loop_wires_scripts_trace_root_when_present(tmp_path: Path) -> None:
+def test_mcp_run_loop_wires_workspace_trace_root_when_scripts_exists(
+    tmp_path: Path,
+) -> None:
     received: list[Any] = []
     scripts_root = tmp_path / "scripts"
     scripts_root.mkdir()
@@ -973,4 +976,4 @@ def test_mcp_run_loop_wires_scripts_trace_root_when_present(tmp_path: Path) -> N
 
     assert len(received) == 1
     assert received[0]["repository_root"] == str(tmp_path)
-    assert received[0]["server_repository_root"] == str(scripts_root)
+    assert received[0]["server_repository_root"] == str(tmp_path)

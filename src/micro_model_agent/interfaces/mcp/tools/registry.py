@@ -369,17 +369,6 @@ async def remove_tool_and_notify(server: FastMCP, tool_name: str) -> None:
 
 
 def trace_store_root(repository_root: str | Path) -> Path:
-    """Return the root used for MCP trace artifacts.
+    """Return the workspace root used for MCP trace artifacts."""
 
-    In this repository, MCP trace collection is intentionally kept under the
-    top-level scripts directory so accidental root-level trace stores do not
-    dirty the project root.
-    """
-
-    root = Path(repository_root)
-    if root.name == "scripts":
-        return root
-    scripts_root = root / "scripts"
-    if scripts_root.is_dir():
-        return scripts_root
-    return root
+    return Path(repository_root)

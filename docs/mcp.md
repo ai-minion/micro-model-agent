@@ -183,14 +183,15 @@ the canonical tools needed for the task, such as `repo.search`, `repo.read`,
 ```
 
 For MCP runs launched from this repository root, workflow traces are stored under
-the top-level `scripts` directory, even when the loop operates on a registered
-workspace:
+the workspace root's `.micro_model_agent` directory, even when the loop operates
+on a registered workspace. The directory is created on first trace write when it
+does not already exist:
 
 ```text
-scripts/.micro_model_agent/traces/workflows.jsonl
-scripts/.micro_model_agent/traces/<trace-id>/metadata.json
-scripts/.micro_model_agent/traces/<trace-id>/<request-step-id>/request.txt
-scripts/.micro_model_agent/traces/<trace-id>/<request-step-id>/response.txt
+.micro_model_agent/traces/workflows.jsonl
+.micro_model_agent/traces/<trace-id>/metadata.json
+.micro_model_agent/traces/<trace-id>/<request-step-id>/request.txt
+.micro_model_agent/traces/<trace-id>/<request-step-id>/response.txt
 ```
 
 Review labels are stored separately from the raw trace log:
@@ -264,13 +265,13 @@ comparison_notes: "Where the local model matched or diverged."
 ```
 
 For MCP tools launched from this repository root, comparison sessions are stored
-append-only under `scripts`, while each session's `repository_root` records the
-workspace that was actually evaluated. This keeps comparison evidence
-centralized even when a task runs in a temporary or registered workspace, without
-dirtying the repository root.
+append-only under the workspace root's `.micro_model_agent` directory, while each
+session's `repository_root` records the workspace that was actually evaluated.
+This keeps comparison evidence centralized even when a task runs in a temporary
+or registered workspace.
 
 ```text
-scripts/.micro_model_agent/traces/comparison_sessions.jsonl
+.micro_model_agent/traces/comparison_sessions.jsonl
 ```
 
 ## MCP Prompts
