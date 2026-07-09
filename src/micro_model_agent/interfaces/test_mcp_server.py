@@ -11,7 +11,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from micro_model_agent.execution.application.tool_loop import run_profile_settings
-from micro_model_agent.interfaces.mcp.tools.registry import register_mcp_tools
+from micro_model_agent.interfaces.mcp.tools.registry import register_mcp_tools, trace_store_root
 from micro_model_agent.interfaces.mcp.tools.run_loop import resolve_model_settings
 from micro_model_agent.interfaces.mcp.workspace import path_from_user_input
 from micro_model_agent.interfaces.mcp_server import (
@@ -163,6 +163,39 @@ def test_mcp_workspace_id_selects_registered_workspace(tmp_path: Path) -> None:
     assert created_data["ok"] is True  # type: ignore[index]
     assert (workspace_root / ".micro_model_agent" / "config.json").exists()
     assert started_data["session"]["repository_root"] == str(workspace_root.resolve())  # type: ignore[index]
+
+
+def test_mcp_trace_store_prefers_scripts_directory_when_present(tmp_path: Path) -> None:
+    scripts_root = tmp_path / "scripts"
+    scripts_root.mkdir()
+
+    assert trace_store_root(tmp_path) == scripts_root
+    assert trace_store_root(scripts_root) == scripts_root
+
+
+def test_mcp_start_trace_uses_scripts_trace_store_from_repository_root(
+    tmp_path: Path,
+) -> None:
+    scripts_root = tmp_path / "scripts"
+    scripts_root.mkdir()
+    server = create_mcp_server(repository_root=tmp_path, expose_init_tool=False)
+
+    started = asyncio.run(
+        server.call_tool(
+            "micro_agent_start_trace",
+            {"goal": "Keep traces out of the repository root."},
+        )
+    )
+    _, data = started
+
+    assert data["ok"] is True  # type: ignore[index]
+    assert data["session"]["repository_root"] == str(tmp_path)  # type: ignore[index]
+    assert (
+        scripts_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
+    assert not (
+        tmp_path / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
+    ).exists()
 
 
 def test_path_from_user_input_maps_windows_paths_to_wsl_mounts(tmp_path: Path) -> None:
@@ -916,3 +949,28 @@ def test_mcp_run_loop_wires_on_turn_and_trace_root_to_handler(tmp_path: Path) ->
     assert len(received) == 1
     assert callable(received[0]["on_turn"])
     assert received[0]["server_repository_root"] == str(tmp_path)
+
+
+def test_mcp_run_loop_wires_scripts_trace_root_when_present(tmp_path: Path) -> None:
+    received: list[Any] = []
+    scripts_root = tmp_path / "scripts"
+    scripts_root.mkdir()
+
+    async def mock_handler(**kwargs: Any) -> dict[str, Any]:
+        received.append(kwargs)
+        return {"ok": True, "response": "done"}
+
+    server = FastMCP("test")
+    register_mcp_tools(
+        server,
+        default_repository_root=str(tmp_path),
+        expose_debug_tools=False,
+        expose_init_tool=False,
+        run_agent_loop_handler=mock_handler,
+    )
+
+    asyncio.run(server.call_tool("micro_agent_run_loop", {"goal": "test goal"}))
+
+    assert len(received) == 1
+    assert received[0]["repository_root"] == str(tmp_path)
+    assert received[0]["server_repository_root"] == str(scripts_root)

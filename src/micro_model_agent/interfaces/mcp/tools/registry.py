@@ -50,7 +50,7 @@ def register_mcp_tools(
     """Register MicroModelAgent's public and conditional MCP tools."""
 
     resolved_registry_root = registry_root or default_repository_root
-    trace_repository_root = str(Path(resolved_registry_root))
+    trace_repository_root = str(trace_store_root(resolved_registry_root))
 
     @server.tool(
         name="micro_agent_init_workspace",
@@ -366,3 +366,20 @@ async def remove_tool_and_notify(server: FastMCP, tool_name: str) -> None:
         await context.request_context.session.send_tool_list_changed()
     except (AttributeError, LookupError, RuntimeError, ValueError):
         return
+
+
+def trace_store_root(repository_root: str | Path) -> Path:
+    """Return the root used for MCP trace artifacts.
+
+    In this repository, MCP trace collection is intentionally kept under the
+    top-level scripts directory so accidental root-level trace stores do not
+    dirty the project root.
+    """
+
+    root = Path(repository_root)
+    if root.name == "scripts":
+        return root
+    scripts_root = root / "scripts"
+    if scripts_root.is_dir():
+        return scripts_root
+    return root
