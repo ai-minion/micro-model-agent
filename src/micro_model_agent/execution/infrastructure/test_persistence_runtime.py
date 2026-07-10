@@ -29,6 +29,9 @@ def test_runtime_helpers_use_standard_trace_and_registry_paths(tmp_path: Path) -
     assert workflow_trace_store(tmp_path).path == (
         tmp_path / ".micro_model_agent" / "traces" / "workflows.jsonl"
     )
+    assert workflow_trace_store(tmp_path, session_id="session-1").path == (
+        tmp_path / ".micro_model_agent" / "traces" / "session-1" / "workflows.jsonl"
+    )
     assert comparison_trace_store(tmp_path).path == (
         tmp_path / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     )

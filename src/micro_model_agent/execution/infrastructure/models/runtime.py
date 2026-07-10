@@ -375,6 +375,7 @@ async def run_configured_tool_loop(
     require_tool_call: bool = True,
     allowed_commands: Mapping[str, AllowedTestCommand | Sequence[str]] | None = None,
     trace_repository_root: str | Path | None = None,
+    comparison_session_id: str | None = None,
     executor_wrapper: Callable[[ToolExecutor], ToolExecutor] | None = None,
     run_metadata: dict[str, Any] | None = None,
     on_turn: TurnProgressCallback | None = None,
@@ -425,7 +426,10 @@ async def run_configured_tool_loop(
     agent = ToolLoopAgent(
         model_provider=model_provider,
         tool_executor=executor,
-        trace_store=workflow_trace_store(trace_repository_root or repository),
+        trace_store=workflow_trace_store(
+            trace_repository_root or repository,
+            session_id=comparison_session_id,
+        ),
     )
     workflow = RunToolLoopWorkflow(agent)
     request = (
@@ -550,6 +554,7 @@ async def run_mcp_agent_loop(
         expose_tool_schemas=expose_tool_schemas,
         allowed_commands=test_commands,
         trace_repository_root=server_repository,
+        comparison_session_id=comparison_session_id,
         executor_wrapper=lambda executor: PatchPolicyToolExecutor(
             executor,
             apply_patches=apply_patches,

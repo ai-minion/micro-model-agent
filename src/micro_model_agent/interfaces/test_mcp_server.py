@@ -804,7 +804,9 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
             actual_summary="Codex read README.md and saw status central.",
         )
     )
-    central_workflow_trace = registry_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
+    session_workflow_trace = (
+        registry_root / ".micro_model_agent" / "traces" / session_id / "workflows.jsonl"
+    )
     reviewed = asyncio.run(
         review_comparison_trace(
             session_id=session_id,
@@ -821,7 +823,7 @@ def test_comparison_trace_can_use_central_store_for_workspace_task(
     assert not (
         workspace_root / ".micro_model_agent" / "traces" / "comparison_sessions.jsonl"
     ).exists()
-    assert central_workflow_trace.exists()
+    assert session_workflow_trace.exists()
     assert not (
         workspace_root / ".micro_model_agent" / "traces" / "workflows.jsonl"
     ).exists()

@@ -52,10 +52,15 @@ def trace_dir(
 
 def workflow_trace_store(
     repository_root: str | Path,
+    *,
+    session_id: str | None = None,
 ) -> JsonlTraceStore:
     """Return the workflow trace store for one repository."""
 
-    return JsonlTraceStore(trace_dir(repository_root) / "workflows.jsonl")
+    base = trace_dir(repository_root)
+    if session_id:
+        base = base / session_id
+    return JsonlTraceStore(base / "workflows.jsonl")
 
 
 def comparison_trace_store(
@@ -70,10 +75,11 @@ async def workflow_trace_record(
     *,
     repository_root: str | Path,
     trace_id: str,
+    session_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Load a workflow trace and return its JSON-ready record."""
 
-    trace = await workflow_trace_store(repository_root).get(trace_id)
+    trace = await workflow_trace_store(repository_root, session_id=session_id).get(trace_id)
     if trace is None:
         return None
     return workflow_trace_to_record(trace)
@@ -167,10 +173,20 @@ async def review_comparison_trace_session(
             trace_record = await workflow_trace_record(
                 repository_root=trace_root,
                 trace_id=trace_id,
+                session_id=session_id,
             )
             if trace_record is not None:
                 local_traces.append(trace_record)
                 break
+        else:
+            for trace_root in trace_roots:
+                trace_record = await workflow_trace_record(
+                    repository_root=trace_root,
+                    trace_id=trace_id,
+                )
+                if trace_record is not None:
+                    local_traces.append(trace_record)
+                    break
 
     reviewed = review_comparison_session(session, review=review)
     await store.save(reviewed)
