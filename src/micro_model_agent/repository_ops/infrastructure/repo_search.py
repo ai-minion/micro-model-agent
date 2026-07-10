@@ -2,11 +2,17 @@
 
 The search tool supports three simple modes: file globbing, text search, and
 Python symbol search using the standard library ast module.
+
+For git repositories, glob and text search delegate to ``git ls-files`` and
+``git grep`` respectively — both are dramatically faster than Python-level
+filesystem walking on Windows/WSL paths and automatically respect .gitignore.
+The pure-Python implementation is retained as a fallback for non-git repos.
 """
 
 from __future__ import annotations
 
 import ast
+import subprocess
 from pathlib import Path
 
 from micro_model_agent.repository_ops.infrastructure.contracts import (
@@ -44,8 +50,130 @@ class RepoSearchTool:
             return self._glob_search(request)
         return self._text_search(request)
 
+    # ------------------------------------------------------------------
+    # Git-backed fast paths
+    # ------------------------------------------------------------------
+
+    def _is_git_repo(self) -> bool:
+        return (self.repository.root / ".git").exists()
+
+    def _run_git(self, args: list[str]) -> subprocess.CompletedProcess[str]:
+        """Run a git command under the repository root."""
+        try:
+            return subprocess.run(
+                args,
+                cwd=self.repository.root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                shell=False,
+                check=False,
+            )
+        except FileNotFoundError:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=127,
+                stdout="",
+                stderr="git not found",
+            )
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=124,
+                stdout="",
+                stderr="git timed out",
+            )
+
+    def _glob_search_git(self, request: RepoSearchRequest) -> RepoSearchResult | None:
+        """List files via git ls-files. Returns None to signal fallback."""
+        pattern = request.glob or request.query or "**/*"
+        proc = self._run_git(
+            [
+                "git",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "--",
+                f":(glob){pattern}",
+            ]
+        )
+        if proc.returncode not in (0, 1):
+            return None
+        matches: list[RepoSearchMatch] = []
+        truncated = False
+        for line in proc.stdout.splitlines():
+            path = line.strip()
+            if not path:
+                continue
+            if len(matches) >= request.limit:
+                truncated = True
+                break
+            matches.append(RepoSearchMatch(
+                path=path,
+                preview="file",
+                metadata={"search_kind": SearchKind.GLOB.value},
+            ))
+        return RepoSearchResult(matches=matches, truncated=truncated)
+
+    def _text_search_git(self, request: RepoSearchRequest) -> RepoSearchResult | None:
+        """Search via git grep. Returns None to signal fallback."""
+        assert request.query is not None
+        pattern = request.glob or "**/*"
+        proc = self._run_git(
+            [
+                "git",
+                "grep",
+                "--untracked",
+                "--exclude-standard",
+                "-i",
+                "-n",
+                "-e",
+                request.query,
+                "--",
+                f":(glob){pattern}",
+            ]
+        )
+        # exit 1 = no matches (not an error); anything else is a real failure
+        if proc.returncode == 1:
+            return RepoSearchResult(matches=[])
+        if proc.returncode != 0:
+            return None
+        matches: list[RepoSearchMatch] = []
+        truncated = False
+        for line in proc.stdout.splitlines():
+            if len(matches) >= request.limit:
+                truncated = True
+                break
+            # git grep output: <file>:<line>:<content>
+            parts = line.split(":", 2)
+            if len(parts) < 3:
+                continue
+            file_path, line_no_str, content = parts
+            try:
+                line_number = int(line_no_str)
+            except ValueError:
+                continue
+            matches.append(RepoSearchMatch(
+                path=file_path,
+                line_number=line_number,
+                preview=content.strip(),
+                score=1.0,
+                metadata={"search_kind": SearchKind.TEXT.value},
+            ))
+        return RepoSearchResult(matches=matches, truncated=truncated)
+
+    # ------------------------------------------------------------------
+    # Public search methods (git fast path → Python fallback)
+    # ------------------------------------------------------------------
+
     def _glob_search(self, request: RepoSearchRequest) -> RepoSearchResult:
         """Return files whose paths match the requested glob pattern."""
+
+        if self._is_git_repo():
+            result = self._glob_search_git(request)
+            if result is not None:
+                return result
 
         pattern = request.glob or request.query or "**/*"
         try:
@@ -73,6 +201,12 @@ class RepoSearchTool:
         """Search text files line-by-line for a case-insensitive query."""
 
         assert request.query is not None
+
+        if self._is_git_repo():
+            result = self._text_search_git(request)
+            if result is not None:
+                return result
+
         pattern = request.glob or "**/*"
         query = request.query.casefold()
         matches: list[RepoSearchMatch] = []
@@ -85,7 +219,6 @@ class RepoSearchTool:
                 text = self._read_text_for_search(path)
                 if text is None:
                     continue
-                # enumerate(..., start=1) reports line numbers the way editors do.
                 for line_number, line in enumerate(text.splitlines(), start=1):
                     if query not in line.casefold():
                         continue
@@ -135,7 +268,6 @@ class RepoSearchTool:
                 if text is None:
                     continue
                 try:
-                    # ast.parse lets us find definitions without executing code.
                     tree = ast.parse(text, filename=self.repository.relative_path(path))
                 except SyntaxError:
                     continue

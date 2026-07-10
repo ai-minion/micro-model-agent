@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 from micro_model_agent.repository_ops.infrastructure.contracts import (
     RepoSearchRequest,
@@ -81,3 +85,22 @@ def test_repo_search_truncates_at_limit(tmp_path: Path) -> None:
 
     assert len(result.matches) == 1
     assert result.truncated is True
+
+
+def test_repo_search_git_text_fast_path_includes_untracked_files(tmp_path: Path) -> None:
+    if shutil.which("git") is None:
+        pytest.skip("git is not installed")
+    subprocess.run(["git", "init"], cwd=tmp_path, check=True, capture_output=True, text=True)
+    tracked = tmp_path / "tracked.txt"
+    untracked = tmp_path / "untracked.txt"
+    ignored = tmp_path / "ignored.log"
+    (tmp_path / ".gitignore").write_text("*.log\n", encoding="utf-8")
+    tracked.write_text("needle in tracked\n", encoding="utf-8")
+    untracked.write_text("needle in untracked\n", encoding="utf-8")
+    ignored.write_text("needle in ignored\n", encoding="utf-8")
+    subprocess.run(["git", "add", ".gitignore", "tracked.txt"], cwd=tmp_path, check=True)
+
+    result = RepoSearchTool(tmp_path).run(RepoSearchRequest(query="needle", limit=10))
+
+    assert result.errors == []
+    assert {match.path for match in result.matches} == {"tracked.txt", "untracked.txt"}
