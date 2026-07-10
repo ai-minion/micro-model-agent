@@ -40,7 +40,7 @@ def test_allowed_test_commands_builds_pytest_default() -> None:
     commands = allowed_test_commands(None, None, use_default_pytest=True)
 
     assert list(commands) == ["pytest"]
-    assert commands["pytest"].args == ("python3", "-m", "pytest", "-q")
+    assert commands["pytest"].args[-3:] == ("-m", "pytest", "-q")
 
 
 def test_builtin_tool_metadata_helpers_return_json_ready_records() -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -66,7 +67,7 @@ def allowed_test_commands(
     """Build the allowlist consumed by the test.run tool."""
 
     if use_default_pytest:
-        return {"pytest": AllowedTestCommand(("python3", "-m", "pytest", "-q"))}
+        return {"pytest": AllowedTestCommand((sys.executable, "-m", "pytest", "-q"))}
     if not test_command_name or not test_command_args:
         return {}
     return {test_command_name: AllowedTestCommand(tuple(test_command_args))}
